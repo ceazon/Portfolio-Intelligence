@@ -36,10 +36,14 @@ This creates the first high-level tables for:
 - create portfolios
 - list watchlists
 - list portfolios
+- import symbols from Finnhub into Supabase
+- attach imported symbols to watchlists
+
+## Additional env
+- `FINNHUB_API_KEY`
 
 ## Next step
-- Install dependencies
-- Connect Supabase project
-- Apply initial SQL
-- Replace empty states with live reads/writes
-- Add symbol universe and watchlist item CRUD
+- Add symbol search result selection instead of simple first-match import
+- Add portfolio position CRUD
+- Add company metadata enrichment and price ingestion jobs
+- Add recommendation scaffolding on top of real symbols

@@ -1,7 +1,9 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { CreateWatchlistForm } from "@/components/create-watchlist-form";
+import { ImportSymbolForm } from "@/components/import-symbol-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { hasFinnhubKey } from "@/lib/finnhub";
 
 export default async function WatchlistPage() {
   const supabase = await createSupabaseServerClient();
@@ -9,35 +11,88 @@ export default async function WatchlistPage() {
     ? await supabase.from("watchlists").select("id, name, description, created_at").order("created_at", { ascending: false })
     : { data: [] as { id: string; name: string; description: string | null; created_at: string }[] };
 
+  const { data: watchlistItems } = supabase
+    ? await supabase
+        .from("watchlist_items")
+        .select("id, status, watchlists(name), symbols(ticker, name, asset_type)")
+        .order("created_at", { ascending: false })
+    : { data: [] as { id: string; status: string; watchlists: { name: string } | null; symbols: { ticker: string; name: string | null; asset_type: string | null } | null }[] };
+
   return (
     <AppShell>
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <SectionCard
-          title="Watchlists"
-          description="Track candidate stocks and ETFs before they become portfolio positions."
-        >
-          {watchlists && watchlists.length > 0 ? (
-            <div className="space-y-3">
-              {watchlists.map((list) => (
-                <div key={list.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-base font-semibold text-zinc-100">{list.name}</h3>
-                      <p className="mt-1 text-sm text-zinc-400">{list.description || "No description yet."}</p>
+      <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+        <div className="space-y-6">
+          <SectionCard
+            title="Watchlists"
+            description="Track candidate stocks and ETFs before they become portfolio positions."
+          >
+            {watchlists && watchlists.length > 0 ? (
+              <div className="space-y-3">
+                {watchlists.map((list) => (
+                  <div key={list.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-base font-semibold text-zinc-100">{list.name}</h3>
+                        <p className="mt-1 text-sm text-zinc-400">{list.description || "No description yet."}</p>
+                      </div>
+                      <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">Watchlist</span>
                     </div>
-                    <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">Watchlist</span>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              No watchlists yet. Create one on the right and we’ll use it as the basis for the stock universe and ranking pipeline.
-            </div>
-          )}
-        </SectionCard>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+                No watchlists yet. Create one on the right and we’ll use it as the basis for the stock universe and ranking pipeline.
+              </div>
+            )}
+          </SectionCard>
 
-        <CreateWatchlistForm />
+          <SectionCard
+            title="Watchlist symbols"
+            description="These are imported from an external data provider and attached to your watchlists."
+          >
+            {watchlistItems && watchlistItems.length > 0 ? (
+              <div className="space-y-3">
+                {watchlistItems.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-100">
+                          {item.symbols?.ticker || "Unknown ticker"}
+                          <span className="ml-2 text-zinc-400">{item.symbols?.name || "Unnamed symbol"}</span>
+                        </p>
+                        <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                          {item.watchlists?.name || "Unassigned"} · {item.symbols?.asset_type || "stock"} · {item.status}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+                No symbols attached yet. Import your first ticker from Finnhub using the form on the right.
+              </div>
+            )}
+          </SectionCard>
+        </div>
+
+        <div className="space-y-6">
+          <CreateWatchlistForm />
+
+          <SectionCard
+            title="Symbol ingestion"
+            description="We are using external APIs and public market data sources rather than manual homegrown symbol lists."
+          >
+            {hasFinnhubKey() ? (
+              <ImportSymbolForm watchlists={(watchlists || []).map((watchlist) => ({ id: watchlist.id, name: watchlist.name }))} />
+            ) : (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+                Add <span className="font-semibold">FINNHUB_API_KEY</span> to local and Vercel env vars to enable symbol search and import.
+              </div>
+            )}
+          </SectionCard>
+        </div>
       </div>
     </AppShell>
   );

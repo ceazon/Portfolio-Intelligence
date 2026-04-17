@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { searchFinnhubSymbols } from "@/lib/finnhub";
 
 export type FormState = {
   ok: boolean;
@@ -62,6 +63,67 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
   }
 
   revalidatePath("/portfolio");
+  revalidatePath("/dashboard");
+  return { ok: true, error: "" };
+}
+
+export async function importSymbol(_prevState: FormState, formData: FormData): Promise<FormState> {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    return { ok: false, error: "Supabase env vars are not configured yet." };
+  }
+
+  const query = String(formData.get("query") || "").trim();
+  const selectedSymbol = String(formData.get("selectedSymbol") || "").trim();
+  const watchlistId = String(formData.get("watchlistId") || "").trim();
+
+  if (!query) {
+    return { ok: false, error: "Search query is required." };
+  }
+
+  const results = await searchFinnhubSymbols(query);
+  if (!results.length) {
+    return { ok: false, error: "No symbols found from Finnhub." };
+  }
+
+  const match = results.find((item) => item.symbol === selectedSymbol) || results[0];
+
+  const { data: symbolRow, error: symbolError } = await supabase
+    .from("symbols")
+    .upsert(
+      {
+        ticker: match.symbol,
+        name: match.description || match.displaySymbol || match.symbol,
+        exchange: null,
+        country: null,
+        asset_type: match.type?.toLowerCase().includes("etf") ? "etf" : "stock",
+        is_etf: match.type?.toLowerCase().includes("etf") || false,
+      },
+      { onConflict: "ticker" },
+    )
+    .select("id")
+    .single();
+
+  if (symbolError || !symbolRow) {
+    return { ok: false, error: symbolError?.message || "Failed to import symbol." };
+  }
+
+  if (watchlistId) {
+    const { error: watchlistError } = await supabase.from("watchlist_items").upsert(
+      {
+        watchlist_id: watchlistId,
+        symbol_id: symbolRow.id,
+        status: "watch",
+      },
+      { onConflict: "watchlist_id,symbol_id" },
+    );
+
+    if (watchlistError) {
+      return { ok: false, error: watchlistError.message };
+    }
+  }
+
+  revalidatePath("/watchlist");
   revalidatePath("/dashboard");
   return { ok: true, error: "" };
 }
