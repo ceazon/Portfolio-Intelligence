@@ -5,18 +5,39 @@ import { ImportSymbolForm } from "@/components/import-symbol-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { hasFinnhubKey } from "@/lib/finnhub";
 
+type WatchlistRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+};
+
+type WatchlistItemRow = {
+  id: string;
+  status: string;
+  watchlists: { name: string } | { name: string }[] | null;
+  symbols: { ticker: string; name: string | null; asset_type: string | null } | { ticker: string; name: string | null; asset_type: string | null }[] | null;
+};
+
+function firstRelation<T>(value: T | T[] | null): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value;
+}
+
 export default async function WatchlistPage() {
   const supabase = await createSupabaseServerClient();
   const { data: watchlists } = supabase
     ? await supabase.from("watchlists").select("id, name, description, created_at").order("created_at", { ascending: false })
-    : { data: [] as { id: string; name: string; description: string | null; created_at: string }[] };
+    : { data: [] as WatchlistRow[] };
 
   const { data: watchlistItems } = supabase
     ? await supabase
         .from("watchlist_items")
         .select("id, status, watchlists(name), symbols(ticker, name, asset_type)")
         .order("created_at", { ascending: false })
-    : { data: [] as { id: string; status: string; watchlists: { name: string } | null; symbols: { ticker: string; name: string | null; asset_type: string | null } | null }[] };
+    : { data: [] as WatchlistItemRow[] };
 
   return (
     <AppShell>
@@ -53,21 +74,26 @@ export default async function WatchlistPage() {
           >
             {watchlistItems && watchlistItems.length > 0 ? (
               <div className="space-y-3">
-                {watchlistItems.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-semibold text-zinc-100">
-                          {item.symbols?.ticker || "Unknown ticker"}
-                          <span className="ml-2 text-zinc-400">{item.symbols?.name || "Unnamed symbol"}</span>
-                        </p>
-                        <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
-                          {item.watchlists?.name || "Unassigned"} · {item.symbols?.asset_type || "stock"} · {item.status}
-                        </p>
+                {watchlistItems.map((item) => {
+                  const symbol = firstRelation(item.symbols);
+                  const watchlist = firstRelation(item.watchlists);
+
+                  return (
+                    <div key={item.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-semibold text-zinc-100">
+                            {symbol?.ticker || "Unknown ticker"}
+                            <span className="ml-2 text-zinc-400">{symbol?.name || "Unnamed symbol"}</span>
+                          </p>
+                          <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                            {watchlist?.name || "Unassigned"} · {symbol?.asset_type || "stock"} · {item.status}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
