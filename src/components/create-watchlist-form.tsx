@@ -1,12 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { createWatchlist } from "@/app/actions";
-
-const initialState = { ok: false, error: "" };
+import { createWatchlist, initialFormState } from "@/app/actions";
 
 export function CreateWatchlistForm() {
-  const [state, formAction, pending] = useActionState(createWatchlist, initialState);
+  const [state, formAction, pending] = useActionState(createWatchlist, initialFormState);
 
   return (
     <form action={formAction} className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">

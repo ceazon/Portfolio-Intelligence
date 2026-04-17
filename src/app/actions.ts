@@ -3,7 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
-export async function createWatchlist(formData: FormData) {
+export type FormState = {
+  ok: boolean;
+  error: string;
+};
+
+export const initialFormState: FormState = {
+  ok: false,
+  error: "",
+};
+
+export async function createWatchlist(_prevState: FormState, formData: FormData): Promise<FormState> {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -24,10 +34,10 @@ export async function createWatchlist(formData: FormData) {
 
   revalidatePath("/watchlist");
   revalidatePath("/dashboard");
-  return { ok: true };
+  return { ok: true, error: "" };
 }
 
-export async function createPortfolio(formData: FormData) {
+export async function createPortfolio(_prevState: FormState, formData: FormData): Promise<FormState> {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -53,5 +63,5 @@ export async function createPortfolio(formData: FormData) {
 
   revalidatePath("/portfolio");
   revalidatePath("/dashboard");
-  return { ok: true };
+  return { ok: true, error: "" };
 }
