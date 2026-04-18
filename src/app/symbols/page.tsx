@@ -2,6 +2,7 @@ import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { SymbolImportPanel } from "@/components/symbol-import-panel";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { requireUser } from "@/lib/auth";
 
 type SymbolRow = {
   id: string;
@@ -65,6 +66,7 @@ type WatchlistRow = {
 };
 
 export default async function SymbolsPage() {
+  const user = await requireUser();
   const supabase = await createSupabaseServerClient();
 
   let symbols: SymbolRow[] = [];
@@ -79,7 +81,7 @@ export default async function SymbolsPage() {
           "id, ticker, name, asset_type, exchange, country, sector, industry, currency, logo_url, web_url, market_cap, ipo_date, last_profile_sync_at, last_quote_sync_at, is_etf, created_at, symbol_price_snapshots(price, change, percent_change, previous_close, fetched_at)",
         )
         .order("created_at", { ascending: false }),
-      supabase.from("watchlists").select("id, name").order("created_at", { ascending: false }),
+      supabase.from("watchlists").select("id, name").eq("owner_id", user.id).order("created_at", { ascending: false }),
     ]);
 
     if (symbolsResult.error) {
@@ -96,7 +98,7 @@ export default async function SymbolsPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell viewer={user}>
       <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <div className="space-y-6">
           <SectionCard

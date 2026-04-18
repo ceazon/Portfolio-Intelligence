@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { ReactNode } from "react";
 import { primaryNav } from "@/lib/nav";
+import { LogoutButton } from "@/components/logout-button";
 
-export function AppShell({ children }: { children: ReactNode }) {
+type Viewer = {
+  email?: string;
+};
+
+export function AppShell({ children, viewer }: { children: ReactNode; viewer?: Viewer | null }) {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
@@ -14,8 +19,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               Track your portfolio, rank your watchlist, inspect agent reasoning, and turn daily signals into slower, higher-conviction monthly decisions.
             </p>
           </div>
-          <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
-            Phase 1 in progress, app shell + Supabase foundation
+          <div className="flex flex-col items-start gap-3 lg:items-end">
+            <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+              Phase 1 in progress, app shell + Supabase foundation
+            </div>
+            <div className="flex items-center gap-3 text-sm text-zinc-400">
+              {viewer?.email ? <span>{viewer.email}</span> : null}
+              <LogoutButton />
+            </div>
           </div>
         </header>
 

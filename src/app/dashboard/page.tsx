@@ -3,9 +3,11 @@ import { SectionCard } from "@/components/section-card";
 import { RefreshMarketDataForm } from "@/components/refresh-market-data-form";
 import { nextBuildTargets, roadmapCards } from "@/lib/mock-data";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { requireUser } from "@/lib/auth";
 import { hasSupabaseEnv } from "@/lib/env";
 
 export default async function DashboardPage() {
+  const user = await requireUser();
   const supabase = await createSupabaseServerClient();
 
   let symbolCount = "0";
@@ -29,12 +31,12 @@ export default async function DashboardPage() {
       latestQuoteSyncResult,
     ] = await Promise.all([
       supabase.from("symbols").select("id", { count: "exact", head: true }),
-      supabase.from("portfolio_positions").select("id", { count: "exact", head: true }),
-      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("status", "open"),
-      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("status", "accepted"),
-      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("status", "dismissed"),
-      supabase.from("agent_runs").select("id", { count: "exact", head: true }),
-      supabase.from("agent_runs").select("summary, completed_at").order("completed_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("portfolio_positions").select("id, portfolios!inner(owner_id)", { count: "exact", head: true }).eq("portfolios.owner_id", user.id),
+      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("owner_id", user.id).eq("status", "open"),
+      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("owner_id", user.id).eq("status", "accepted"),
+      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("owner_id", user.id).eq("status", "dismissed"),
+      supabase.from("agent_runs").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
+      supabase.from("agent_runs").select("summary, completed_at").eq("owner_id", user.id).order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("symbols").select("last_quote_sync_at").order("last_quote_sync_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
@@ -56,7 +58,7 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <AppShell>
+    <AppShell viewer={user}>
       <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
         <div className="space-y-6">
           <SectionCard

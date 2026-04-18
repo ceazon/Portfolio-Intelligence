@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { searchFinnhubSymbols } from "@/lib/finnhub";
 import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols } from "@/lib/symbol-sync";
 
@@ -22,8 +23,30 @@ export type FormState = {
   error: string;
 };
 
+async function requireActionUser() {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) {
+    return { error: "Supabase env vars are not configured yet.", user: null } as const;
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "You must be logged in.", user: null } as const;
+  }
+
+  return { error: null, user } as const;
+}
+
 export async function createWatchlist(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -36,7 +59,7 @@ export async function createWatchlist(_prevState: FormState, formData: FormData)
       return { ok: false, error: "Watchlist name is required." };
     }
 
-    const { error } = await supabase.from("watchlists").insert({ name, description: description || null });
+    const { error } = await supabase.from("watchlists").insert({ name, description: description || null, owner_id: auth.user.id });
 
     if (error) {
       return { ok: false, error: error.message };
@@ -52,6 +75,11 @@ export async function createWatchlist(_prevState: FormState, formData: FormData)
 
 export async function createPortfolio(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -69,6 +97,7 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
       name,
       description: description || null,
       benchmark,
+      owner_id: auth.user.id,
     });
 
     if (error) {
@@ -85,6 +114,11 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
 
 export async function updatePortfolio(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -99,7 +133,7 @@ export async function updatePortfolio(_prevState: FormState, formData: FormData)
       return { ok: false, error: "Portfolio id and name are required." };
     }
 
-    const { error } = await supabase.from("portfolios").update({ name, description: description || null, benchmark }).eq("id", id);
+    const { error } = await supabase.from("portfolios").update({ name, description: description || null, benchmark }).eq("id", id).eq("owner_id", auth.user.id);
     if (error) {
       return { ok: false, error: error.message };
     }
@@ -114,6 +148,11 @@ export async function updatePortfolio(_prevState: FormState, formData: FormData)
 
 export async function updateWatchlist(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -127,7 +166,7 @@ export async function updateWatchlist(_prevState: FormState, formData: FormData)
       return { ok: false, error: "Watchlist id and name are required." };
     }
 
-    const { error } = await supabase.from("watchlists").update({ name, description: description || null }).eq("id", id);
+    const { error } = await supabase.from("watchlists").update({ name, description: description || null }).eq("id", id).eq("owner_id", auth.user.id);
     if (error) {
       return { ok: false, error: error.message };
     }
@@ -142,6 +181,11 @@ export async function updateWatchlist(_prevState: FormState, formData: FormData)
 
 export async function deletePortfolioPosition(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -152,6 +196,11 @@ export async function deletePortfolioPosition(_prevState: FormState, formData: F
 
     if (!portfolioId || !symbolId) {
       return { ok: false, error: "Portfolio and symbol are required." };
+    }
+
+    const { data: ownedPortfolio } = await supabase.from("portfolios").select("id").eq("id", portfolioId).eq("owner_id", auth.user.id).maybeSingle();
+    if (!ownedPortfolio) {
+      return { ok: false, error: "Portfolio not found for this user." };
     }
 
     const { error } = await supabase.from("portfolio_positions").delete().eq("portfolio_id", portfolioId).eq("symbol_id", symbolId);
@@ -170,6 +219,11 @@ export async function deletePortfolioPosition(_prevState: FormState, formData: F
 
 export async function upsertPortfolioPosition(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -197,6 +251,11 @@ export async function upsertPortfolioPosition(_prevState: FormState, formData: F
       return { ok: false, error: "Quantity and average cost must be valid numbers." };
     }
 
+    const { data: ownedPortfolio } = await supabase.from("portfolios").select("id").eq("id", portfolioId).eq("owner_id", auth.user.id).maybeSingle();
+    if (!ownedPortfolio) {
+      return { ok: false, error: "Portfolio not found for this user." };
+    }
+
     const { error } = await supabase.from("portfolio_positions").upsert(
       {
         portfolio_id: portfolioId,
@@ -222,6 +281,11 @@ export async function upsertPortfolioPosition(_prevState: FormState, formData: F
 
 export async function updateRecommendationStatus(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -234,7 +298,7 @@ export async function updateRecommendationStatus(_prevState: FormState, formData
       return { ok: false, error: "Recommendation id and status are required." };
     }
 
-    const { error } = await supabase.from("recommendations").update({ status }).eq("id", recommendationId);
+    const { error } = await supabase.from("recommendations").update({ status }).eq("id", recommendationId).eq("owner_id", auth.user.id);
     if (error) {
       return { ok: false, error: error.message };
     }
@@ -250,6 +314,11 @@ export async function updateRecommendationStatus(_prevState: FormState, formData
 
 export async function generateRecommendations(_prevState: FormState): Promise<FormState> {
   try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -258,8 +327,9 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
     const { data: positions, error: positionsError } = await supabase
       .from("portfolio_positions")
       .select(
-        "portfolio_id, quantity, average_cost, notes, symbols!inner(id, ticker, name, symbol_price_snapshots(price, percent_change))",
-      );
+        "portfolio_id, quantity, average_cost, notes, portfolios!inner(owner_id), symbols!inner(id, ticker, name, symbol_price_snapshots(price, percent_change))",
+      )
+      .eq("portfolios.owner_id", auth.user.id);
 
     if (positionsError) {
       return { ok: false, error: positionsError.message };
@@ -267,13 +337,15 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
 
     const { data: watchlistItems, error: watchlistError } = await supabase
       .from("watchlist_items")
-      .select("symbol_id, status, notes, symbols!inner(id, ticker, name, symbol_price_snapshots(price, percent_change))");
+      .select("symbol_id, status, notes, watchlists!inner(owner_id), symbols!inner(id, ticker, name, symbol_price_snapshots(price, percent_change))")
+      .eq("watchlists.owner_id", auth.user.id);
 
     if (watchlistError) {
       return { ok: false, error: watchlistError.message };
     }
 
     const recommendationsToInsert: Array<{
+      owner_id: string;
       portfolio_id: string | null;
       symbol_id: string;
       action: string;
@@ -346,6 +418,7 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
       }
 
       recommendationsToInsert.push({
+        owner_id: auth.user.id,
         portfolio_id: position.portfolio_id,
         symbol_id: symbolRelation.id,
         action,
@@ -377,6 +450,7 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
       const action = pctChange !== null && pctChange <= -3 ? "watch" : "buy";
 
       recommendationsToInsert.push({
+        owner_id: auth.user.id,
         portfolio_id: null,
         symbol_id: symbolRelation.id,
         action,
@@ -403,11 +477,11 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
     const portfolioIds = [...new Set(recommendationsToInsert.map((item) => item.portfolio_id).filter(Boolean))];
 
     if (symbolIds.length) {
-      await supabase.from("recommendations").delete().in("symbol_id", symbolIds);
+      await supabase.from("recommendations").delete().eq("owner_id", auth.user.id).in("symbol_id", symbolIds);
     }
 
     if (portfolioIds.length) {
-      await supabase.from("recommendations").delete().in("portfolio_id", portfolioIds);
+      await supabase.from("recommendations").delete().eq("owner_id", auth.user.id).in("portfolio_id", portfolioIds as string[]);
     }
 
     const { error: insertError } = await supabase.from("recommendations").insert(recommendationsToInsert);
@@ -425,7 +499,12 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
 
 export async function refreshMarketData(_prevState: FormState): Promise<FormState> {
   try {
-    const result = await refreshTrackedSymbols();
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
+    const result = await refreshTrackedSymbols(auth.user.id);
     revalidatePath("/symbols");
     revalidatePath("/dashboard");
     revalidatePath("/agent-activity");
@@ -439,6 +518,11 @@ export async function refreshMarketData(_prevState: FormState): Promise<FormStat
 
 export async function importSymbol(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
       return { ok: false, error: "Supabase env vars are not configured yet." };
@@ -479,9 +563,14 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
       return { ok: false, error: symbolError?.message || "Failed to import symbol." };
     }
 
-    await enrichSymbolAndRefreshQuote(symbolRow.id, match.symbol);
+    await enrichSymbolAndRefreshQuote(symbolRow.id, match.symbol, auth.user.id);
 
     if (watchlistId) {
+      const { data: ownedWatchlist } = await supabase.from("watchlists").select("id").eq("id", watchlistId).eq("owner_id", auth.user.id).maybeSingle();
+      if (!ownedWatchlist) {
+        return { ok: false, error: "Watchlist not found for this user." };
+      }
+
       const { error: watchlistError } = await supabase.from("watchlist_items").upsert(
         {
           watchlist_id: watchlistId,

@@ -4,6 +4,7 @@ import { CreateWatchlistForm } from "@/components/create-watchlist-form";
 import { EditWatchlistForm } from "@/components/edit-watchlist-form";
 import { SymbolImportPanel } from "@/components/symbol-import-panel";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { requireUser } from "@/lib/auth";
 
 type WatchlistRow = {
   id: string;
@@ -27,20 +28,22 @@ function firstRelation<T>(value: T | T[] | null): T | null {
 }
 
 export default async function WatchlistPage() {
+  const user = await requireUser();
   const supabase = await createSupabaseServerClient();
   const { data: watchlists } = supabase
-    ? await supabase.from("watchlists").select("id, name, description, created_at").order("created_at", { ascending: false })
+    ? await supabase.from("watchlists").select("id, name, description, created_at").eq("owner_id", user.id).order("created_at", { ascending: false })
     : { data: [] as WatchlistRow[] };
 
   const { data: watchlistItems } = supabase
     ? await supabase
         .from("watchlist_items")
-        .select("id, status, watchlists(name), symbols(ticker, name, asset_type)")
+        .select("id, status, watchlists!inner(name, owner_id), symbols(ticker, name, asset_type)")
+        .eq("watchlists.owner_id", user.id)
         .order("created_at", { ascending: false })
     : { data: [] as WatchlistItemRow[] };
 
   return (
-    <AppShell>
+    <AppShell viewer={user}>
       <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <div className="space-y-6">
           <SectionCard

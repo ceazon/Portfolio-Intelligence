@@ -6,6 +6,7 @@ import { DeletePositionForm } from "@/components/delete-position-form";
 import { EditPortfolioForm } from "@/components/edit-portfolio-form";
 import { EditPositionInlineForm } from "@/components/edit-position-inline-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { requireUser } from "@/lib/auth";
 
 type PortfolioRow = {
   id: string;
@@ -85,10 +86,11 @@ function firstRelation<T>(value: T | T[] | null): T | null {
 }
 
 export default async function PortfolioPage() {
+  const user = await requireUser();
   const supabase = await createSupabaseServerClient();
 
   const { data: portfolios } = supabase
-    ? await supabase.from("portfolios").select("id, name, description, benchmark, created_at").order("created_at", { ascending: false })
+    ? await supabase.from("portfolios").select("id, name, description, benchmark, created_at").eq("owner_id", user.id).order("created_at", { ascending: false })
     : { data: [] as PortfolioRow[] };
 
   const { data: positions } = supabase
@@ -103,7 +105,7 @@ export default async function PortfolioPage() {
     : { data: [] as SymbolOption[] };
 
   const { data: recommendations } = supabase
-    ? await supabase.from("recommendations").select("symbol_id, action, target_weight, conviction_score").eq("status", "open")
+    ? await supabase.from("recommendations").select("symbol_id, action, target_weight, conviction_score").eq("owner_id", user.id).eq("status", "open")
     : { data: [] as RecommendationRow[] };
 
   const recommendationBySymbol = new Map<string, RecommendationRow>();
@@ -131,7 +133,7 @@ export default async function PortfolioPage() {
   });
 
   return (
-    <AppShell>
+    <AppShell viewer={user}>
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="space-y-6">
           <SectionCard

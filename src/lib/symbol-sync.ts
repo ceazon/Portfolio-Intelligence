@@ -1,13 +1,14 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { getFinnhubCompanyProfile, getFinnhubQuote } from "@/lib/finnhub";
 
-async function recordAgentRun(runType: string, status: string, summary: string) {
+async function recordAgentRun(runType: string, status: string, summary: string, ownerId?: string) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     return;
   }
 
   await supabase.from("agent_runs").insert({
+    owner_id: ownerId || null,
     agent_name: "market-data-sync",
     run_type: runType,
     status,
@@ -17,7 +18,7 @@ async function recordAgentRun(runType: string, status: string, summary: string) 
   });
 }
 
-export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: string) {
+export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: string, ownerId?: string) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     throw new Error("Supabase env vars are not configured yet.");
@@ -80,18 +81,58 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
     "symbol-refresh",
     "completed",
     `Refreshed ${ticker} profile=${profile ? "yes" : "no"} quote=${quote ? "yes" : "no"}`,
+    ownerId,
   );
 
   return { profileLoaded: Boolean(profile), quoteLoaded: Boolean(quote) };
 }
 
-export async function refreshTrackedSymbols() {
+export async function refreshTrackedSymbols(ownerId?: string) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     throw new Error("Supabase env vars are not configured yet.");
   }
 
-  const { data: symbols, error } = await supabase.from("symbols").select("id, ticker").order("ticker", { ascending: true });
+  let symbolIds: string[] = [];
+
+  if (ownerId) {
+    const [watchlistItemsResult, portfolioPositionsResult] = await Promise.all([
+      supabase
+        .from("watchlist_items")
+        .select("symbol_id, watchlists!inner(owner_id)")
+        .eq("watchlists.owner_id", ownerId),
+      supabase
+        .from("portfolio_positions")
+        .select("symbol_id, portfolios!inner(owner_id)")
+        .eq("portfolios.owner_id", ownerId),
+    ]);
+
+    if (watchlistItemsResult.error) {
+      throw new Error(watchlistItemsResult.error.message);
+    }
+
+    if (portfolioPositionsResult.error) {
+      throw new Error(portfolioPositionsResult.error.message);
+    }
+
+    symbolIds = [
+      ...(watchlistItemsResult.data || []).map((item) => item.symbol_id),
+      ...(portfolioPositionsResult.data || []).map((item) => item.symbol_id),
+    ].filter(Boolean);
+  } else {
+    const { data: symbols, error } = await supabase.from("symbols").select("id");
+    if (error) {
+      throw new Error(error.message);
+    }
+    symbolIds = (symbols || []).map((symbol) => symbol.id);
+  }
+
+  const uniqueSymbolIds = [...new Set(symbolIds)];
+  if (!uniqueSymbolIds.length) {
+    throw new Error("No tracked symbols found.");
+  }
+
+  const { data: symbols, error } = await supabase.from("symbols").select("id, ticker").in("id", uniqueSymbolIds).order("ticker", { ascending: true });
   if (error) {
     throw new Error(error.message);
   }
@@ -102,10 +143,10 @@ export async function refreshTrackedSymbols() {
 
   let refreshedCount = 0;
   for (const symbol of symbols) {
-    await enrichSymbolAndRefreshQuote(symbol.id, symbol.ticker);
+    await enrichSymbolAndRefreshQuote(symbol.id, symbol.ticker, ownerId);
     refreshedCount += 1;
   }
 
-  await recordAgentRun("bulk-symbol-refresh", "completed", `Refreshed ${refreshedCount} tracked symbols.`);
+  await recordAgentRun("bulk-symbol-refresh", "completed", `Refreshed ${refreshedCount} tracked symbols.`, ownerId);
   return { refreshedCount };
 }

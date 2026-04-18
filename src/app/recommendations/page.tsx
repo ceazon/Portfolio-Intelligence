@@ -3,6 +3,7 @@ import { SectionCard } from "@/components/section-card";
 import { GenerateRecommendationsForm } from "@/components/generate-recommendations-form";
 import { RecommendationStatusForm } from "@/components/recommendation-status-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { requireUser } from "@/lib/auth";
 
 type RecommendationRow = {
   id: string;
@@ -44,6 +45,7 @@ function firstRelation<T>(value: T | T[] | null): T | null {
 }
 
 export default async function RecommendationsPage() {
+  const user = await requireUser();
   const supabase = await createSupabaseServerClient();
   const { data: recommendations } = supabase
     ? await supabase
@@ -51,11 +53,12 @@ export default async function RecommendationsPage() {
         .select(
           "id, action, status, target_weight, conviction_score, summary, risks, confidence, created_at, portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
         )
+        .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
     : { data: [] as RecommendationRow[] };
 
   return (
-    <AppShell>
+    <AppShell viewer={user}>
       <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <div className="space-y-6">
           <SectionCard

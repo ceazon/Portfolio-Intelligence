@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { requireUser } from "@/lib/auth";
 
 type AgentRunRow = {
   id: string;
@@ -14,13 +15,14 @@ type AgentRunRow = {
 };
 
 export default async function AgentActivityPage() {
+  const user = await requireUser();
   const supabase = await createSupabaseServerClient();
   const { data: agentRuns } = supabase
-    ? await supabase.from("agent_runs").select("id, agent_name, run_type, status, summary, started_at, completed_at, created_at").order("created_at", { ascending: false }).limit(20)
+    ? await supabase.from("agent_runs").select("id, agent_name, run_type, status, summary, started_at, completed_at, created_at").eq("owner_id", user.id).order("created_at", { ascending: false }).limit(20)
     : { data: [] as AgentRunRow[] };
 
   return (
-    <AppShell>
+    <AppShell viewer={user}>
       <SectionCard
         title="Agent Activity"
         description="Manual market refreshes and future automated jobs show up here as an audit trail."
