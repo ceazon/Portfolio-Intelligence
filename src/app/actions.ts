@@ -29,11 +29,6 @@ export type FormState = {
   error: string;
 };
 
-export const initialFormState: FormState = {
-  ok: false,
-  error: "",
-};
-
 export async function createWatchlist(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
     const supabase = createSupabaseAdminClient();

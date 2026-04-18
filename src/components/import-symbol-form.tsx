@@ -1,7 +1,12 @@
 "use client";
 
 import { useActionState } from "react";
-import { importSymbol, initialFormState } from "@/app/actions";
+import { importSymbol, type FormState } from "@/app/actions";
+
+const initialFormState: FormState = {
+  ok: false,
+  error: "",
+};
 
 type WatchlistOption = {
   id: string;

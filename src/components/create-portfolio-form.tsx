@@ -1,7 +1,12 @@
 "use client";
 
 import { useActionState } from "react";
-import { createPortfolio, initialFormState } from "@/app/actions";
+import { createPortfolio, type FormState } from "@/app/actions";
+
+const initialFormState: FormState = {
+  ok: false,
+  error: "",
+};
 
 export function CreatePortfolioForm() {
   const [state, formAction, pending] = useActionState(createPortfolio, initialFormState);
