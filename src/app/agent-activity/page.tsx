@@ -2,6 +2,7 @@ import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
+import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
 
 type AgentRunRow = {
   id: string;
@@ -97,7 +98,7 @@ export default async function AgentActivityPage() {
       <div className="space-y-6">
         <SectionCard
           title="Agent Activity"
-          description="Operational runs are now split into sync jobs, recommendation runs, and research runs."
+          description={`Operational runs are now split into sync jobs, recommendation runs, and research runs. All timestamps shown in ${getAppTimeZoneLabel()}.`}
         >
           <div className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
             <div className="space-y-3">
@@ -112,7 +113,7 @@ export default async function AgentActivityPage() {
                       <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300">{run.status}</span>
                     </div>
                     <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">
-                      {run.agent_name} · {new Date(run.created_at).toLocaleString()}
+                      {run.agent_name} · {formatAppDateTime(run.created_at)}
                     </p>
                   </div>
                 ))
@@ -151,7 +152,7 @@ export default async function AgentActivityPage() {
                     <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300">{run.status}</span>
                   </div>
                   <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">
-                    Considered {run.symbols_considered} · Refreshed {run.symbols_refreshed} · {new Date(run.created_at).toLocaleString()}
+                    Considered {run.symbols_considered} · Refreshed {run.symbols_refreshed} · {formatAppDateTime(run.created_at)}
                   </p>
                 </div>
               ))
@@ -179,7 +180,7 @@ export default async function AgentActivityPage() {
                     <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300">{run.status}</span>
                   </div>
                   <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">
-                    Run {run.id.slice(0, 8)} · {new Date(run.created_at).toLocaleString()}
+                    Run {run.id.slice(0, 8)} · {formatAppDateTime(run.created_at)}
                   </p>
                 </div>
               ))
@@ -207,7 +208,7 @@ export default async function AgentActivityPage() {
                     <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300">{run.status}</span>
                   </div>
                   <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">
-                    {run.agent_name} · {run.scope_type}{run.scope_key ? `:${run.scope_key}` : ""} · {new Date(run.created_at).toLocaleString()}
+                    {run.agent_name} · {run.scope_type}{run.scope_key ? `:${run.scope_key}` : ""} · {formatAppDateTime(run.created_at)}
                   </p>
                 </div>
               ))

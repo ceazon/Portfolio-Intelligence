@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { hasSupabaseEnv } from "@/lib/env";
 import { getMarketHoursState } from "@/lib/market-hours";
+import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -58,7 +59,7 @@ export default async function DashboardPage() {
   const marketHoursState = getMarketHoursState();
 
   const stats = [
-    { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${new Date(latestQuoteSync).toLocaleString()}` : "Quote sync ready" },
+    { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${formatAppDateTime(latestQuoteSync)}` : "Quote sync ready" },
     { label: "Core Positions", value: positionCount, detail: "Live portfolio positions tracked" },
     { label: "Open Recommendations", value: openRecommendationCount, detail: `Accepted ${acceptedRecommendationCount} · Dismissed ${dismissedRecommendationCount}` },
     { label: "Agent Runs", value: agentRunCount, detail: latestRunSummary || "Manual market refreshes log here" },
@@ -78,7 +79,7 @@ export default async function DashboardPage() {
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-zinc-300">
                 Central quote scheduler: <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours mode" : "off hours mode"}</span>
-                <span className="text-zinc-400"> · recommended cadence every {marketHoursState.recommendedEveryMinutes} minutes ({marketHoursState.timeZone})</span>
+                <span className="text-zinc-400"> · recommended cadence every {marketHoursState.recommendedEveryMinutes} minutes ({getAppTimeZoneLabel()})</span>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

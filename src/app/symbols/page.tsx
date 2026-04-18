@@ -3,6 +3,7 @@ import { SectionCard } from "@/components/section-card";
 import { SymbolImportPanel } from "@/components/symbol-import-panel";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
+import { formatAppDateTime } from "@/lib/time";
 
 type SymbolRow = {
   id: string;
@@ -160,7 +161,7 @@ export default async function SymbolsPage() {
                                 {typeof quote.change === "number" ? `${changePositive ? "+" : ""}${quote.change.toFixed(2)}` : "--"}
                                 {typeof quote.percent_change === "number" ? ` (${changePositive ? "+" : ""}${quote.percent_change.toFixed(2)}%)` : ""}
                               </p>
-                              <p className="mt-1 text-xs text-zinc-500">Updated {new Date(quote.fetched_at).toLocaleString()}</p>
+                              <p className="mt-1 text-xs text-zinc-500">Updated {formatAppDateTime(quote.fetched_at)}</p>
                             </>
                           ) : (
                             <div className="text-sm text-zinc-500">No quote yet</div>
