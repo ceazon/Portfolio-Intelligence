@@ -10,7 +10,9 @@ export default async function DashboardPage() {
 
   let symbolCount = "0";
   let positionCount = "0";
-  let recommendationCount = "0";
+  let openRecommendationCount = "0";
+  let acceptedRecommendationCount = "0";
+  let dismissedRecommendationCount = "0";
   let agentRunCount = "0";
   let latestRunSummary: string | null = null;
   let latestQuoteSync: string | null = null;
@@ -19,7 +21,9 @@ export default async function DashboardPage() {
     const [
       symbolsCountResult,
       positionsCountResult,
-      recommendationsCountResult,
+      openRecommendationsCountResult,
+      acceptedRecommendationsCountResult,
+      dismissedRecommendationsCountResult,
       agentRunsCountResult,
       latestAgentRunResult,
       latestQuoteSyncResult,
@@ -27,6 +31,8 @@ export default async function DashboardPage() {
       supabase.from("symbols").select("id", { count: "exact", head: true }),
       supabase.from("portfolio_positions").select("id", { count: "exact", head: true }),
       supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("status", "open"),
+      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("status", "accepted"),
+      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("status", "dismissed"),
       supabase.from("agent_runs").select("id", { count: "exact", head: true }),
       supabase.from("agent_runs").select("summary, completed_at").order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("symbols").select("last_quote_sync_at").order("last_quote_sync_at", { ascending: false }).limit(1).maybeSingle(),
@@ -34,7 +40,9 @@ export default async function DashboardPage() {
 
     symbolCount = String(symbolsCountResult.count ?? 0);
     positionCount = String(positionsCountResult.count ?? 0);
-    recommendationCount = String(recommendationsCountResult.count ?? 0);
+    openRecommendationCount = String(openRecommendationsCountResult.count ?? 0);
+    acceptedRecommendationCount = String(acceptedRecommendationsCountResult.count ?? 0);
+    dismissedRecommendationCount = String(dismissedRecommendationsCountResult.count ?? 0);
     agentRunCount = String(agentRunsCountResult.count ?? 0);
     latestRunSummary = latestAgentRunResult.data?.summary || null;
     latestQuoteSync = latestQuoteSyncResult.data?.last_quote_sync_at || null;
@@ -43,7 +51,7 @@ export default async function DashboardPage() {
   const stats = [
     { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${new Date(latestQuoteSync).toLocaleString()}` : "Quote sync ready" },
     { label: "Core Positions", value: positionCount, detail: "Live portfolio positions tracked" },
-    { label: "Open Recommendations", value: recommendationCount, detail: "Rules-based engine now active" },
+    { label: "Open Recommendations", value: openRecommendationCount, detail: `Accepted ${acceptedRecommendationCount} · Dismissed ${dismissedRecommendationCount}` },
     { label: "Agent Runs", value: agentRunCount, detail: latestRunSummary || "Manual market refreshes log here" },
   ];
 

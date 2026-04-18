@@ -2,6 +2,8 @@ import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { CreatePortfolioForm } from "@/components/create-portfolio-form";
 import { CreatePositionForm } from "@/components/create-position-form";
+import { DeletePositionForm } from "@/components/delete-position-form";
+import { EditPortfolioForm } from "@/components/edit-portfolio-form";
 import { EditPositionInlineForm } from "@/components/edit-position-inline-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -154,6 +156,8 @@ export default async function PortfolioPage() {
                         </span>
                       </div>
 
+                      <EditPortfolioForm id={portfolio.id} name={portfolio.name} description={portfolio.description} benchmark={portfolio.benchmark} />
+
                       <div className="mt-4">
                         {portfolioPositions.length > 0 ? (
                           <div className="space-y-3">
@@ -246,6 +250,7 @@ export default async function PortfolioPage() {
                                     averageCost={position.average_cost}
                                     notes={position.notes}
                                   />
+                                  <DeletePositionForm portfolioId={portfolio.id} symbolId={symbol?.id || ""} />
                                 </div>
                               );
                             })}
@@ -273,7 +278,7 @@ export default async function PortfolioPage() {
 
           <SectionCard
             title="Add new position"
-            description="Add a new symbol to a portfolio. Existing holdings can now be edited inline directly in the portfolio cards."
+            description="Add a new symbol to a portfolio. Existing holdings can be edited or removed inline directly in the portfolio cards."
           >
             {portfolios && portfolios.length > 0 ? (
               symbols && symbols.length > 0 ? (

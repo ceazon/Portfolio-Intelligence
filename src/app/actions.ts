@@ -83,6 +83,91 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
   }
 }
 
+export async function updatePortfolio(_prevState: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return { ok: false, error: "Supabase env vars are not configured yet." };
+    }
+
+    const id = String(formData.get("id") || "").trim();
+    const name = String(formData.get("name") || "").trim();
+    const description = String(formData.get("description") || "").trim();
+    const benchmark = String(formData.get("benchmark") || "SPY").trim() || "SPY";
+
+    if (!id || !name) {
+      return { ok: false, error: "Portfolio id and name are required." };
+    }
+
+    const { error } = await supabase.from("portfolios").update({ name, description: description || null, benchmark }).eq("id", id);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    revalidatePath("/portfolio");
+    revalidatePath("/dashboard");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to update portfolio.") };
+  }
+}
+
+export async function updateWatchlist(_prevState: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return { ok: false, error: "Supabase env vars are not configured yet." };
+    }
+
+    const id = String(formData.get("id") || "").trim();
+    const name = String(formData.get("name") || "").trim();
+    const description = String(formData.get("description") || "").trim();
+
+    if (!id || !name) {
+      return { ok: false, error: "Watchlist id and name are required." };
+    }
+
+    const { error } = await supabase.from("watchlists").update({ name, description: description || null }).eq("id", id);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    revalidatePath("/watchlist");
+    revalidatePath("/dashboard");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to update watchlist.") };
+  }
+}
+
+export async function deletePortfolioPosition(_prevState: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return { ok: false, error: "Supabase env vars are not configured yet." };
+    }
+
+    const portfolioId = String(formData.get("portfolioId") || "").trim();
+    const symbolId = String(formData.get("symbolId") || "").trim();
+
+    if (!portfolioId || !symbolId) {
+      return { ok: false, error: "Portfolio and symbol are required." };
+    }
+
+    const { error } = await supabase.from("portfolio_positions").delete().eq("portfolio_id", portfolioId).eq("symbol_id", symbolId);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    revalidatePath("/portfolio");
+    revalidatePath("/recommendations");
+    revalidatePath("/dashboard");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to remove position.") };
+  }
+}
+
 export async function upsertPortfolioPosition(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
     const supabase = createSupabaseAdminClient();

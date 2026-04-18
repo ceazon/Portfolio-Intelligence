@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { CreateWatchlistForm } from "@/components/create-watchlist-form";
+import { EditWatchlistForm } from "@/components/edit-watchlist-form";
 import { SymbolImportPanel } from "@/components/symbol-import-panel";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -57,6 +58,7 @@ export default async function WatchlistPage() {
                       </div>
                       <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">Watchlist</span>
                     </div>
+                    <EditWatchlistForm id={list.id} name={list.name} description={list.description} />
                   </div>
                 ))}
               </div>
