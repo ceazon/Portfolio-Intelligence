@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { searchFinnhubSymbols } from "@/lib/finnhub";
+import { enrichSymbolAndRefreshQuote } from "@/lib/symbol-sync";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
@@ -124,6 +125,8 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
       return { ok: false, error: symbolError?.message || "Failed to import symbol." };
     }
 
+    await enrichSymbolAndRefreshQuote(symbolRow.id, match.symbol);
+
     if (watchlistId) {
       const { error: watchlistError } = await supabase.from("watchlist_items").upsert(
         {
@@ -139,6 +142,7 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
       }
     }
 
+    revalidatePath("/symbols");
     revalidatePath("/watchlist");
     revalidatePath("/dashboard");
     return { ok: true, error: "" };
