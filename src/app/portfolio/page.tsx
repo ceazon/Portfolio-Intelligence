@@ -14,10 +14,8 @@ type PortfolioRow = {
 
 type PortfolioPositionRow = {
   id: string;
-  status: string;
-  target_weight: number | null;
-  current_weight: number | null;
-  conviction_score: number | null;
+  quantity: number | null;
+  average_cost: number | null;
   notes: string | null;
   portfolios: { id: string; name: string } | { id: string; name: string }[] | null;
   symbols:
@@ -82,9 +80,7 @@ export default async function PortfolioPage() {
   const { data: positions } = supabase
     ? await supabase
         .from("portfolio_positions")
-        .select(
-          "id, status, target_weight, current_weight, conviction_score, notes, portfolios(id, name), symbols(ticker, name, exchange, symbol_price_snapshots(price, percent_change, fetched_at))",
-        )
+        .select("id, quantity, average_cost, notes, portfolios(id, name), symbols(ticker, name, exchange, symbol_price_snapshots(price, percent_change, fetched_at))")
         .order("created_at", { ascending: false })
     : { data: [] as PortfolioPositionRow[] };
 
@@ -93,8 +89,12 @@ export default async function PortfolioPage() {
     : { data: [] as SymbolOption[] };
 
   const positionsByPortfolio = new Map<string, PortfolioPositionRow[]>();
+  const portfolioMarketValues = new Map<string, number>();
+
   (positions || []).forEach((position) => {
     const portfolio = firstRelation(position.portfolios);
+    const symbol = firstRelation(position.symbols);
+    const quote = firstRelation(symbol?.symbol_price_snapshots || null);
     if (!portfolio) {
       return;
     }
@@ -102,6 +102,9 @@ export default async function PortfolioPage() {
     const existing = positionsByPortfolio.get(portfolio.id) || [];
     existing.push(position);
     positionsByPortfolio.set(portfolio.id, existing);
+
+    const marketValue = (position.quantity ?? 0) * (quote?.price ?? 0);
+    portfolioMarketValues.set(portfolio.id, (portfolioMarketValues.get(portfolio.id) || 0) + marketValue);
   });
 
   return (
@@ -110,12 +113,13 @@ export default async function PortfolioPage() {
         <div className="space-y-6">
           <SectionCard
             title="Portfolios"
-            description="Manage the core paper portfolio that future recommendations will rebalance over time."
+            description="Manage the current state of each holding. Calculated metrics update from quantity, average cost, and live market prices."
           >
             {portfolios && portfolios.length > 0 ? (
               <div className="space-y-4">
                 {portfolios.map((portfolio) => {
                   const portfolioPositions = positionsByPortfolio.get(portfolio.id) || [];
+                  const totalMarketValue = portfolioMarketValues.get(portfolio.id) || 0;
 
                   return (
                     <div key={portfolio.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -135,7 +139,15 @@ export default async function PortfolioPage() {
                             {portfolioPositions.map((position) => {
                               const symbol = firstRelation(position.symbols);
                               const quote = firstRelation(symbol?.symbol_price_snapshots || null);
+                              const currentPrice = quote?.price ?? null;
+                              const quantity = position.quantity ?? 0;
+                              const averageCost = position.average_cost ?? 0;
+                              const bookValue = quantity * averageCost;
+                              const marketValue = quantity * (currentPrice ?? 0);
+                              const gainLoss = currentPrice !== null ? marketValue - bookValue : null;
+                              const currentWeight = totalMarketValue > 0 ? (marketValue / totalMarketValue) * 100 : null;
                               const quotePositive = typeof quote?.percent_change === "number" ? quote.percent_change >= 0 : null;
+                              const gainPositive = typeof gainLoss === "number" ? gainLoss >= 0 : null;
 
                               return (
                                 <div key={position.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
@@ -146,13 +158,12 @@ export default async function PortfolioPage() {
                                         <span className="ml-2 text-zinc-400">{symbol?.name || "Unnamed symbol"}</span>
                                       </p>
                                       <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
-                                        {position.status}
-                                        {symbol?.exchange ? ` · ${symbol.exchange}` : ""}
+                                        {symbol?.exchange ? symbol.exchange : "Exchange unavailable"}
                                       </p>
                                     </div>
 
                                     <div className="text-right text-sm">
-                                      {typeof quote?.price === "number" ? <p className="text-zinc-100">${quote.price.toFixed(2)}</p> : null}
+                                      {typeof currentPrice === "number" ? <p className="text-zinc-100">${currentPrice.toFixed(2)}</p> : null}
                                       {typeof quote?.percent_change === "number" ? (
                                         <p className={quotePositive ? "text-emerald-300" : "text-rose-300"}>
                                           {quotePositive ? "+" : ""}
@@ -162,18 +173,28 @@ export default async function PortfolioPage() {
                                     </div>
                                   </div>
 
-                                  <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-3">
+                                  <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-3 lg:grid-cols-5">
                                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-                                      <p className="text-xs uppercase tracking-wide text-zinc-500">Target weight</p>
-                                      <p className="mt-1 font-medium text-zinc-100">{position.target_weight !== null ? `${position.target_weight}%` : "--"}</p>
+                                      <p className="text-xs uppercase tracking-wide text-zinc-500">Quantity</p>
+                                      <p className="mt-1 font-medium text-zinc-100">{quantity ? quantity.toFixed(4).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1") : "--"}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                                      <p className="text-xs uppercase tracking-wide text-zinc-500">Average cost</p>
+                                      <p className="mt-1 font-medium text-zinc-100">{averageCost ? `$${averageCost.toFixed(2)}` : "--"}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                                      <p className="text-xs uppercase tracking-wide text-zinc-500">Book value</p>
+                                      <p className="mt-1 font-medium text-zinc-100">{bookValue ? `$${bookValue.toFixed(2)}` : "--"}</p>
+                                    </div>
+                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                                      <p className="text-xs uppercase tracking-wide text-zinc-500">Gain/Loss</p>
+                                      <p className={`mt-1 font-medium ${gainPositive === null ? "text-zinc-100" : gainPositive ? "text-emerald-300" : "text-rose-300"}`}>
+                                        {typeof gainLoss === "number" ? `${gainPositive ? "+" : ""}$${gainLoss.toFixed(2)}` : "--"}
+                                      </p>
                                     </div>
                                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
                                       <p className="text-xs uppercase tracking-wide text-zinc-500">Current weight</p>
-                                      <p className="mt-1 font-medium text-zinc-100">{position.current_weight !== null ? `${position.current_weight}%` : "--"}</p>
-                                    </div>
-                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-                                      <p className="text-xs uppercase tracking-wide text-zinc-500">Conviction</p>
-                                      <p className="mt-1 font-medium text-zinc-100">{position.conviction_score !== null ? position.conviction_score : "--"}</p>
+                                      <p className="mt-1 font-medium text-zinc-100">{currentWeight !== null ? `${currentWeight.toFixed(2)}%` : "--"}</p>
                                     </div>
                                   </div>
 
@@ -205,7 +226,7 @@ export default async function PortfolioPage() {
 
           <SectionCard
             title="Portfolio positions"
-            description="Turn imported symbols into actual tracked holdings and target allocations."
+            description="Enter quantity and average cost. The app will calculate book value, gain/loss, and current weight from live prices."
           >
             {portfolios && portfolios.length > 0 ? (
               symbols && symbols.length > 0 ? (

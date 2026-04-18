@@ -83,7 +83,7 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
   }
 }
 
-export async function addPortfolioPosition(_prevState: FormState, formData: FormData): Promise<FormState> {
+export async function upsertPortfolioPosition(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
     const supabase = createSupabaseAdminClient();
     if (!supabase) {
@@ -92,10 +92,8 @@ export async function addPortfolioPosition(_prevState: FormState, formData: Form
 
     const portfolioId = String(formData.get("portfolioId") || "").trim();
     const symbolId = String(formData.get("symbolId") || "").trim();
-    const targetWeightRaw = String(formData.get("targetWeight") || "").trim();
-    const currentWeightRaw = String(formData.get("currentWeight") || "").trim();
-    const convictionScoreRaw = String(formData.get("convictionScore") || "").trim();
-    const status = String(formData.get("status") || "active").trim() || "active";
+    const quantityRaw = String(formData.get("quantity") || "").trim();
+    const averageCostRaw = String(formData.get("averageCost") || "").trim();
     const notes = String(formData.get("notes") || "").trim();
 
     if (!portfolioId) {
@@ -106,23 +104,20 @@ export async function addPortfolioPosition(_prevState: FormState, formData: Form
       return { ok: false, error: "Symbol is required." };
     }
 
-    const targetWeight = targetWeightRaw ? Number(targetWeightRaw) : null;
-    const currentWeight = currentWeightRaw ? Number(currentWeightRaw) : null;
-    const convictionScore = convictionScoreRaw ? Number(convictionScoreRaw) : null;
+    const quantity = quantityRaw ? Number(quantityRaw) : null;
+    const averageCost = averageCostRaw ? Number(averageCostRaw) : null;
 
-    const numericValues = [targetWeight, currentWeight, convictionScore].filter((value) => value !== null);
+    const numericValues = [quantity, averageCost].filter((value) => value !== null);
     if (numericValues.some((value) => value !== null && Number.isNaN(value))) {
-      return { ok: false, error: "Weights and conviction score must be valid numbers." };
+      return { ok: false, error: "Quantity and average cost must be valid numbers." };
     }
 
     const { error } = await supabase.from("portfolio_positions").upsert(
       {
         portfolio_id: portfolioId,
         symbol_id: symbolId,
-        target_weight: targetWeight,
-        current_weight: currentWeight,
-        conviction_score: convictionScore,
-        status,
+        quantity,
+        average_cost: averageCost,
         notes: notes || null,
       },
       { onConflict: "portfolio_id,symbol_id" },
@@ -136,7 +131,7 @@ export async function addPortfolioPosition(_prevState: FormState, formData: Form
     revalidatePath("/dashboard");
     return { ok: true, error: "" };
   } catch (error) {
-    return { ok: false, error: getErrorMessage(error, "Failed to add portfolio position.") };
+    return { ok: false, error: getErrorMessage(error, "Failed to save portfolio position.") };
   }
 }
 
@@ -150,7 +145,7 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
     const { data: positions, error: positionsError } = await supabase
       .from("portfolio_positions")
       .select(
-        "portfolio_id, target_weight, current_weight, conviction_score, status, notes, symbols!inner(id, ticker, name, symbol_price_snapshots(price, percent_change))",
+        "portfolio_id, quantity, average_cost, notes, symbols!inner(id, ticker, name, symbol_price_snapshots(price, percent_change))",
       );
 
     if (positionsError) {
@@ -187,31 +182,40 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
         return;
       }
 
-      const target = position.target_weight ?? 0;
-      const current = position.current_weight ?? 0;
-      const conviction = position.conviction_score ?? 0;
+      const quantity = position.quantity ?? 0;
+      const averageCost = position.average_cost ?? 0;
+      const currentPrice = quoteRelation?.price ?? null;
       const pctChange = quoteRelation?.percent_change ?? null;
+      const gainLossPct = currentPrice !== null && averageCost > 0 ? ((currentPrice - averageCost) / averageCost) * 100 : null;
 
       let action = "hold";
       let confidence = "medium";
-      let summary = `${symbolRelation.ticker} is roughly aligned with the current portfolio plan.`;
-      let risks = "Monitor conviction drift and price moves before changing the position.";
+      let summary = `${symbolRelation.ticker} is broadly aligned with the current holding profile.`;
+      let risks = "Keep monitoring price movement and concentration before changing target exposure.";
+      let recommendedTargetWeight: number | null = null;
+      let programConviction: number | null = null;
 
-      if (position.status === "trim" || current > target + 2) {
+      if (gainLossPct !== null && gainLossPct >= 15) {
         action = "trim";
-        confidence = current > target + 5 ? "high" : "medium";
-        summary = `${symbolRelation.ticker} is above its target weight and looks like a trim candidate.`;
-        risks = "Selling too early could cap upside if momentum continues.";
-      } else if (conviction >= 70 && target > current && (pctChange === null || pctChange > -3)) {
-        action = "buy";
-        confidence = conviction >= 85 ? "high" : "medium";
-        summary = `${symbolRelation.ticker} has room to move toward target weight with solid conviction support.`;
-        risks = "Adding too quickly can increase concentration risk.";
-      } else if (pctChange !== null && pctChange <= -4 && conviction < 60) {
+        confidence = gainLossPct >= 25 ? "high" : "medium";
+        recommendedTargetWeight = 8;
+        programConviction = gainLossPct >= 25 ? 82 : 68;
+        summary = `${symbolRelation.ticker} has appreciated meaningfully versus cost basis and may be ready for a partial trim.`;
+        risks = "Trimming too early can cut off compounding if the trend remains strong.";
+      } else if (gainLossPct !== null && gainLossPct <= -8) {
         action = "watch";
         confidence = "medium";
-        summary = `${symbolRelation.ticker} sold off sharply, but conviction is not strong enough for an automatic add.`;
-        risks = "Weak conviction plus downside momentum can turn a dip-buy into dead money.";
+        recommendedTargetWeight = 3;
+        programConviction = 42;
+        summary = `${symbolRelation.ticker} is trading materially below cost basis and deserves review before adding capital.`;
+        risks = "A drawdown can deepen if the thesis weakened along with price.";
+      } else if (pctChange !== null && pctChange > 1.5) {
+        action = "buy";
+        confidence = "medium";
+        recommendedTargetWeight = 6;
+        programConviction = 64;
+        summary = `${symbolRelation.ticker} shows constructive momentum and looks like a candidate for additional allocation.`;
+        risks = "Adding after short-term strength can raise entry risk if momentum fades.";
       }
 
       recommendationsToInsert.push({
@@ -219,8 +223,8 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
         symbol_id: symbolRelation.id,
         action,
         status: "open",
-        target_weight: position.target_weight,
-        conviction_score: position.conviction_score,
+        target_weight: recommendedTargetWeight,
+        conviction_score: programConviction,
         summary,
         risks,
         confidence,

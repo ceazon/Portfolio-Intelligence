@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { addPortfolioPosition, type FormState } from "@/app/actions";
+import { upsertPortfolioPosition, type FormState } from "@/app/actions";
 
 const initialFormState: FormState = {
   ok: false,
@@ -20,13 +20,13 @@ type SymbolOption = {
 };
 
 export function CreatePositionForm({ portfolios, symbols }: { portfolios: PortfolioOption[]; symbols: SymbolOption[] }) {
-  const [state, formAction, pending] = useActionState(addPortfolioPosition, initialFormState);
+  const [state, formAction, pending] = useActionState(upsertPortfolioPosition, initialFormState);
 
   return (
     <form action={formAction} className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
       <div>
-        <h3 className="text-base font-semibold text-zinc-100">Add portfolio position</h3>
-        <p className="mt-1 text-sm text-zinc-400">Attach an imported symbol to a portfolio with starting target and conviction.</p>
+        <h3 className="text-base font-semibold text-zinc-100">Add or update position</h3>
+        <p className="mt-1 text-sm text-zinc-400">Enter the current holding state. Portfolio analytics and recommendations will derive from these inputs.</p>
       </div>
 
       <select
@@ -57,63 +57,39 @@ export function CreatePositionForm({ portfolios, symbols }: { portfolios: Portfo
 
       <div className="grid gap-3 sm:grid-cols-2">
         <input
-          name="targetWeight"
+          name="quantity"
           type="number"
           min="0"
-          max="100"
-          step="0.01"
-          placeholder="Target weight %"
+          step="0.000001"
+          placeholder="Quantity"
           className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
         />
         <input
-          name="currentWeight"
+          name="averageCost"
           type="number"
           min="0"
-          max="100"
-          step="0.01"
-          placeholder="Current weight %"
+          step="0.000001"
+          placeholder="Average cost per share"
           className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
         />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input
-          name="convictionScore"
-          type="number"
-          min="0"
-          max="100"
-          step="0.01"
-          placeholder="Conviction score"
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
-        />
-        <select
-          name="status"
-          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
-          defaultValue="active"
-        >
-          <option value="active">Active</option>
-          <option value="watch">Watch</option>
-          <option value="trim">Trim</option>
-          <option value="exit">Exit</option>
-        </select>
       </div>
 
       <textarea
         name="notes"
-        placeholder="Why this name belongs in the portfolio"
+        placeholder="Optional notes about this holding"
         rows={3}
         className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
       />
 
       {state?.error ? <p className="text-sm text-amber-300">{state.error}</p> : null}
-      {state?.ok ? <p className="text-sm text-emerald-300">Position added.</p> : null}
+      {state?.ok ? <p className="text-sm text-emerald-300">Position saved.</p> : null}
 
       <button
         type="submit"
         disabled={pending}
         className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? "Adding..." : "Add position"}
+        {pending ? "Saving..." : "Save position"}
       </button>
     </form>
   );
