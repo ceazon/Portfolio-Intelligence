@@ -83,6 +83,63 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
   }
 }
 
+export async function addPortfolioPosition(_prevState: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return { ok: false, error: "Supabase env vars are not configured yet." };
+    }
+
+    const portfolioId = String(formData.get("portfolioId") || "").trim();
+    const symbolId = String(formData.get("symbolId") || "").trim();
+    const targetWeightRaw = String(formData.get("targetWeight") || "").trim();
+    const currentWeightRaw = String(formData.get("currentWeight") || "").trim();
+    const convictionScoreRaw = String(formData.get("convictionScore") || "").trim();
+    const status = String(formData.get("status") || "active").trim() || "active";
+    const notes = String(formData.get("notes") || "").trim();
+
+    if (!portfolioId) {
+      return { ok: false, error: "Portfolio is required." };
+    }
+
+    if (!symbolId) {
+      return { ok: false, error: "Symbol is required." };
+    }
+
+    const targetWeight = targetWeightRaw ? Number(targetWeightRaw) : null;
+    const currentWeight = currentWeightRaw ? Number(currentWeightRaw) : null;
+    const convictionScore = convictionScoreRaw ? Number(convictionScoreRaw) : null;
+
+    const numericValues = [targetWeight, currentWeight, convictionScore].filter((value) => value !== null);
+    if (numericValues.some((value) => value !== null && Number.isNaN(value))) {
+      return { ok: false, error: "Weights and conviction score must be valid numbers." };
+    }
+
+    const { error } = await supabase.from("portfolio_positions").upsert(
+      {
+        portfolio_id: portfolioId,
+        symbol_id: symbolId,
+        target_weight: targetWeight,
+        current_weight: currentWeight,
+        conviction_score: convictionScore,
+        status,
+        notes: notes || null,
+      },
+      { onConflict: "portfolio_id,symbol_id" },
+    );
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    revalidatePath("/portfolio");
+    revalidatePath("/dashboard");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to add portfolio position.") };
+  }
+}
+
 export async function importSymbol(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
     const supabase = createSupabaseAdminClient();
