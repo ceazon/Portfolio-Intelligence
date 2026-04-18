@@ -135,6 +135,34 @@ export async function upsertPortfolioPosition(_prevState: FormState, formData: F
   }
 }
 
+export async function updateRecommendationStatus(_prevState: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return { ok: false, error: "Supabase env vars are not configured yet." };
+    }
+
+    const recommendationId = String(formData.get("recommendationId") || "").trim();
+    const status = String(formData.get("status") || "").trim();
+
+    if (!recommendationId || !status) {
+      return { ok: false, error: "Recommendation id and status are required." };
+    }
+
+    const { error } = await supabase.from("recommendations").update({ status }).eq("id", recommendationId);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    revalidatePath("/recommendations");
+    revalidatePath("/portfolio");
+    revalidatePath("/dashboard");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to update recommendation status.") };
+  }
+}
+
 export async function generateRecommendations(_prevState: FormState): Promise<FormState> {
   try {
     const supabase = createSupabaseAdminClient();
@@ -172,6 +200,17 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
       confidence: string;
     }> = [];
 
+    const portfolioTotals = new Map<string, number>();
+    (positions || []).forEach((position) => {
+      const symbolRelation = Array.isArray(position.symbols) ? position.symbols[0] : position.symbols;
+      const quoteRelation = Array.isArray(symbolRelation?.symbol_price_snapshots)
+        ? symbolRelation.symbol_price_snapshots[0]
+        : symbolRelation?.symbol_price_snapshots;
+      const marketValue = (position.quantity ?? 0) * (quoteRelation?.price ?? 0);
+      const currentTotal = portfolioTotals.get(position.portfolio_id) || 0;
+      portfolioTotals.set(position.portfolio_id, currentTotal + marketValue);
+    });
+
     (positions || []).forEach((position) => {
       const symbolRelation = Array.isArray(position.symbols) ? position.symbols[0] : position.symbols;
       const quoteRelation = Array.isArray(symbolRelation?.symbol_price_snapshots)
@@ -186,36 +225,39 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
       const averageCost = position.average_cost ?? 0;
       const currentPrice = quoteRelation?.price ?? null;
       const pctChange = quoteRelation?.percent_change ?? null;
+      const marketValue = quantity * (currentPrice ?? 0);
+      const portfolioTotal = portfolioTotals.get(position.portfolio_id) || 0;
+      const currentWeight = portfolioTotal > 0 ? (marketValue / portfolioTotal) * 100 : 0;
       const gainLossPct = currentPrice !== null && averageCost > 0 ? ((currentPrice - averageCost) / averageCost) * 100 : null;
 
       let action = "hold";
       let confidence = "medium";
       let summary = `${symbolRelation.ticker} is broadly aligned with the current holding profile.`;
       let risks = "Keep monitoring price movement and concentration before changing target exposure.";
-      let recommendedTargetWeight: number | null = null;
-      let programConviction: number | null = null;
+      let recommendedTargetWeight: number | null = Math.max(2, Math.min(12, Number((currentWeight || 0).toFixed(2))));
+      let programConviction: number | null = 55;
 
-      if (gainLossPct !== null && gainLossPct >= 15) {
+      if (gainLossPct !== null && gainLossPct >= 20 && currentWeight > 10) {
         action = "trim";
-        confidence = gainLossPct >= 25 ? "high" : "medium";
-        recommendedTargetWeight = 8;
-        programConviction = gainLossPct >= 25 ? 82 : 68;
-        summary = `${symbolRelation.ticker} has appreciated meaningfully versus cost basis and may be ready for a partial trim.`;
-        risks = "Trimming too early can cut off compounding if the trend remains strong.";
-      } else if (gainLossPct !== null && gainLossPct <= -8) {
+        confidence = gainLossPct >= 30 ? "high" : "medium";
+        recommendedTargetWeight = Math.max(4, Number((currentWeight - 2).toFixed(2)));
+        programConviction = gainLossPct >= 30 ? 84 : 72;
+        summary = `${symbolRelation.ticker} has grown into a larger winner and now looks oversized versus the rest of the portfolio.`;
+        risks = "Trimming a strong compounder too quickly can leave upside on the table.";
+      } else if (gainLossPct !== null && gainLossPct <= -10) {
         action = "watch";
         confidence = "medium";
-        recommendedTargetWeight = 3;
-        programConviction = 42;
-        summary = `${symbolRelation.ticker} is trading materially below cost basis and deserves review before adding capital.`;
-        risks = "A drawdown can deepen if the thesis weakened along with price.";
-      } else if (pctChange !== null && pctChange > 1.5) {
+        recommendedTargetWeight = Math.max(2, Number((currentWeight || 3).toFixed(2)));
+        programConviction = 40;
+        summary = `${symbolRelation.ticker} is below cost basis enough to justify caution before adding more.`;
+        risks = "A weak position can stay weak if the underlying thesis is deteriorating.";
+      } else if (pctChange !== null && pctChange > 1.5 && currentWeight < 8) {
         action = "buy";
-        confidence = "medium";
-        recommendedTargetWeight = 6;
-        programConviction = 64;
-        summary = `${symbolRelation.ticker} shows constructive momentum and looks like a candidate for additional allocation.`;
-        risks = "Adding after short-term strength can raise entry risk if momentum fades.";
+        confidence = currentWeight < 4 ? "high" : "medium";
+        recommendedTargetWeight = Math.min(10, Number((currentWeight + 2.5).toFixed(2)));
+        programConviction = currentWeight < 4 ? 78 : 66;
+        summary = `${symbolRelation.ticker} is showing constructive strength and remains underweight relative to a fuller allocation.`;
+        risks = "Buying into short-term strength can be painful if momentum rolls over.";
       }
 
       recommendationsToInsert.push({

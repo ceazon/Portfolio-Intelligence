@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { GenerateRecommendationsForm } from "@/components/generate-recommendations-form";
+import { RecommendationStatusForm } from "@/components/recommendation-status-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 type RecommendationRow = {
@@ -59,7 +60,7 @@ export default async function RecommendationsPage() {
         <div className="space-y-6">
           <SectionCard
             title="Recommendations"
-            description="Monthly portfolio suggestions, thesis summaries, and confidence-based actions generated from real tracked symbols."
+            description="Portfolio-aware suggestions generated from current holdings, portfolio concentration, and live market data."
           >
             {recommendations && recommendations.length > 0 ? (
               <div className="space-y-3">
@@ -106,6 +107,8 @@ export default async function RecommendationsPage() {
                           <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span>
                         ) : null}
                       </div>
+
+                      <RecommendationStatusForm recommendationId={recommendation.id} currentStatus={recommendation.status} />
                     </div>
                   );
                 })}
@@ -123,13 +126,13 @@ export default async function RecommendationsPage() {
 
           <SectionCard
             title="Current logic"
-            description="This first recommendation engine is intentionally simple and transparent."
+            description="This version now uses portfolio concentration as part of the recommendation process."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Trim when a position is materially above target weight or already marked trim.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Buy when conviction is strong and the current weight is still below target.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Watch when a symbol is weak but conviction is not high enough for an automatic add.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Surface watchlist symbols as buy/watch candidates when they are not already in a portfolio.</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Trim winners that have become oversized relative to the rest of the portfolio.</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Buy strong names that still look underweight in the portfolio.</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Watch names that are materially below cost basis until the setup improves.</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Allow review workflow with accept, dismiss, and archive actions.</li>
             </ul>
           </SectionCard>
         </div>
