@@ -193,6 +193,21 @@ export async function runCentralQuoteRefresh(cadenceLabel = "manual") {
 
   try {
     const symbols = await getTrackedSymbolRows();
+    if (!symbols.length) {
+      await supabase
+        .from("quote_refresh_runs")
+        .update({
+          status: "completed",
+          symbols_considered: 0,
+          symbols_refreshed: 0,
+          summary: "No tracked symbols found for central quote refresh.",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", runRow.id);
+
+      return { runId: runRow.id, consideredCount: 0, refreshedCount: 0 };
+    }
+
     let refreshedCount = 0;
 
     for (const symbol of symbols) {

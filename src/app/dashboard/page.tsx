@@ -5,6 +5,7 @@ import { nextBuildTargets, roadmapCards } from "@/lib/mock-data";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { hasSupabaseEnv } from "@/lib/env";
+import { getMarketHoursState } from "@/lib/market-hours";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -54,6 +55,8 @@ export default async function DashboardPage() {
     latestCentralQuoteRunSummary = latestCentralQuoteRunResult.data?.summary || null;
   }
 
+  const marketHoursState = getMarketHoursState();
+
   const stats = [
     { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${new Date(latestQuoteSync).toLocaleString()}` : "Quote sync ready" },
     { label: "Core Positions", value: positionCount, detail: "Live portfolio positions tracked" },
@@ -69,8 +72,14 @@ export default async function DashboardPage() {
             title="Mission control"
             description="The MVP spine is now live. This dashboard tracks portfolio state, recommendation coverage, and market data freshness."
           >
-            <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              Supabase status: {hasSupabaseEnv() ? "configured" : "not configured yet, add env vars before deployment"}
+            <div className="mb-4 space-y-3">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+                Supabase status: {hasSupabaseEnv() ? "configured" : "not configured yet, add env vars before deployment"}
+              </div>
+              <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-zinc-300">
+                Central quote scheduler: <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours mode" : "off hours mode"}</span>
+                <span className="text-zinc-400"> · recommended cadence every {marketHoursState.recommendedEveryMinutes} minutes ({marketHoursState.timeZone})</span>
+              </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {stats.map((stat) => (
