@@ -1,6 +1,22 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { getFinnhubCompanyProfile, getFinnhubQuote } from "@/lib/finnhub";
 
+async function recordAgentRun(runType: string, status: string, summary: string) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    return;
+  }
+
+  await supabase.from("agent_runs").insert({
+    agent_name: "market-data-sync",
+    run_type: runType,
+    status,
+    summary,
+    started_at: new Date().toISOString(),
+    completed_at: new Date().toISOString(),
+  });
+}
+
 export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: string) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -60,5 +76,36 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
     }
   }
 
+  await recordAgentRun(
+    "symbol-refresh",
+    "completed",
+    `Refreshed ${ticker} profile=${profile ? "yes" : "no"} quote=${quote ? "yes" : "no"}`,
+  );
+
   return { profileLoaded: Boolean(profile), quoteLoaded: Boolean(quote) };
+}
+
+export async function refreshTrackedSymbols() {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase env vars are not configured yet.");
+  }
+
+  const { data: symbols, error } = await supabase.from("symbols").select("id, ticker").order("ticker", { ascending: true });
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!symbols || symbols.length === 0) {
+    throw new Error("No tracked symbols found.");
+  }
+
+  let refreshedCount = 0;
+  for (const symbol of symbols) {
+    await enrichSymbolAndRefreshQuote(symbol.id, symbol.ticker);
+    refreshedCount += 1;
+  }
+
+  await recordAgentRun("bulk-symbol-refresh", "completed", `Refreshed ${refreshedCount} tracked symbols.`);
+  return { refreshedCount };
 }

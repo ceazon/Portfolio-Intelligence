@@ -1,21 +1,51 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
-import { dashboardStats, roadmapCards } from "@/lib/mock-data";
+import { RefreshMarketDataForm } from "@/components/refresh-market-data-form";
+import { nextBuildTargets, roadmapCards } from "@/lib/mock-data";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { hasSupabaseEnv } from "@/lib/env";
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient();
-  let symbolCount: string | null = null;
+
+  let symbolCount = "0";
+  let positionCount = "0";
+  let recommendationCount = "0";
+  let agentRunCount = "0";
+  let latestRunSummary: string | null = null;
+  let latestQuoteSync: string | null = null;
 
   if (supabase) {
-    const { count } = await supabase.from("symbols").select("id", { count: "exact", head: true });
-    symbolCount = count !== null ? String(count) : "0";
+    const [
+      symbolsCountResult,
+      positionsCountResult,
+      recommendationsCountResult,
+      agentRunsCountResult,
+      latestAgentRunResult,
+      latestQuoteSyncResult,
+    ] = await Promise.all([
+      supabase.from("symbols").select("id", { count: "exact", head: true }),
+      supabase.from("portfolio_positions").select("id", { count: "exact", head: true }),
+      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("status", "open"),
+      supabase.from("agent_runs").select("id", { count: "exact", head: true }),
+      supabase.from("agent_runs").select("summary, completed_at").order("completed_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("symbols").select("last_quote_sync_at").order("last_quote_sync_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+
+    symbolCount = String(symbolsCountResult.count ?? 0);
+    positionCount = String(positionsCountResult.count ?? 0);
+    recommendationCount = String(recommendationsCountResult.count ?? 0);
+    agentRunCount = String(agentRunsCountResult.count ?? 0);
+    latestRunSummary = latestAgentRunResult.data?.summary || null;
+    latestQuoteSync = latestQuoteSyncResult.data?.last_quote_sync_at || null;
   }
 
-  const stats = dashboardStats.map((stat) =>
-    stat.label === "Tracked Symbols" && symbolCount !== null ? { ...stat, value: symbolCount, detail: "Loaded from Supabase" } : stat,
-  );
+  const stats = [
+    { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${new Date(latestQuoteSync).toLocaleString()}` : "Quote sync ready" },
+    { label: "Core Positions", value: positionCount, detail: "Live portfolio positions tracked" },
+    { label: "Open Recommendations", value: recommendationCount, detail: "Rules-based engine now active" },
+    { label: "Agent Runs", value: agentRunCount, detail: latestRunSummary || "Manual market refreshes log here" },
+  ];
 
   return (
     <AppShell>
@@ -23,7 +53,7 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Mission control"
-            description="This first milestone sets up the product shell before we wire in real market data, portfolio logic, and agents."
+            description="The MVP spine is now live. This dashboard tracks portfolio state, recommendation coverage, and market data freshness."
           >
             <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
               Supabase status: {hasSupabaseEnv() ? "configured" : "not configured yet, add env vars before deployment"}
@@ -41,7 +71,7 @@ export default async function DashboardPage() {
 
           <SectionCard
             title="Build roadmap"
-            description="The immediate plan is website shell, Supabase foundation, then market data, portfolio entities, and agents."
+            description="The shell phase is behind us. The roadmap now reflects the real MVP path already underway."
           >
             <div className="grid gap-4 lg:grid-cols-3">
               {roadmapCards.map((card) => (
@@ -57,22 +87,25 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Next build targets"
-            description="What we should wire next after this shell is in place."
+            description="What we should wire next based on the product state that exists today."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Create high-level tables for symbols, watchlists, portfolios, recommendations</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Connect auth and user workspace state</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Build watchlist and portfolio CRUD flows</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Start market data ingestion jobs</li>
+              {nextBuildTargets.map((item) => (
+                <li key={item} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+                  {item}
+                </li>
+              ))}
             </ul>
           </SectionCard>
 
+          <RefreshMarketDataForm />
+
           <SectionCard
             title="Agent status"
-            description="Agents are not live yet, but this is where their orchestration status will surface."
+            description="Manual sync runs and future automation status surface here."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
-              No agent runs yet. Phase 1 is focused on the app shell and data foundation.
+              {latestRunSummary || "No refresh runs yet. Use the refresh action above to pull live market data for all tracked symbols."}
             </div>
           </SectionCard>
         </div>

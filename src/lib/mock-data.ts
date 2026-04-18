@@ -1,21 +1,21 @@
-export const dashboardStats = [
-  { label: "Tracked Symbols", value: "0", detail: "Universe setup next" },
-  { label: "Core Positions", value: "0", detail: "Portfolio engine pending" },
-  { label: "Open Recommendations", value: "0", detail: "Recommendation engine pending" },
-  { label: "Agent Runs Today", value: "0", detail: "Jobs not wired yet" },
-];
-
 export const roadmapCards = [
   {
-    title: "Phase 1: Foundation",
-    body: "Website shell, Supabase wiring, auth, navigation, and dashboard skeleton.",
+    title: "Phase 1: MVP Spine",
+    body: "Portfolios, watchlists, symbol enrichment, quote snapshots, and rules-based recommendations are now in place.",
   },
   {
-    title: "Phase 2: Market Data",
-    body: "Universe management, daily price ingestion, company metadata, and watchlist tables.",
+    title: "Phase 2: Operating Layer",
+    body: "Manual refreshes, activity logs, recommendation review controls, and dashboard visibility for system freshness.",
   },
   {
-    title: "Phase 3: Intelligence",
-    body: "Agent summaries, scoring pipeline, recommendations, and learning loop.",
+    title: "Phase 3: Intelligence Upgrade",
+    body: "Smarter scoring, richer recommendation reasoning, automated refresh jobs, and eventually an AI explanation layer.",
   },
+];
+
+export const nextBuildTargets = [
+  "Add recommendation review actions like accepted, dismissed, and archived",
+  "Show data freshness, last quote sync, and latest run summaries across the dashboard",
+  "Add portfolio position editing and deletion flows",
+  "Introduce scheduled refresh jobs once the manual workflow feels solid",
 ];

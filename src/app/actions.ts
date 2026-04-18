@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { searchFinnhubSymbols } from "@/lib/finnhub";
-import { enrichSymbolAndRefreshQuote } from "@/lib/symbol-sync";
+import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols } from "@/lib/symbol-sync";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
@@ -289,6 +289,20 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
     return { ok: true, error: "" };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to generate recommendations.") };
+  }
+}
+
+export async function refreshMarketData(_prevState: FormState): Promise<FormState> {
+  try {
+    const result = await refreshTrackedSymbols();
+    revalidatePath("/symbols");
+    revalidatePath("/dashboard");
+    revalidatePath("/agent-activity");
+    revalidatePath("/recommendations");
+    revalidatePath("/portfolio");
+    return { ok: true, error: result.refreshedCount ? "" : "No symbols refreshed." };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to refresh tracked symbols.") };
   }
 }
 
