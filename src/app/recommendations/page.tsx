@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 
 type RecommendationRow = {
   id: string;
+  recommendation_run_id: string | null;
   action: string;
   status: string;
   target_weight: number | null;
@@ -51,7 +52,7 @@ export default async function RecommendationsPage() {
     ? await supabase
         .from("recommendations")
         .select(
-          "id, action, status, target_weight, conviction_score, summary, risks, confidence, created_at, portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
+          "id, recommendation_run_id, action, status, target_weight, conviction_score, summary, risks, confidence, created_at, portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
         )
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
@@ -103,6 +104,9 @@ export default async function RecommendationsPage() {
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
                         <span className="rounded-full border border-zinc-700 px-2 py-1">Status {recommendation.status}</span>
+                        {recommendation.recommendation_run_id ? (
+                          <span className="rounded-full border border-zinc-700 px-2 py-1">Run {recommendation.recommendation_run_id.slice(0, 8)}</span>
+                        ) : null}
                         {recommendation.target_weight !== null ? (
                           <span className="rounded-full border border-zinc-700 px-2 py-1">Target {recommendation.target_weight}%</span>
                         ) : null}

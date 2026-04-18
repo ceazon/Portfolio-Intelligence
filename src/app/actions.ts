@@ -344,8 +344,26 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
       return { ok: false, error: watchlistError.message };
     }
 
+    const { data: recommendationRun, error: recommendationRunError } = await supabase
+      .from("recommendation_runs")
+      .insert({
+        owner_id: auth.user.id,
+        trigger_type: "manual",
+        target_type: "portfolio",
+        status: "running",
+        summary: "Generating recommendations from current portfolio and watchlist state.",
+        started_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (recommendationRunError || !recommendationRun) {
+      return { ok: false, error: recommendationRunError?.message || "Failed to create recommendation run." };
+    }
+
     const recommendationsToInsert: Array<{
       owner_id: string;
+      recommendation_run_id: string;
       portfolio_id: string | null;
       symbol_id: string;
       action: string;
@@ -419,6 +437,7 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
 
       recommendationsToInsert.push({
         owner_id: auth.user.id,
+        recommendation_run_id: recommendationRun.id,
         portfolio_id: position.portfolio_id,
         symbol_id: symbolRelation.id,
         action,
@@ -451,6 +470,7 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
 
       recommendationsToInsert.push({
         owner_id: auth.user.id,
+        recommendation_run_id: recommendationRun.id,
         portfolio_id: null,
         symbol_id: symbolRelation.id,
         action,
@@ -470,6 +490,16 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
     });
 
     if (!recommendationsToInsert.length) {
+      await supabase
+        .from("recommendation_runs")
+        .update({
+          status: "failed",
+          summary: "No portfolio positions or watchlist symbols are available yet.",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", recommendationRun.id)
+        .eq("owner_id", auth.user.id);
+
       return { ok: false, error: "No portfolio positions or watchlist symbols are available yet." };
     }
 
@@ -486,11 +516,32 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
 
     const { error: insertError } = await supabase.from("recommendations").insert(recommendationsToInsert);
     if (insertError) {
+      await supabase
+        .from("recommendation_runs")
+        .update({
+          status: "failed",
+          summary: insertError.message,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", recommendationRun.id)
+        .eq("owner_id", auth.user.id);
+
       return { ok: false, error: insertError.message };
     }
 
+    await supabase
+      .from("recommendation_runs")
+      .update({
+        status: "completed",
+        summary: `Generated ${recommendationsToInsert.length} recommendations from current portfolio and watchlist state.`,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", recommendationRun.id)
+      .eq("owner_id", auth.user.id);
+
     revalidatePath("/recommendations");
     revalidatePath("/dashboard");
+    revalidatePath("/agent-activity");
     return { ok: true, error: "" };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to generate recommendations.") };
