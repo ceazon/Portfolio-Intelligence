@@ -1,9 +1,8 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { CreateWatchlistForm } from "@/components/create-watchlist-form";
-import { ImportSymbolForm } from "@/components/import-symbol-form";
+import { SymbolImportPanel } from "@/components/symbol-import-panel";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { hasFinnhubKey } from "@/lib/finnhub";
 
 type WatchlistRow = {
   id: string;
@@ -110,13 +109,7 @@ export default async function WatchlistPage() {
             title="Symbol ingestion"
             description="We are using external APIs and public market data sources rather than manual homegrown symbol lists."
           >
-            {hasFinnhubKey() ? (
-              <ImportSymbolForm watchlists={(watchlists || []).map((watchlist) => ({ id: watchlist.id, name: watchlist.name }))} />
-            ) : (
-              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-                Add <span className="font-semibold">FINNHUB_API_KEY</span> to local and Vercel env vars to enable symbol search and import.
-              </div>
-            )}
+            <SymbolImportPanel watchlists={(watchlists || []).map((watchlist) => ({ id: watchlist.id, name: watchlist.name }))} />
           </SectionCard>
         </div>
       </div>
