@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { searchFinnhubSymbols } from "@/lib/finnhub";
-import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols } from "@/lib/symbol-sync";
+import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
@@ -555,7 +555,7 @@ export async function refreshMarketData(_prevState: FormState): Promise<FormStat
       return { ok: false, error: auth.error || "You must be logged in." };
     }
 
-    const result = await refreshTrackedSymbols(auth.user.id);
+    const result = await runCentralQuoteRefresh("manual");
     revalidatePath("/symbols");
     revalidatePath("/dashboard");
     revalidatePath("/agent-activity");

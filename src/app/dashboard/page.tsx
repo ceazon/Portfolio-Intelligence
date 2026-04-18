@@ -18,6 +18,7 @@ export default async function DashboardPage() {
   let agentRunCount = "0";
   let latestRunSummary: string | null = null;
   let latestQuoteSync: string | null = null;
+  let latestCentralQuoteRunSummary: string | null = null;
 
   if (supabase) {
     const [
@@ -29,6 +30,7 @@ export default async function DashboardPage() {
       agentRunsCountResult,
       latestAgentRunResult,
       latestQuoteSyncResult,
+      latestCentralQuoteRunResult,
     ] = await Promise.all([
       supabase.from("symbols").select("id", { count: "exact", head: true }),
       supabase.from("portfolio_positions").select("id, portfolios!inner(owner_id)", { count: "exact", head: true }).eq("portfolios.owner_id", user.id),
@@ -38,6 +40,7 @@ export default async function DashboardPage() {
       supabase.from("agent_runs").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
       supabase.from("agent_runs").select("summary, completed_at").eq("owner_id", user.id).order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("symbols").select("last_quote_sync_at").order("last_quote_sync_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("quote_refresh_runs").select("summary, completed_at").order("completed_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     symbolCount = String(symbolsCountResult.count ?? 0);
@@ -48,6 +51,7 @@ export default async function DashboardPage() {
     agentRunCount = String(agentRunsCountResult.count ?? 0);
     latestRunSummary = latestAgentRunResult.data?.summary || null;
     latestQuoteSync = latestQuoteSyncResult.data?.last_quote_sync_at || null;
+    latestCentralQuoteRunSummary = latestCentralQuoteRunResult.data?.summary || null;
   }
 
   const stats = [
@@ -115,7 +119,7 @@ export default async function DashboardPage() {
             description="Manual sync runs and future automation status surface here."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
-              {latestRunSummary || "No refresh runs yet. Use the refresh action above to pull live market data for all tracked symbols."}
+              {latestCentralQuoteRunSummary || latestRunSummary || "No refresh runs yet. Use the refresh action above to pull live market data for all tracked symbols."}
             </div>
           </SectionCard>
         </div>

@@ -38,11 +38,24 @@ type ResearchRunRow = {
   created_at: string;
 };
 
+type QuoteRefreshRunRow = {
+  id: string;
+  trigger_type: string;
+  cadence_label: string | null;
+  status: string;
+  symbols_considered: number;
+  symbols_refreshed: number;
+  summary: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
 export default async function AgentActivityPage() {
   const user = await requireUser();
   const supabase = await createSupabaseServerClient();
 
-  const [agentRunsResult, recommendationRunsResult, researchRunsResult] = supabase
+  const [agentRunsResult, recommendationRunsResult, researchRunsResult, quoteRefreshRunsResult] = supabase
     ? await Promise.all([
         supabase
           .from("agent_runs")
@@ -61,16 +74,23 @@ export default async function AgentActivityPage() {
           .select("id, agent_name, run_type, scope_type, scope_key, status, summary, started_at, completed_at, created_at")
           .order("created_at", { ascending: false })
           .limit(20),
+        supabase
+          .from("quote_refresh_runs")
+          .select("id, trigger_type, cadence_label, status, symbols_considered, symbols_refreshed, summary, started_at, completed_at, created_at")
+          .order("created_at", { ascending: false })
+          .limit(20),
       ])
     : [
         { data: [] as AgentRunRow[] },
         { data: [] as RecommendationRunRow[] },
         { data: [] as ResearchRunRow[] },
+        { data: [] as QuoteRefreshRunRow[] },
       ];
 
   const agentRuns = agentRunsResult.data || [];
   const recommendationRuns = recommendationRunsResult.data || [];
   const researchRuns = researchRunsResult.data || [];
+  const quoteRefreshRuns = quoteRefreshRunsResult.data || [];
 
   return (
     <AppShell viewer={user}>
@@ -112,6 +132,34 @@ export default async function AgentActivityPage() {
                 <li>Future evaluation/retrospective runs</li>
               </ul>
             </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Central Quote Refresh Runs"
+          description="This is the shared quote scheduler execution history for the entire tracked symbol universe."
+        >
+          <div className="space-y-3">
+            {quoteRefreshRuns.length > 0 ? (
+              quoteRefreshRuns.map((run) => (
+                <div key={run.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-base font-semibold text-zinc-100">{run.cadence_label || run.trigger_type}</h3>
+                      <p className="mt-1 text-sm text-zinc-400">{run.summary || "No summary provided."}</p>
+                    </div>
+                    <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300">{run.status}</span>
+                  </div>
+                  <p className="mt-3 text-xs uppercase tracking-wide text-zinc-500">
+                    Considered {run.symbols_considered} · Refreshed {run.symbols_refreshed} · {new Date(run.created_at).toLocaleString()}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+                No central quote refresh runs yet.
+              </div>
+            )}
           </div>
         </SectionCard>
 

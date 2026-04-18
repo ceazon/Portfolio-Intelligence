@@ -18,6 +18,71 @@ async function recordAgentRun(runType: string, status: string, summary: string, 
   });
 }
 
+async function getTrackedSymbolRows(ownerId?: string) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase env vars are not configured yet.");
+  }
+
+  let symbolIds: string[] = [];
+
+  if (ownerId) {
+    const [watchlistItemsResult, portfolioPositionsResult] = await Promise.all([
+      supabase
+        .from("watchlist_items")
+        .select("symbol_id, watchlists!inner(owner_id)")
+        .eq("watchlists.owner_id", ownerId),
+      supabase
+        .from("portfolio_positions")
+        .select("symbol_id, portfolios!inner(owner_id)")
+        .eq("portfolios.owner_id", ownerId),
+    ]);
+
+    if (watchlistItemsResult.error) {
+      throw new Error(watchlistItemsResult.error.message);
+    }
+
+    if (portfolioPositionsResult.error) {
+      throw new Error(portfolioPositionsResult.error.message);
+    }
+
+    symbolIds = [
+      ...(watchlistItemsResult.data || []).map((item) => item.symbol_id),
+      ...(portfolioPositionsResult.data || []).map((item) => item.symbol_id),
+    ].filter(Boolean);
+  } else {
+    const [watchlistItemsResult, portfolioPositionsResult] = await Promise.all([
+      supabase.from("watchlist_items").select("symbol_id"),
+      supabase.from("portfolio_positions").select("symbol_id"),
+    ]);
+
+    if (watchlistItemsResult.error) {
+      throw new Error(watchlistItemsResult.error.message);
+    }
+
+    if (portfolioPositionsResult.error) {
+      throw new Error(portfolioPositionsResult.error.message);
+    }
+
+    symbolIds = [
+      ...(watchlistItemsResult.data || []).map((item) => item.symbol_id),
+      ...(portfolioPositionsResult.data || []).map((item) => item.symbol_id),
+    ].filter(Boolean);
+  }
+
+  const uniqueSymbolIds = [...new Set(symbolIds)];
+  if (!uniqueSymbolIds.length) {
+    return [] as Array<{ id: string; ticker: string }>;
+  }
+
+  const { data: symbols, error } = await supabase.from("symbols").select("id, ticker").in("id", uniqueSymbolIds).order("ticker", { ascending: true });
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return symbols || [];
+}
+
 export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: string, ownerId?: string) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -88,56 +153,9 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
 }
 
 export async function refreshTrackedSymbols(ownerId?: string) {
-  const supabase = createSupabaseAdminClient();
-  if (!supabase) {
-    throw new Error("Supabase env vars are not configured yet.");
-  }
+  const symbols = await getTrackedSymbolRows(ownerId);
 
-  let symbolIds: string[] = [];
-
-  if (ownerId) {
-    const [watchlistItemsResult, portfolioPositionsResult] = await Promise.all([
-      supabase
-        .from("watchlist_items")
-        .select("symbol_id, watchlists!inner(owner_id)")
-        .eq("watchlists.owner_id", ownerId),
-      supabase
-        .from("portfolio_positions")
-        .select("symbol_id, portfolios!inner(owner_id)")
-        .eq("portfolios.owner_id", ownerId),
-    ]);
-
-    if (watchlistItemsResult.error) {
-      throw new Error(watchlistItemsResult.error.message);
-    }
-
-    if (portfolioPositionsResult.error) {
-      throw new Error(portfolioPositionsResult.error.message);
-    }
-
-    symbolIds = [
-      ...(watchlistItemsResult.data || []).map((item) => item.symbol_id),
-      ...(portfolioPositionsResult.data || []).map((item) => item.symbol_id),
-    ].filter(Boolean);
-  } else {
-    const { data: symbols, error } = await supabase.from("symbols").select("id");
-    if (error) {
-      throw new Error(error.message);
-    }
-    symbolIds = (symbols || []).map((symbol) => symbol.id);
-  }
-
-  const uniqueSymbolIds = [...new Set(symbolIds)];
-  if (!uniqueSymbolIds.length) {
-    throw new Error("No tracked symbols found.");
-  }
-
-  const { data: symbols, error } = await supabase.from("symbols").select("id, ticker").in("id", uniqueSymbolIds).order("ticker", { ascending: true });
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (!symbols || symbols.length === 0) {
+  if (!symbols.length) {
     throw new Error("No tracked symbols found.");
   }
 
@@ -148,5 +166,63 @@ export async function refreshTrackedSymbols(ownerId?: string) {
   }
 
   await recordAgentRun("bulk-symbol-refresh", "completed", `Refreshed ${refreshedCount} tracked symbols.`, ownerId);
-  return { refreshedCount };
+  return { refreshedCount, consideredCount: symbols.length };
+}
+
+export async function runCentralQuoteRefresh(cadenceLabel = "manual") {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase env vars are not configured yet.");
+  }
+
+  const { data: runRow, error: runInsertError } = await supabase
+    .from("quote_refresh_runs")
+    .insert({
+      trigger_type: cadenceLabel === "manual" ? "manual" : "scheduled",
+      cadence_label: cadenceLabel,
+      status: "running",
+      started_at: new Date().toISOString(),
+      summary: "Refreshing tracked quotes across the shared symbol universe.",
+    })
+    .select("id")
+    .single();
+
+  if (runInsertError || !runRow) {
+    throw new Error(runInsertError?.message || "Failed to create quote refresh run.");
+  }
+
+  try {
+    const symbols = await getTrackedSymbolRows();
+    let refreshedCount = 0;
+
+    for (const symbol of symbols) {
+      await enrichSymbolAndRefreshQuote(symbol.id, symbol.ticker);
+      refreshedCount += 1;
+    }
+
+    await supabase
+      .from("quote_refresh_runs")
+      .update({
+        status: "completed",
+        symbols_considered: symbols.length,
+        symbols_refreshed: refreshedCount,
+        summary: `Central quote refresh completed for ${refreshedCount} tracked symbols.`,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runRow.id);
+
+    return { runId: runRow.id, consideredCount: symbols.length, refreshedCount };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Quote refresh failed.";
+    await supabase
+      .from("quote_refresh_runs")
+      .update({
+        status: "failed",
+        summary: message,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runRow.id);
+
+    throw error;
+  }
 }
