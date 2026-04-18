@@ -1,0 +1,33 @@
+"use client";
+
+import { useActionState } from "react";
+import { generateRecommendations, type FormState } from "@/app/actions";
+
+const initialFormState: FormState = {
+  ok: false,
+  error: "",
+};
+
+export function GenerateRecommendationsForm() {
+  const [state, formAction, pending] = useActionState(generateRecommendations, initialFormState);
+
+  return (
+    <form action={formAction} className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+      <div>
+        <h3 className="text-base font-semibold text-zinc-100">Generate recommendations</h3>
+        <p className="mt-1 text-sm text-zinc-400">Create fresh rules-based buy, hold, trim, and watch calls from current portfolio and watchlist state.</p>
+      </div>
+
+      {state?.error ? <p className="text-sm text-amber-300">{state.error}</p> : null}
+      {state?.ok ? <p className="text-sm text-emerald-300">Recommendations generated.</p> : null}
+
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {pending ? "Generating..." : "Generate recommendations"}
+      </button>
+    </form>
+  );
+}
