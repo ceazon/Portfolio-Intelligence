@@ -23,16 +23,31 @@ type WatchlistRow = {
 export default async function SymbolsPage() {
   const supabase = await createSupabaseServerClient();
 
-  const { data: symbols } = supabase
-    ? await supabase
+  let symbols: SymbolRow[] = [];
+  let watchlists: WatchlistRow[] = [];
+  let loadError = "";
+
+  if (supabase) {
+    const [symbolsResult, watchlistsResult] = await Promise.all([
+      supabase
         .from("symbols")
         .select("id, ticker, name, asset_type, exchange, country, sector, is_etf, created_at")
-        .order("created_at", { ascending: false })
-    : { data: [] as SymbolRow[] };
+        .order("created_at", { ascending: false }),
+      supabase.from("watchlists").select("id, name").order("created_at", { ascending: false }),
+    ]);
 
-  const { data: watchlists } = supabase
-    ? await supabase.from("watchlists").select("id, name").order("created_at", { ascending: false })
-    : { data: [] as WatchlistRow[] };
+    if (symbolsResult.error) {
+      loadError = symbolsResult.error.message;
+    } else {
+      symbols = (symbolsResult.data || []) as SymbolRow[];
+    }
+
+    if (watchlistsResult.error && !loadError) {
+      loadError = watchlistsResult.error.message;
+    } else {
+      watchlists = (watchlistsResult.data || []) as WatchlistRow[];
+    }
+  }
 
   return (
     <AppShell>
@@ -42,7 +57,11 @@ export default async function SymbolsPage() {
             title="Symbol directory"
             description="This is the central universe for imported stocks and ETFs. We want this populated by external APIs, not manual data entry."
           >
-            {symbols && symbols.length > 0 ? (
+            {loadError ? (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+                Could not load symbols yet: {loadError}
+              </div>
+            ) : symbols.length > 0 ? (
               <div className="space-y-3">
                 {symbols.map((symbol) => (
                   <div key={symbol.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -77,7 +96,7 @@ export default async function SymbolsPage() {
             title="Import from market data"
             description="Search by ticker or company name and pull the best match from Finnhub into your symbol universe."
           >
-            <SymbolImportPanel watchlists={watchlists || []} />
+            <SymbolImportPanel watchlists={watchlists} />
           </SectionCard>
 
           <SectionCard
