@@ -4,6 +4,26 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { searchFinnhubSymbols } from "@/lib/finnhub";
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  return fallback;
+}
+
+function logServerActionError(action: string, error: unknown, context: Record<string, unknown>) {
+  console.error(`[server-action:${action}]`, {
+    message: getErrorMessage(error, `Failed to run ${action}.`),
+    context,
+    error,
+  });
+}
+
 export type FormState = {
   ok: boolean;
   error: string;
@@ -38,7 +58,10 @@ export async function createWatchlist(_prevState: FormState, formData: FormData)
     revalidatePath("/dashboard");
     return { ok: true, error: "" };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Failed to create watchlist." };
+    logServerActionError("createWatchlist", error, {
+      name: String(formData.get("name") || "").trim(),
+    });
+    return { ok: false, error: getErrorMessage(error, "Failed to create watchlist.") };
   }
 }
 
@@ -71,7 +94,11 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
     revalidatePath("/dashboard");
     return { ok: true, error: "" };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Failed to create portfolio." };
+    logServerActionError("createPortfolio", error, {
+      name: String(formData.get("name") || "").trim(),
+      benchmark: String(formData.get("benchmark") || "SPY").trim() || "SPY",
+    });
+    return { ok: false, error: getErrorMessage(error, "Failed to create portfolio.") };
   }
 }
 
@@ -136,6 +163,11 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
     revalidatePath("/dashboard");
     return { ok: true, error: "" };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Failed to import symbol." };
+    logServerActionError("importSymbol", error, {
+      query: String(formData.get("query") || "").trim(),
+      selectedSymbol: String(formData.get("selectedSymbol") || "").trim(),
+      watchlistId: String(formData.get("watchlistId") || "").trim(),
+    });
+    return { ok: false, error: getErrorMessage(error, "Failed to import symbol.") };
   }
 }
