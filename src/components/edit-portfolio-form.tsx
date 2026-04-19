@@ -8,7 +8,19 @@ const initialFormState: FormState = {
   error: "",
 };
 
-export function EditPortfolioForm({ id, name, description, benchmark }: { id: string; name: string; description: string | null; benchmark: string | null }) {
+export function EditPortfolioForm({
+  id,
+  name,
+  description,
+  benchmark,
+  displayCurrency,
+}: {
+  id: string;
+  name: string;
+  description: string | null;
+  benchmark: string | null;
+  displayCurrency: "USD" | "CAD";
+}) {
   const [state, formAction, pending] = useActionState(updatePortfolio, initialFormState);
 
   return (
@@ -26,6 +38,14 @@ export function EditPortfolioForm({ id, name, description, benchmark }: { id: st
           className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
         />
       </div>
+      <select
+        name="displayCurrency"
+        defaultValue={displayCurrency}
+        className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+      >
+        <option value="USD">Display in USD</option>
+        <option value="CAD">Display in CAD</option>
+      </select>
       <textarea
         name="description"
         rows={2}

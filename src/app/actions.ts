@@ -90,6 +90,7 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
     const name = String(formData.get("name") || "").trim();
     const description = String(formData.get("description") || "").trim();
     const benchmark = String(formData.get("benchmark") || "SPY").trim() || "SPY";
+    const displayCurrency = String(formData.get("displayCurrency") || "USD").trim() === "CAD" ? "CAD" : "USD";
 
     if (!name) {
       return { ok: false, error: "Portfolio name is required." };
@@ -99,6 +100,7 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
       name,
       description: description || null,
       benchmark,
+      display_currency: displayCurrency,
       owner_id: auth.user.id,
     });
 
@@ -130,12 +132,17 @@ export async function updatePortfolio(_prevState: FormState, formData: FormData)
     const name = String(formData.get("name") || "").trim();
     const description = String(formData.get("description") || "").trim();
     const benchmark = String(formData.get("benchmark") || "SPY").trim() || "SPY";
+    const displayCurrency = String(formData.get("displayCurrency") || "USD").trim() === "CAD" ? "CAD" : "USD";
 
     if (!id || !name) {
       return { ok: false, error: "Portfolio id and name are required." };
     }
 
-    const { error } = await supabase.from("portfolios").update({ name, description: description || null, benchmark }).eq("id", id).eq("owner_id", auth.user.id);
+    const { error } = await supabase
+      .from("portfolios")
+      .update({ name, description: description || null, benchmark, display_currency: displayCurrency })
+      .eq("id", id)
+      .eq("owner_id", auth.user.id);
     if (error) {
       return { ok: false, error: error.message };
     }
@@ -235,6 +242,7 @@ export async function upsertPortfolioPosition(_prevState: FormState, formData: F
     const symbolId = String(formData.get("symbolId") || "").trim();
     const quantityRaw = String(formData.get("quantity") || "").trim();
     const averageCostRaw = String(formData.get("averageCost") || "").trim();
+    const averageCostCurrency = String(formData.get("averageCostCurrency") || "USD").trim() === "CAD" ? "CAD" : "USD";
     const notes = String(formData.get("notes") || "").trim();
 
     if (!portfolioId) {
@@ -264,6 +272,7 @@ export async function upsertPortfolioPosition(_prevState: FormState, formData: F
         symbol_id: symbolId,
         quantity,
         average_cost: averageCost,
+        average_cost_currency: averageCostCurrency,
         notes: notes || null,
       },
       { onConflict: "portfolio_id,symbol_id" },

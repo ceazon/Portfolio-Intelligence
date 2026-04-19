@@ -55,7 +55,7 @@ export function CreatePositionForm({ portfolios, symbols }: { portfolios: Portfo
         ))}
       </select>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <input
           name="quantity"
           type="number"
@@ -72,6 +72,14 @@ export function CreatePositionForm({ portfolios, symbols }: { portfolios: Portfo
           placeholder="Average cost per share"
           className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
         />
+        <select
+          name="averageCostCurrency"
+          defaultValue="USD"
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+        >
+          <option value="USD">Average cost in USD</option>
+          <option value="CAD">Average cost in CAD</option>
+        </select>
       </div>
 
       <textarea

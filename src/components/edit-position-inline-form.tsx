@@ -13,12 +13,14 @@ export function EditPositionInlineForm({
   symbolId,
   quantity,
   averageCost,
+  averageCostCurrency,
   notes,
 }: {
   portfolioId: string;
   symbolId: string;
   quantity: number | null;
   averageCost: number | null;
+  averageCostCurrency: "USD" | "CAD";
   notes: string | null;
 }) {
   const [state, formAction, pending] = useActionState(upsertPortfolioPosition, initialFormState);
@@ -28,7 +30,7 @@ export function EditPositionInlineForm({
       <input type="hidden" name="portfolioId" value={portfolioId} />
       <input type="hidden" name="symbolId" value={symbolId} />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <div>
           <label className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">Quantity</label>
           <input
@@ -50,6 +52,17 @@ export function EditPositionInlineForm({
             defaultValue={averageCost ?? ""}
             className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
           />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">Cost currency</label>
+          <select
+            name="averageCostCurrency"
+            defaultValue={averageCostCurrency}
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+          >
+            <option value="USD">USD</option>
+            <option value="CAD">CAD</option>
+          </select>
         </div>
         <div className="flex items-end">
           <button

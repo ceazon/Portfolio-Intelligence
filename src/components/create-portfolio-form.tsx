@@ -28,6 +28,14 @@ export function CreatePortfolioForm() {
         defaultValue="SPY"
         className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
       />
+      <select
+        name="displayCurrency"
+        defaultValue="USD"
+        className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+      >
+        <option value="USD">Display portfolio in USD</option>
+        <option value="CAD">Display portfolio in CAD</option>
+      </select>
       <textarea
         name="description"
         placeholder="Core 4-5 positions with a long-term aggressive growth bias and monthly decision cadence"
