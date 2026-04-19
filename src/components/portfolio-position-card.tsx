@@ -67,6 +67,7 @@ export function PortfolioPositionCard(props: PositionCardProps) {
     recommendation,
   } = props;
   const [showOriginalCostBasis, setShowOriginalCostBasis] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const recommendationEvidence = Array.isArray(recommendation?.recommendation_evidence)
     ? recommendation.recommendation_evidence
@@ -154,37 +155,41 @@ export function PortfolioPositionCard(props: PositionCardProps) {
       </div>
 
       <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-3">
-        <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3">
+        <button type="button" onClick={() => setExpanded((value) => !value)} className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Program action</p>
           <p className="mt-1 font-medium text-zinc-100">{recommendation?.action || "--"}</p>
-        </div>
-        <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3">
+        </button>
+        <button type="button" onClick={() => setExpanded((value) => !value)} className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Target weight</p>
           <p className="mt-1 font-medium text-zinc-100">{recommendation?.target_weight !== null && recommendation?.target_weight !== undefined ? `${recommendation.target_weight}%` : "--"}</p>
-        </div>
-        <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3">
+        </button>
+        <button type="button" onClick={() => setExpanded((value) => !value)} className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Program conviction</p>
           <p className="mt-1 font-medium text-zinc-100">{recommendation?.conviction_score !== null && recommendation?.conviction_score !== undefined ? recommendation.conviction_score : "--"}</p>
-        </div>
+        </button>
       </div>
 
-      {firstInsight ? (
-        <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-300">
-          <p className="text-xs uppercase tracking-wide text-zinc-500">Linked research signal</p>
-          <p className="mt-1 font-medium text-zinc-100">{firstInsight.title}</p>
-          <p className="mt-1 text-zinc-400">Direction: {firstInsight.direction || "mixed"}</p>
+      {expanded ? (
+        <div className="mt-3 space-y-3">
+          {firstInsight ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-300">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Linked research signal</p>
+              <p className="mt-1 font-medium text-zinc-100">{firstInsight.title}</p>
+              <p className="mt-1 text-zinc-400">Direction: {firstInsight.direction || "mixed"}</p>
+            </div>
+          ) : null}
+
+          <EditPositionInlineForm
+            portfolioId={portfolioId}
+            symbolId={symbolId}
+            quantity={quantity}
+            averageCost={averageCost}
+            averageCostCurrency={averageCostCurrency}
+            notes={notes}
+          />
+          <DeletePositionForm portfolioId={portfolioId} symbolId={symbolId} />
         </div>
       ) : null}
-
-      <EditPositionInlineForm
-        portfolioId={portfolioId}
-        symbolId={symbolId}
-        quantity={quantity}
-        averageCost={averageCost}
-        averageCostCurrency={averageCostCurrency}
-        notes={notes}
-      />
-      <DeletePositionForm portfolioId={portfolioId} symbolId={symbolId} />
     </div>
   );
 }

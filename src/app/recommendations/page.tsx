@@ -14,6 +14,7 @@ type RecommendationRow = {
   action: string;
   status: string;
   target_weight: number | null;
+  target_price: number | null;
   conviction_score: number | null;
   summary: string | null;
   risks: string | null;
@@ -59,9 +60,10 @@ export default async function RecommendationsPage() {
     ? await supabase
         .from("recommendations")
         .select(
-          "id, recommendation_run_id, synthesis_run_id, recommendation_engine, action, status, target_weight, conviction_score, summary, risks, confidence, created_at, recommendation_evidence(weight, note, research_insights(title, direction)), portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
+          "id, recommendation_run_id, synthesis_run_id, recommendation_engine, action, status, target_weight, target_price, conviction_score, summary, risks, confidence, created_at, recommendation_evidence(weight, note, research_insights(title, direction)), portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
         )
         .eq("owner_id", user.id)
+        .order("conviction_score", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
     : { data: [] as RecommendationRow[] };
 
@@ -125,6 +127,9 @@ export default async function RecommendationsPage() {
                         ) : null}
                         {recommendation.target_weight !== null ? (
                           <span className="rounded-full border border-zinc-700 px-2 py-1">Target {recommendation.target_weight}%</span>
+                        ) : null}
+                        {recommendation.target_price !== null ? (
+                          <span className="rounded-full border border-zinc-700 px-2 py-1">Target price ${recommendation.target_price.toFixed(2)}</span>
                         ) : null}
                         {recommendation.conviction_score !== null ? (
                           <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span>

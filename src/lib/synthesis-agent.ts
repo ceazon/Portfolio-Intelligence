@@ -91,6 +91,7 @@ type SynthesizedRecommendation = {
   symbolId: string;
   action: "buy" | "hold" | "trim" | "watch";
   targetWeight: number | null;
+  targetPrice: number | null;
   convictionScore: number;
   summary: string;
   risks: string;
@@ -144,10 +145,21 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
         ? clamp(Number((3 + (candidate.news?.targetWeightDelta ?? 0) / 2).toFixed(2)), 1, 8)
         : null;
 
+    const priceAnchor = candidate.currentPrice ?? null;
+    const targetPrice =
+      priceAnchor === null
+        ? null
+        : action === "buy"
+          ? Number((priceAnchor * (1 + conviction / 220)).toFixed(2))
+          : action === "trim"
+            ? Number((priceAnchor * (1 - Math.max(0.03, conviction / 500))).toFixed(2))
+            : Number(priceAnchor.toFixed(2));
+
     return {
       symbolId: candidate.symbolId,
       action,
       targetWeight,
+      targetPrice,
       convictionScore: conviction,
       summary: `${candidate.ticker} synthesized view: ${candidate.news?.summary || "News agent is neutral."} ${macro?.summary || "Macro agent is neutral."}`,
       risks: `${candidate.ticker} synthesized risk: ${candidate.news?.thesis || "Limited company-specific signal."} ${macro?.thesis || "Limited macro context."}`,
@@ -217,11 +229,12 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
                   action: { type: "string", enum: ["buy", "hold", "trim", "watch"] },
                   targetWeight: { type: ["number", "null"] },
                   convictionScore: { type: "number" },
+                  targetPrice: { type: ["number", "null"] },
                   summary: { type: "string" },
                   risks: { type: "string" },
                   confidence: { type: "string", enum: ["low", "medium", "high"] },
                 },
-                required: ["symbolId", "action", "targetWeight", "convictionScore", "summary", "risks", "confidence"],
+                required: ["symbolId", "action", "targetWeight", "targetPrice", "convictionScore", "summary", "risks", "confidence"],
               },
             },
           },
@@ -239,6 +252,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
     symbolId: item.symbolId,
     action: item.action,
     targetWeight: item.targetWeight === null ? null : clamp(Number(item.targetWeight), 0, 20),
+    targetPrice: item.targetPrice === null ? null : Math.max(0, Number(item.targetPrice)),
     convictionScore: clamp(Math.round(Number(item.convictionScore)), 0, 100),
     summary: String(item.summary || "No summary provided."),
     risks: String(item.risks || "No risk summary provided."),
@@ -406,6 +420,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         action: item.action,
         status: "open",
         target_weight: item.targetWeight,
+        target_price: item.targetPrice,
         conviction_score: item.convictionScore,
         summary: item.summary,
         risks: item.risks,
