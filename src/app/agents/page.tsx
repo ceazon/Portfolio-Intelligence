@@ -70,7 +70,7 @@ export default async function AgentsPage() {
       <div className="space-y-6">
         <SectionCard
           title="Agent Detail"
-          description="This page is the explainer for how news, bear case, macro, fundamentals, and synthesis combine into the final recommendation."
+          description="This page is the explainer for how news, bear case, fundamentals, macro, and synthesis combine into the final recommendation."
         >
           {globalOutputs.length ? (
             <div className="mb-4 rounded-2xl border border-indigo-800/60 bg-indigo-950/30 p-4">

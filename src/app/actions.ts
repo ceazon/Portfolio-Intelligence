@@ -7,6 +7,7 @@ import { searchFinnhubSymbols } from "@/lib/finnhub";
 import { refreshFxRate } from "@/lib/fx-sync";
 import { runSharedNewsResearch } from "@/lib/news-research";
 import { runGlobalMacroAgent } from "@/lib/macro-agent";
+import { refreshFundamentalsAndAgent } from "@/lib/fundamentals-agent";
 import { getResearchEvidenceContext } from "@/lib/recommendation-evidence";
 import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
 import { runRecommendationSynthesis } from "@/lib/synthesis-agent";
@@ -650,7 +651,9 @@ export async function runNewsResearch(_prevState: FormState): Promise<FormState>
 
     await runSharedNewsResearch(auth.user.id);
     await runGlobalMacroAgent(auth.user.id);
+    await refreshFundamentalsAndAgent(auth.user.id);
     revalidatePath("/research");
+    revalidatePath("/fundamentals");
     revalidatePath("/agents");
     revalidatePath("/agent-activity");
     revalidatePath("/dashboard");
