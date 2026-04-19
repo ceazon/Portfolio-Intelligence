@@ -31,23 +31,27 @@ Apply these in order:
 - `supabase/006_research_and_recommendation_runs.sql`
 - `supabase/007_quote_scheduler_foundation.sql`
 
-## Vercel cron
-Production quote refresh is designed to run independently via **Vercel Cron**, not OpenClaw.
-
-Configured schedules in `vercel.json`:
-- every 3 minutes during weekday market hours window
-- every 30 minutes during weekday off-hours
-- every 30 minutes on weekends
+## External scheduler
+Production quote refresh is designed to run independently via an external scheduler such as **cron-job.org**, while the app keeps the protected cron route.
 
 The cron route is:
 - `/api/cron/quotes`
 
-### Required Vercel env
+### Required env
 Set this on the deployed project:
 - `CRON_SECRET`
 
 The cron route expects:
 - `Authorization: Bearer <CRON_SECRET>`
+
+### Recommended scheduler cadence
+For a lightweight production setup:
+- every 15 minutes during weekday market hours
+- once daily during off-hours / weekends
+
+Example approach with an external scheduler:
+- Job 1: weekday market-hours refresh
+- Job 2: daily off-hours refresh
 
 ## What works now
 - dashboard shell
