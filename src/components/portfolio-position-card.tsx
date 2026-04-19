@@ -66,7 +66,6 @@ export function PortfolioPositionCard(props: PositionCardProps) {
     notes,
     recommendation,
   } = props;
-  const [showOriginalCostBasis, setShowOriginalCostBasis] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
   const recommendationEvidence = Array.isArray(recommendation?.recommendation_evidence)
@@ -127,12 +126,6 @@ export function PortfolioPositionCard(props: PositionCardProps) {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Average cost</p>
           <p className="mt-1 font-medium text-zinc-100">{formatMoney(converted.averageCostDisplay, displayCurrency)}</p>
-          <button type="button" onClick={() => setShowOriginalCostBasis((value) => !value)} className="mt-1 text-xs text-sky-300 hover:text-sky-200">
-            {showOriginalCostBasis ? "Hide original basis" : `Show original ${averageCostCurrency} basis`}
-          </button>
-          {showOriginalCostBasis && averageCostCurrency !== displayCurrency ? (
-            <p className="mt-1 text-xs text-zinc-500">Original: {formatMoney(averageCost, averageCostCurrency)}</p>
-          ) : null}
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Book value</p>
