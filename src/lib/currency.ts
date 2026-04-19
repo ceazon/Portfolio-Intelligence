@@ -1,25 +1,30 @@
 export type SupportedCurrency = "USD" | "CAD";
 
-const FX_RATES_TO_USD: Record<SupportedCurrency, number> = {
-  USD: 1,
-  CAD: 1 / 1.39,
-};
+const DEFAULT_USD_CAD_RATE = 1.39;
+
+function getFxRatesToUsd(usdCadRate = DEFAULT_USD_CAD_RATE): Record<SupportedCurrency, number> {
+  return {
+    USD: 1,
+    CAD: 1 / usdCadRate,
+  };
+}
 
 export function normalizeCurrency(value: string | null | undefined): SupportedCurrency {
   return value === "CAD" ? "CAD" : "USD";
 }
 
-export function convertMoney(value: number | null, fromCurrency: SupportedCurrency, toCurrency: SupportedCurrency) {
+export function convertMoney(value: number | null, fromCurrency: SupportedCurrency, toCurrency: SupportedCurrency, usdCadRate = DEFAULT_USD_CAD_RATE) {
   if (value === null || Number.isNaN(value)) {
     return null;
   }
 
-  const usdValue = value * FX_RATES_TO_USD[fromCurrency];
+  const fxRatesToUsd = getFxRatesToUsd(usdCadRate);
+  const usdValue = value * fxRatesToUsd[fromCurrency];
   if (toCurrency === "USD") {
     return usdValue;
   }
 
-  return usdValue / FX_RATES_TO_USD[toCurrency];
+  return usdValue / fxRatesToUsd[toCurrency];
 }
 
 export function formatMoney(value: number | null, currency: SupportedCurrency) {

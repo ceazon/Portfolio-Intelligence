@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { searchFinnhubSymbols } from "@/lib/finnhub";
+import { refreshFxRate } from "@/lib/fx-sync";
 import { runSharedNewsResearch } from "@/lib/news-research";
 import { getResearchEvidenceContext } from "@/lib/recommendation-evidence";
 import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
@@ -626,13 +627,13 @@ export async function refreshMarketData(_prevState: FormState): Promise<FormStat
       return { ok: false, error: auth.error || "You must be logged in." };
     }
 
-    const result = await runCentralQuoteRefresh("manual");
+    const [quoteResult] = await Promise.all([runCentralQuoteRefresh("manual"), refreshFxRate("USD/CAD", "manual")]);
     revalidatePath("/symbols");
     revalidatePath("/dashboard");
     revalidatePath("/agent-activity");
     revalidatePath("/recommendations");
     revalidatePath("/portfolio");
-    return { ok: true, error: result.refreshedCount ? "" : "No symbols refreshed." };
+    return { ok: true, error: quoteResult.refreshedCount ? "" : "No symbols refreshed." };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to refresh tracked symbols.") };
   }

@@ -97,4 +97,22 @@ export async function getFinnhubQuote(symbol: string): Promise<FinnhubQuote | nu
   return hasData ? quote : null;
 }
 
+export async function getFinnhubExchangeRate(from: string, to: string) {
+  if (!from.trim() || !to.trim()) {
+    return null;
+  }
+
+  const json = await fetchFinnhub<{ quote?: number; data?: number }>("/forex/rates", {
+    base: from.trim().toUpperCase(),
+  });
+
+  const rates = json as Record<string, unknown>;
+  const direct = rates[to.trim().toUpperCase()];
+  if (typeof direct === "number") {
+    return direct;
+  }
+
+  return null;
+}
+
 export type { FinnhubCompanyProfile, FinnhubQuote, FinnhubSymbolResult };

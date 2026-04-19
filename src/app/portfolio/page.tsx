@@ -7,6 +7,7 @@ import { PortfolioPositionCard } from "@/components/portfolio-position-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+import { getLatestFxRate } from "@/lib/fx-sync";
 
 type PortfolioRow = {
   id: string;
@@ -118,6 +119,9 @@ export default async function PortfolioPage() {
         .eq("status", "open")
     : { data: [] as RecommendationRow[] };
 
+  const latestFxRate = supabase ? await getLatestFxRate("USD/CAD") : null;
+  const usdCadRate = latestFxRate?.rate ? Number(latestFxRate.rate) : 1.39;
+
   const recommendationBySymbol = new Map<string, RecommendationRow>();
   (recommendations || []).forEach((recommendation) => {
     recommendationBySymbol.set(recommendation.symbol_id, recommendation);
@@ -202,6 +206,7 @@ export default async function PortfolioPage() {
                                   averageCostCurrency={normalizeCurrency(position.average_cost_currency)}
                                   currentPrice={currentPrice}
                                   displayCurrency={normalizeCurrency(portfolio.display_currency)}
+                                  usdCadRate={usdCadRate}
                                   percentChange={quote?.percent_change ?? null}
                                   currentWeight={currentWeight}
                                   notes={position.notes}

@@ -33,6 +33,7 @@ type PositionCardProps = {
   averageCostCurrency: SupportedCurrency;
   currentPrice: number | null;
   displayCurrency: SupportedCurrency;
+  usdCadRate: number;
   percentChange: number | null;
   currentWeight: number | null;
   notes: string | null;
@@ -59,6 +60,7 @@ export function PortfolioPositionCard(props: PositionCardProps) {
     averageCostCurrency,
     currentPrice,
     displayCurrency,
+    usdCadRate,
     percentChange,
     currentWeight,
     notes,
@@ -75,8 +77,8 @@ export function PortfolioPositionCard(props: PositionCardProps) {
   const firstInsight = firstRelation(firstEvidence?.research_insights || null);
 
   const converted = useMemo(() => {
-    const averageCostDisplay = convertMoney(averageCost, averageCostCurrency, displayCurrency);
-    const currentPriceDisplay = convertMoney(currentPrice, "USD", displayCurrency);
+    const averageCostDisplay = convertMoney(averageCost, averageCostCurrency, displayCurrency, usdCadRate);
+    const currentPriceDisplay = convertMoney(currentPrice, "USD", displayCurrency, usdCadRate);
     const bookValue = averageCostDisplay !== null ? quantity * averageCostDisplay : null;
     const marketValue = currentPriceDisplay !== null ? quantity * currentPriceDisplay : null;
     const gainLoss = currentPriceDisplay !== null && averageCostDisplay !== null ? marketValue! - bookValue! : null;
@@ -88,7 +90,7 @@ export function PortfolioPositionCard(props: PositionCardProps) {
       marketValue,
       gainLoss,
     };
-  }, [averageCost, averageCostCurrency, currentPrice, displayCurrency, quantity]);
+  }, [averageCost, averageCostCurrency, currentPrice, displayCurrency, quantity, usdCadRate]);
 
   const quotePositive = typeof percentChange === "number" ? percentChange >= 0 : null;
   const gainPositive = typeof converted.gainLoss === "number" ? converted.gainLoss >= 0 : null;
