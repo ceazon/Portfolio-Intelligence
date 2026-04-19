@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { refreshFxRate } from "@/lib/fx-sync";
 import { runCentralQuoteRefresh } from "@/lib/symbol-sync";
 import { getMarketHoursState } from "@/lib/market-hours";
 
@@ -12,13 +13,17 @@ export async function GET(request: Request) {
 
   try {
     const marketState = getMarketHoursState();
-    const result = await runCentralQuoteRefresh(marketState.cadenceLabel);
+    const [quoteResult, fxResult] = await Promise.all([
+      runCentralQuoteRefresh(marketState.cadenceLabel),
+      refreshFxRate("USD/CAD", marketState.cadenceLabel),
+    ]);
 
     return NextResponse.json({
       ok: true,
       cadenceLabel: marketState.cadenceLabel,
       recommendedEveryMinutes: marketState.recommendedEveryMinutes,
-      ...result,
+      quoteRefresh: quoteResult,
+      fxRefresh: fxResult,
     });
   } catch (error) {
     return NextResponse.json(
