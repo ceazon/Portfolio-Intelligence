@@ -16,6 +16,10 @@ type RecommendationRow = {
   risks: string | null;
   confidence: string | null;
   created_at: string;
+  recommendation_evidence:
+    | { weight: number | null; note: string | null; research_insights: { title: string; direction: string | null } | { title: string; direction: string | null }[] | null }
+    | { weight: number | null; note: string | null; research_insights: { title: string; direction: string | null } | { title: string; direction: string | null }[] | null }[]
+    | null;
   portfolios: { name: string } | { name: string }[] | null;
   symbols:
     | {
@@ -52,7 +56,7 @@ export default async function RecommendationsPage() {
     ? await supabase
         .from("recommendations")
         .select(
-          "id, recommendation_run_id, action, status, target_weight, conviction_score, summary, risks, confidence, created_at, portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
+          "id, recommendation_run_id, action, status, target_weight, conviction_score, summary, risks, confidence, created_at, recommendation_evidence(weight, note, research_insights(title, direction)), portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
         )
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
@@ -73,6 +77,11 @@ export default async function RecommendationsPage() {
                   const portfolio = firstRelation(recommendation.portfolios);
                   const quote = firstRelation(symbol?.symbol_price_snapshots || null);
                   const quotePositive = typeof quote?.percent_change === "number" ? quote.percent_change >= 0 : null;
+                  const evidenceRows = Array.isArray(recommendation.recommendation_evidence)
+                    ? recommendation.recommendation_evidence
+                    : recommendation.recommendation_evidence
+                      ? [recommendation.recommendation_evidence]
+                      : [];
 
                   return (
                     <div key={recommendation.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -114,6 +123,26 @@ export default async function RecommendationsPage() {
                           <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span>
                         ) : null}
                       </div>
+
+                      {evidenceRows.length ? (
+                        <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-3">
+                          <p className="text-xs uppercase tracking-wide text-zinc-500">Research evidence</p>
+                          <div className="mt-2 space-y-2 text-sm text-zinc-300">
+                            {evidenceRows.slice(0, 2).map((evidence, index) => {
+                              const insight = firstRelation(evidence.research_insights);
+                              return (
+                                <div key={`${recommendation.id}-${index}`} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-2">
+                                  <p className="font-medium text-zinc-100">{insight?.title || evidence.note || "Research insight"}</p>
+                                  <p className="mt-1 text-xs text-zinc-400">
+                                    {insight?.direction || "mixed"}
+                                    {typeof evidence.weight === "number" ? ` · weight ${evidence.weight}` : ""}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
 
                       <RecommendationStatusForm recommendationId={recommendation.id} currentStatus={recommendation.status} />
                     </div>

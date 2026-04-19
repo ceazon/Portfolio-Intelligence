@@ -21,6 +21,10 @@ type RecommendationRow = {
   action: string;
   target_weight: number | null;
   conviction_score: number | null;
+  recommendation_evidence:
+    | { research_insights: { direction: string | null; title: string } | { direction: string | null; title: string }[] | null }
+    | { research_insights: { direction: string | null; title: string } | { direction: string | null; title: string }[] | null }[]
+    | null;
 };
 
 type PortfolioPositionRow = {
@@ -105,7 +109,11 @@ export default async function PortfolioPage() {
     : { data: [] as SymbolOption[] };
 
   const { data: recommendations } = supabase
-    ? await supabase.from("recommendations").select("symbol_id, action, target_weight, conviction_score").eq("owner_id", user.id).eq("status", "open")
+    ? await supabase
+        .from("recommendations")
+        .select("symbol_id, action, target_weight, conviction_score, recommendation_evidence(research_insights(direction, title))")
+        .eq("owner_id", user.id)
+        .eq("status", "open")
     : { data: [] as RecommendationRow[] };
 
   const recommendationBySymbol = new Map<string, RecommendationRow>();
@@ -167,6 +175,13 @@ export default async function PortfolioPage() {
                               const symbol = firstRelation(position.symbols);
                               const quote = firstRelation(symbol?.symbol_price_snapshots || null);
                               const recommendation = symbol?.id ? recommendationBySymbol.get(symbol.id) : undefined;
+                              const recommendationEvidence = Array.isArray(recommendation?.recommendation_evidence)
+                                ? recommendation.recommendation_evidence
+                                : recommendation?.recommendation_evidence
+                                  ? [recommendation.recommendation_evidence]
+                                  : [];
+                              const firstEvidence = recommendationEvidence[0];
+                              const firstInsight = firstRelation(firstEvidence?.research_insights || null);
                               const currentPrice = quote?.price ?? null;
                               const quantity = position.quantity ?? 0;
                               const averageCost = position.average_cost ?? 0;
@@ -244,6 +259,14 @@ export default async function PortfolioPage() {
                                       <p className="mt-1 font-medium text-zinc-100">{recommendation?.conviction_score !== null && recommendation?.conviction_score !== undefined ? recommendation.conviction_score : "--"}</p>
                                     </div>
                                   </div>
+
+                                  {firstInsight ? (
+                                    <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-300">
+                                      <p className="text-xs uppercase tracking-wide text-zinc-500">Linked research signal</p>
+                                      <p className="mt-1 font-medium text-zinc-100">{firstInsight.title}</p>
+                                      <p className="mt-1 text-zinc-400">Direction: {firstInsight.direction || "mixed"}</p>
+                                    </div>
+                                  ) : null}
 
                                   <EditPositionInlineForm
                                     portfolioId={portfolio.id}

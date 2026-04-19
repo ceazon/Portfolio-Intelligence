@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { RefreshMarketDataForm } from "@/components/refresh-market-data-form";
+import { RunNewsResearchForm } from "@/components/run-news-research-form";
 import { nextBuildTargets, roadmapCards } from "@/lib/mock-data";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
@@ -21,6 +22,8 @@ export default async function DashboardPage() {
   let latestRunSummary: string | null = null;
   let latestQuoteSync: string | null = null;
   let latestCentralQuoteRunSummary: string | null = null;
+  let researchInsightCount = "0";
+  let latestResearchRunSummary: string | null = null;
 
   if (supabase) {
     const [
@@ -33,6 +36,8 @@ export default async function DashboardPage() {
       latestAgentRunResult,
       latestQuoteSyncResult,
       latestCentralQuoteRunResult,
+      researchInsightCountResult,
+      latestResearchRunResult,
     ] = await Promise.all([
       supabase.from("symbols").select("id", { count: "exact", head: true }),
       supabase.from("portfolio_positions").select("id, portfolios!inner(owner_id)", { count: "exact", head: true }).eq("portfolios.owner_id", user.id),
@@ -43,6 +48,8 @@ export default async function DashboardPage() {
       supabase.from("agent_runs").select("summary, completed_at").eq("owner_id", user.id).order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("symbols").select("last_quote_sync_at").order("last_quote_sync_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("quote_refresh_runs").select("summary, completed_at").order("completed_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("research_insights").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
+      supabase.from("research_runs").select("summary, completed_at").eq("owner_id", user.id).order("completed_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     symbolCount = String(symbolsCountResult.count ?? 0);
@@ -54,6 +61,8 @@ export default async function DashboardPage() {
     latestRunSummary = latestAgentRunResult.data?.summary || null;
     latestQuoteSync = latestQuoteSyncResult.data?.last_quote_sync_at || null;
     latestCentralQuoteRunSummary = latestCentralQuoteRunResult.data?.summary || null;
+    researchInsightCount = String(researchInsightCountResult.count ?? 0);
+    latestResearchRunSummary = latestResearchRunResult.data?.summary || null;
   }
 
   const marketHoursState = getMarketHoursState();
@@ -63,6 +72,7 @@ export default async function DashboardPage() {
     { label: "Core Positions", value: positionCount, detail: "Live portfolio positions tracked" },
     { label: "Open Recommendations", value: openRecommendationCount, detail: `Accepted ${acceptedRecommendationCount} · Dismissed ${dismissedRecommendationCount}` },
     { label: "Agent Runs", value: agentRunCount, detail: latestRunSummary || "Manual market refreshes log here" },
+    { label: "Research Insights", value: researchInsightCount, detail: latestResearchRunSummary || "Shared research layer is ready" },
   ];
 
   return (
@@ -82,7 +92,7 @@ export default async function DashboardPage() {
                 <span className="text-zinc-400"> · recommended cadence every {marketHoursState.recommendedEveryMinutes} minutes ({getAppTimeZoneLabel()})</span>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               {stats.map((stat) => (
                 <div key={stat.label} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                   <p className="text-xs uppercase tracking-wide text-zinc-500">{stat.label}</p>
@@ -124,12 +134,14 @@ export default async function DashboardPage() {
 
           <RefreshMarketDataForm />
 
+          <RunNewsResearchForm />
+
           <SectionCard
             title="Agent status"
             description="Manual sync runs and future automation status surface here."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
-              {latestCentralQuoteRunSummary || latestRunSummary || "No refresh runs yet. Use the refresh action above to pull live market data for all tracked symbols."}
+              {latestResearchRunSummary || latestCentralQuoteRunSummary || latestRunSummary || "No refresh runs yet. Use the refresh and research actions above to start building signal history."}
             </div>
           </SectionCard>
         </div>

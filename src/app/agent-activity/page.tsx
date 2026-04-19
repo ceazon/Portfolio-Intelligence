@@ -194,7 +194,7 @@ export default async function AgentActivityPage() {
 
         <SectionCard
           title="Research Runs"
-          description="This is the shared research execution layer we will plug the future market, news, macro, sector, and fundamentals agents into."
+          description="This is the shared research execution layer we will plug market, news, macro, sector, and fundamentals agents into. The first end-to-end shared news pipeline now lands here."
         >
           <div className="space-y-3">
             {researchRuns.length > 0 ? (

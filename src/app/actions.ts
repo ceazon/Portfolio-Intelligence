@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { searchFinnhubSymbols } from "@/lib/finnhub";
+import { runSharedNewsResearch } from "@/lib/news-research";
+import { getResearchEvidenceContext } from "@/lib/recommendation-evidence";
 import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -375,6 +377,23 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
       confidence: string;
     }> = [];
 
+    const candidateSymbolIds = [
+      ...new Set(
+        [
+          ...(positions || []).map((position) => {
+            const symbolRelation = Array.isArray(position.symbols) ? position.symbols[0] : position.symbols;
+            return symbolRelation?.id || null;
+          }),
+          ...(watchlistItems || []).map((item) => {
+            const symbolRelation = Array.isArray(item.symbols) ? item.symbols[0] : item.symbols;
+            return symbolRelation?.id || null;
+          }),
+        ].filter(Boolean),
+      ),
+    ] as string[];
+
+    const evidenceContextBySymbol = await getResearchEvidenceContext(auth.user.id, candidateSymbolIds);
+
     const portfolioTotals = new Map<string, number>();
     (positions || []).forEach((position) => {
       const symbolRelation = Array.isArray(position.symbols) ? position.symbols[0] : position.symbols;
@@ -435,6 +454,9 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
         risks = "Buying into short-term strength can be painful if momentum rolls over.";
       }
 
+      const evidenceContext = evidenceContextBySymbol.get(symbolRelation.id);
+      const adjustedConviction = programConviction !== null ? Math.max(5, Math.min(95, programConviction + (evidenceContext?.convictionDelta || 0))) : null;
+
       recommendationsToInsert.push({
         owner_id: auth.user.id,
         recommendation_run_id: recommendationRun.id,
@@ -443,9 +465,9 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
         action,
         status: "open",
         target_weight: recommendedTargetWeight,
-        conviction_score: programConviction,
-        summary,
-        risks,
+        conviction_score: adjustedConviction,
+        summary: `${summary}${evidenceContext?.summaryAddon || ""}`,
+        risks: `${risks}${evidenceContext?.riskAddon || ""}`,
         confidence,
       });
     });
@@ -468,6 +490,8 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
       const pctChange = quoteRelation?.percent_change ?? null;
       const action = pctChange !== null && pctChange <= -3 ? "watch" : "buy";
 
+      const evidenceContext = evidenceContextBySymbol.get(symbolRelation.id);
+
       recommendationsToInsert.push({
         owner_id: auth.user.id,
         recommendation_run_id: recommendationRun.id,
@@ -476,15 +500,17 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
         action,
         status: "open",
         target_weight: null,
-        conviction_score: null,
-        summary:
+        conviction_score: evidenceContext ? Math.max(10, Math.min(90, 50 + evidenceContext.convictionDelta)) : null,
+        summary: `${
           action === "buy"
             ? `${symbolRelation.ticker} stands out from the watchlist as a candidate for deeper portfolio review.`
-            : `${symbolRelation.ticker} is on the watchlist and deserves monitoring after a recent pullback.`,
-        risks:
+            : `${symbolRelation.ticker} is on the watchlist and deserves monitoring after a recent pullback.`
+        }${evidenceContext?.summaryAddon || ""}`,
+        risks: `${
           action === "buy"
             ? "Watchlist ideas still need explicit sizing and thesis validation before entering the portfolio."
-            : "A falling watchlist name can keep weakening without a stronger thesis or catalyst.",
+            : "A falling watchlist name can keep weakening without a stronger thesis or catalyst."
+        }${evidenceContext?.riskAddon || ""}`,
         confidence: action === "buy" ? "medium" : "low",
       });
     });
@@ -514,7 +540,10 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
       await supabase.from("recommendations").delete().eq("owner_id", auth.user.id).in("portfolio_id", portfolioIds as string[]);
     }
 
-    const { error: insertError } = await supabase.from("recommendations").insert(recommendationsToInsert);
+    const { data: insertedRecommendations, error: insertError } = await supabase
+      .from("recommendations")
+      .insert(recommendationsToInsert)
+      .select("id, symbol_id");
     if (insertError) {
       await supabase
         .from("recommendation_runs")
@@ -529,11 +558,44 @@ export async function generateRecommendations(_prevState: FormState): Promise<Fo
       return { ok: false, error: insertError.message };
     }
 
+    if (insertedRecommendations?.length) {
+      const evidenceToInsert = insertedRecommendations.flatMap((recommendation) => {
+        const evidenceContext = evidenceContextBySymbol.get(recommendation.symbol_id);
+        if (!evidenceContext?.evidenceRows?.length) {
+          return [];
+        }
+
+        return evidenceContext.evidenceRows.map((evidence) => ({
+          recommendation_id: recommendation.id,
+          research_insight_id: evidence.research_insight_id,
+          weight: evidence.weight,
+          note: evidence.note,
+        }));
+      });
+
+      if (evidenceToInsert.length) {
+        const { error: evidenceInsertError } = await supabase.from("recommendation_evidence").insert(evidenceToInsert);
+        if (evidenceInsertError) {
+          await supabase
+            .from("recommendation_runs")
+            .update({
+              status: "failed",
+              summary: evidenceInsertError.message,
+              completed_at: new Date().toISOString(),
+            })
+            .eq("id", recommendationRun.id)
+            .eq("owner_id", auth.user.id);
+
+          return { ok: false, error: evidenceInsertError.message };
+        }
+      }
+    }
+
     await supabase
       .from("recommendation_runs")
       .update({
         status: "completed",
-        summary: `Generated ${recommendationsToInsert.length} recommendations from current portfolio and watchlist state.`,
+        summary: `Generated ${recommendationsToInsert.length} recommendations from current portfolio and watchlist state, with ${insertedRecommendations?.length || 0} evidence-linked records.`,
         completed_at: new Date().toISOString(),
       })
       .eq("id", recommendationRun.id)
@@ -564,6 +626,23 @@ export async function refreshMarketData(_prevState: FormState): Promise<FormStat
     return { ok: true, error: result.refreshedCount ? "" : "No symbols refreshed." };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to refresh tracked symbols.") };
+  }
+}
+
+export async function runNewsResearch(_prevState: FormState): Promise<FormState> {
+  try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
+    await runSharedNewsResearch(auth.user.id);
+    revalidatePath("/research");
+    revalidatePath("/agent-activity");
+    revalidatePath("/dashboard");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to run shared news research.") };
   }
 }
 
