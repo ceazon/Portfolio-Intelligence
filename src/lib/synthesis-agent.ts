@@ -161,8 +161,8 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
       targetWeight,
       targetPrice,
       convictionScore: conviction,
-      summary: `${candidate.ticker} synthesized view: ${candidate.news?.summary || "News agent is neutral."} ${macro?.summary || "Macro agent is neutral."}`,
-      risks: `${candidate.ticker} synthesized risk: ${candidate.news?.thesis || "Limited company-specific signal."} ${macro?.thesis || "Limited macro context."}`,
+      summary: `${candidate.ticker}: ${action === "buy" ? "add on strength with disciplined sizing" : action === "trim" ? "reduce exposure and lock in strength" : action === "watch" ? "stay patient and wait for a better setup" : "hold current positioning and monitor"}.`,
+      risks: `${candidate.ticker}: conviction can fade quickly if price action or the broader backdrop weakens.`,
       confidence: confidenceLabel(conviction),
     };
   });
@@ -197,7 +197,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
           {
             type: "input_text",
             text:
-              "You are a portfolio recommendation synthesizer. Combine a global macro agent and per-symbol news agent outputs into advisory recommendations. Return strict JSON only. Actions must be one of: buy, hold, trim, watch. Conviction score must be 0-100. Confidence must be one of: low, medium, high. Keep summaries and risks concise, concrete, and investment-advisory in tone. Respect current weight and avoid absurd target weights.",
+              "You are a portfolio recommendation synthesizer. Combine a global macro agent and per-symbol news agent outputs into advisory recommendations. Return strict JSON only. Actions must be one of: buy, hold, trim, watch. Conviction score must be 0-100. Confidence must be one of: low, medium, high. Keep summaries and risks concise, concrete, and investment-advisory in tone. Do not summarize headlines, do not mention agents, do not mention news feeds, and do not explain chain-of-thought. The summary should read like a short recommendation a user can act on, ideally one sentence. The risk should be one short sentence. Respect current weight and avoid absurd target weights.",
           },
         ],
       },

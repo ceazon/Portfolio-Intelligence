@@ -1,6 +1,5 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
-import { GenerateRecommendationsForm } from "@/components/generate-recommendations-form";
 import { SynthesizeRecommendationsForm } from "@/components/synthesize-recommendations-form";
 import { RecommendationStatusForm } from "@/components/recommendation-status-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -8,7 +7,6 @@ import { requireUser } from "@/lib/auth";
 
 type RecommendationRow = {
   id: string;
-  recommendation_run_id: string | null;
   synthesis_run_id: string | null;
   recommendation_engine: string | null;
   action: string;
@@ -20,10 +18,6 @@ type RecommendationRow = {
   risks: string | null;
   confidence: string | null;
   created_at: string;
-  recommendation_evidence:
-    | { weight: number | null; note: string | null; research_insights: { title: string; direction: string | null } | { title: string; direction: string | null }[] | null }
-    | { weight: number | null; note: string | null; research_insights: { title: string; direction: string | null } | { title: string; direction: string | null }[] | null }[]
-    | null;
   portfolios: { name: string } | { name: string }[] | null;
   symbols:
     | {
@@ -60,9 +54,10 @@ export default async function RecommendationsPage() {
     ? await supabase
         .from("recommendations")
         .select(
-          "id, recommendation_run_id, synthesis_run_id, recommendation_engine, action, status, target_weight, target_price, conviction_score, summary, risks, confidence, created_at, recommendation_evidence(weight, note, research_insights(title, direction)), portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
+          "id, synthesis_run_id, recommendation_engine, action, status, target_weight, target_price, conviction_score, summary, risks, confidence, created_at, portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
         )
         .eq("owner_id", user.id)
+        .eq("recommendation_engine", "synthesis-v1")
         .neq("status", "archived")
         .order("conviction_score", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
@@ -70,12 +65,9 @@ export default async function RecommendationsPage() {
 
   return (
     <AppShell viewer={user}>
-      <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+      <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="space-y-6">
-          <SectionCard
-            title="Recommendations"
-            description="Portfolio-aware suggestions generated from current holdings, portfolio concentration, and live market data."
-          >
+          <SectionCard title="Recommendations" description="Focused synthesized recommendations ranked by strongest conviction.">
             {recommendations && recommendations.length > 0 ? (
               <div className="space-y-3">
                 {recommendations.map((recommendation) => {
@@ -83,11 +75,7 @@ export default async function RecommendationsPage() {
                   const portfolio = firstRelation(recommendation.portfolios);
                   const quote = firstRelation(symbol?.symbol_price_snapshots || null);
                   const quotePositive = typeof quote?.percent_change === "number" ? quote.percent_change >= 0 : null;
-                  const evidenceRows = Array.isArray(recommendation.recommendation_evidence)
-                    ? recommendation.recommendation_evidence
-                    : recommendation.recommendation_evidence
-                      ? [recommendation.recommendation_evidence]
-                      : [];
+                  const actionLabel = recommendation.action.toUpperCase();
 
                   return (
                     <div key={recommendation.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -98,9 +86,8 @@ export default async function RecommendationsPage() {
                             <span className="ml-2 text-zinc-400">{symbol?.name || "Unnamed symbol"}</span>
                           </p>
                           <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
-                            {recommendation.action} · {recommendation.confidence || "medium"} confidence
+                            {actionLabel} · {recommendation.confidence || "medium"} confidence
                             {portfolio?.name ? ` · ${portfolio.name}` : " · Watchlist candidate"}
-                            {recommendation.recommendation_engine ? ` · ${recommendation.recommendation_engine}` : ""}
                           </p>
                         </div>
 
@@ -115,47 +102,15 @@ export default async function RecommendationsPage() {
                         </div>
                       </div>
 
-                      <p className="mt-3 text-sm text-zinc-300">{recommendation.summary || "No summary provided."}</p>
-                      <p className="mt-2 text-sm text-zinc-500">Risk: {recommendation.risks || "No risk summary provided."}</p>
+                      <p className="mt-3 text-base text-zinc-200">{recommendation.summary || "No recommendation provided."}</p>
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
-                        <span className="rounded-full border border-zinc-700 px-2 py-1">Status {recommendation.status}</span>
-                        {recommendation.recommendation_run_id ? (
-                          <span className="rounded-full border border-zinc-700 px-2 py-1">Rules run {recommendation.recommendation_run_id.slice(0, 8)}</span>
-                        ) : null}
-                        {recommendation.synthesis_run_id ? (
-                          <span className="rounded-full border border-indigo-700 px-2 py-1 text-indigo-200">Synth run {recommendation.synthesis_run_id.slice(0, 8)}</span>
-                        ) : null}
-                        {recommendation.target_weight !== null ? (
-                          <span className="rounded-full border border-zinc-700 px-2 py-1">Target {recommendation.target_weight}%</span>
-                        ) : null}
-                        {recommendation.target_price !== null ? (
-                          <span className="rounded-full border border-zinc-700 px-2 py-1">Target price ${recommendation.target_price.toFixed(2)}</span>
-                        ) : null}
-                        {recommendation.conviction_score !== null ? (
-                          <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span>
-                        ) : null}
+                        {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Target {recommendation.target_weight}%</span> : null}
+                        {recommendation.target_price !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Target price ${recommendation.target_price.toFixed(2)}</span> : null}
+                        {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
                       </div>
 
-                      {evidenceRows.length ? (
-                        <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-3">
-                          <p className="text-xs uppercase tracking-wide text-zinc-500">Research evidence</p>
-                          <div className="mt-2 space-y-2 text-sm text-zinc-300">
-                            {evidenceRows.slice(0, 2).map((evidence, index) => {
-                              const insight = firstRelation(evidence.research_insights);
-                              return (
-                                <div key={`${recommendation.id}-${index}`} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-2">
-                                  <p className="font-medium text-zinc-100">{insight?.title || evidence.note || "Research insight"}</p>
-                                  <p className="mt-1 text-xs text-zinc-400">
-                                    {insight?.direction || "mixed"}
-                                    {typeof evidence.weight === "number" ? ` · weight ${evidence.weight}` : ""}
-                                  </p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : null}
+                      <div className="mt-3 text-sm text-zinc-500">Risk: {recommendation.risks || "No risk summary provided."}</div>
 
                       <RecommendationStatusForm recommendationId={recommendation.id} currentStatus={recommendation.status} />
                     </div>
@@ -164,27 +119,14 @@ export default async function RecommendationsPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                No recommendations yet. Generate the first rules-based set from your current portfolios and watchlists.
+                No synthesized recommendations yet. Run synthesis to populate this view.
               </div>
             )}
           </SectionCard>
         </div>
 
         <div className="space-y-6">
-          <GenerateRecommendationsForm />
           <SynthesizeRecommendationsForm />
-
-          <SectionCard
-            title="Current logic"
-            description="Rules and synthesis now run side by side so you can compare the old engine against the new advisory layer."
-          >
-            <ul className="space-y-3 text-sm text-zinc-300">
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Rules engine still handles the original portfolio concentration logic.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Synthesis engine combines News Agent plus Macro Agent outputs into side-by-side advisory recommendations.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Recommendation engine tags make it obvious which lane produced each output.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">This is a validation phase, not a replacement phase.</li>
-            </ul>
-          </SectionCard>
         </div>
       </div>
     </AppShell>
