@@ -104,24 +104,56 @@ export function buildInsight(symbol: TrackedSymbol, results: NewsItem[]) {
   };
 }
 
+async function getTrackedSymbols() {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase env vars are not configured yet.");
+  }
+
+  const [watchlistItemsResult, portfolioPositionsResult] = await Promise.all([
+    supabase.from("watchlist_items").select("symbol_id"),
+    supabase.from("portfolio_positions").select("symbol_id"),
+  ]);
+
+  if (watchlistItemsResult.error) {
+    throw new Error(watchlistItemsResult.error.message);
+  }
+
+  if (portfolioPositionsResult.error) {
+    throw new Error(portfolioPositionsResult.error.message);
+  }
+
+  const symbolIds = [
+    ...(watchlistItemsResult.data || []).map((item) => item.symbol_id),
+    ...(portfolioPositionsResult.data || []).map((item) => item.symbol_id),
+  ].filter(Boolean);
+
+  const uniqueSymbolIds = [...new Set(symbolIds)];
+  if (!uniqueSymbolIds.length) {
+    return [] as TrackedSymbol[];
+  }
+
+  const { data: symbols, error } = await supabase
+    .from("symbols")
+    .select("id, ticker, name")
+    .in("id", uniqueSymbolIds)
+    .order("ticker", { ascending: true })
+    .limit(NEWS_QUERY_LIMIT);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (symbols || []) as TrackedSymbol[];
+}
+
 export async function runSharedNewsResearch(ownerId: string): Promise<SharedNewsResearchResult> {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     throw new Error("Supabase env vars are not configured yet.");
   }
 
-  const { data: trackedRows, error: trackedError } = await supabase
-    .from("symbols")
-    .select("id, ticker, name")
-    .or(`id.in.(select symbol_id from watchlist_items),id.in.(select symbol_id from portfolio_positions)`)
-    .order("ticker", { ascending: true })
-    .limit(NEWS_QUERY_LIMIT);
-
-  if (trackedError) {
-    throw new Error(trackedError.message);
-  }
-
-  const trackedSymbols = (trackedRows || []) as TrackedSymbol[];
+  const trackedSymbols = await getTrackedSymbols();
 
   const { data: runRow, error: runError } = await supabase
     .from("research_runs")
