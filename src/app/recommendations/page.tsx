@@ -63,6 +63,7 @@ export default async function RecommendationsPage() {
           "id, recommendation_run_id, synthesis_run_id, recommendation_engine, action, status, target_weight, target_price, conviction_score, summary, risks, confidence, created_at, recommendation_evidence(weight, note, research_insights(title, direction)), portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
         )
         .eq("owner_id", user.id)
+        .neq("status", "archived")
         .order("conviction_score", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
     : { data: [] as RecommendationRow[] };
