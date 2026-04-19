@@ -155,18 +155,33 @@ export function PortfolioPositionCard(props: PositionCardProps) {
       </div>
 
       <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-3">
-        <button type="button" onClick={() => setExpanded((value) => !value)} className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
+        <div role="button" tabIndex={0} onClick={() => setExpanded((value) => !value)} onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setExpanded((value) => !value);
+          }
+        }} className="cursor-pointer rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Program action</p>
           <p className="mt-1 font-medium text-zinc-100">{recommendation?.action || "--"}</p>
-        </button>
-        <button type="button" onClick={() => setExpanded((value) => !value)} className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
+        </div>
+        <div role="button" tabIndex={0} onClick={() => setExpanded((value) => !value)} onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setExpanded((value) => !value);
+          }
+        }} className="cursor-pointer rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Target weight</p>
           <p className="mt-1 font-medium text-zinc-100">{recommendation?.target_weight !== null && recommendation?.target_weight !== undefined ? `${recommendation.target_weight}%` : "--"}</p>
-        </button>
-        <button type="button" onClick={() => setExpanded((value) => !value)} className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
+        </div>
+        <div role="button" tabIndex={0} onClick={() => setExpanded((value) => !value)} onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setExpanded((value) => !value);
+          }
+        }} className="cursor-pointer rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Program conviction</p>
           <p className="mt-1 font-medium text-zinc-100">{recommendation?.conviction_score !== null && recommendation?.conviction_score !== undefined ? recommendation.conviction_score : "--"}</p>
-        </button>
+        </div>
       </div>
 
       {expanded ? (
