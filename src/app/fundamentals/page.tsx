@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -18,6 +19,28 @@ type FundamentalsRow = {
   symbols: { ticker: string; name: string | null } | { ticker: string; name: string | null }[] | null;
 };
 
+type FundamentalsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const SORT_OPTIONS = [
+  { value: "fetched_at", label: "Last updated" },
+  { value: "pe_ttm", label: "P/E" },
+  { value: "pb_ttm", label: "P/B" },
+  { value: "ps_ttm", label: "P/S" },
+  { value: "revenue_growth_ttm", label: "Revenue growth" },
+  { value: "eps_growth_5y", label: "EPS growth 5Y" },
+  { value: "net_margin_ttm", label: "Net margin" },
+  { value: "operating_margin_ttm", label: "Operating margin" },
+  { value: "roe_ttm", label: "ROE" },
+  { value: "current_ratio_quarterly", label: "Current ratio" },
+  { value: "market_cap_m", label: "Market cap" },
+] as const;
+
+type SortField = (typeof SORT_OPTIONS)[number]["value"];
+
+const SORT_FIELDS = new Set<SortField>(SORT_OPTIONS.map((option) => option.value));
+
 function firstRelation<T>(value: T | T[] | null): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value;
@@ -37,20 +60,67 @@ function formatMarketCap(value: number | null) {
   return `$${value.toFixed(0)}M`;
 }
 
-export default async function FundamentalsPage() {
+function getSingleParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function FundamentalsPage({ searchParams }: FundamentalsPageProps) {
   const user = await requireUser();
   const supabase = await createSupabaseServerClient();
+  const params = (await searchParams) || {};
+
+  const sort = getSingleParam(params.sort);
+  const direction = getSingleParam(params.direction);
+  const sortField: SortField = sort && SORT_FIELDS.has(sort as SortField) ? (sort as SortField) : "fetched_at";
+  const sortDirection = direction === "asc" ? "asc" : "desc";
 
   const { data: rows } = supabase
     ? await supabase
         .from("symbol_fundamentals")
         .select("pe_ttm, pb_ttm, ps_ttm, revenue_growth_ttm, eps_growth_5y, net_margin_ttm, operating_margin_ttm, roe_ttm, current_ratio_quarterly, market_cap_m, fetched_at, symbols(ticker, name)")
-        .order("fetched_at", { ascending: false })
+        .order(sortField, { ascending: sortDirection === "asc", nullsFirst: false })
     : { data: [] as FundamentalsRow[] };
 
   return (
     <AppShell viewer={user}>
       <SectionCard title="Fundamentals" description="Tracked company basics and valuation context used by the Fundamentals Agent.">
+        <form className="mb-4 flex flex-wrap items-end gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">Sort by</label>
+            <select
+              name="sort"
+              defaultValue={sortField}
+              className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">Direction</label>
+            <select
+              name="direction"
+              defaultValue={sortDirection}
+              className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+            >
+              <option value="desc">High to low</option>
+              <option value="asc">Low to high</option>
+            </select>
+          </div>
+
+          <button type="submit" className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-sky-400">
+            Apply sort
+          </button>
+
+          <Link href="/fundamentals" className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500">
+            Reset
+          </Link>
+        </form>
+
         {rows && rows.length > 0 ? (
           <div className="space-y-3">
             {rows.map((row, index) => {
