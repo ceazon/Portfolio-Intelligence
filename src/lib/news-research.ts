@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { getFinnhubCompanyNews } from "@/lib/finnhub-news";
 import { getGoogleNewsRssItems } from "@/lib/google-news";
 
-type NewsItem = {
+export type NewsItem = {
   title: string;
   url: string;
   source: string;
@@ -55,7 +55,7 @@ function normalizeUrl(url: string) {
   }
 }
 
-function dedupeNews(items: NewsItem[]) {
+export function dedupeNews(items: NewsItem[]) {
   const seen = new Set<string>();
   const deduped: NewsItem[] = [];
 
@@ -72,7 +72,7 @@ function dedupeNews(items: NewsItem[]) {
   return deduped;
 }
 
-function buildInsight(symbol: TrackedSymbol, results: NewsItem[]) {
+export function buildInsight(symbol: TrackedSymbol, results: NewsItem[]) {
   const usable = dedupeNews(results).slice(0, NEWS_RESULT_LIMIT);
   const snippets = usable.map((item) => item.snippet || item.title || "").filter(Boolean);
   const direction = inferDirection(snippets);

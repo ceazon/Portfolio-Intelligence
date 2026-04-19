@@ -1,9 +1,19 @@
 import { AppShell } from "@/components/app-shell";
+import { ResearchSymbolCard } from "@/components/research-symbol-card";
 import { SectionCard } from "@/components/section-card";
 import { RunNewsResearchForm } from "@/components/run-news-research-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
+
+type EvidenceItem = {
+  title?: string;
+  source?: string | null;
+  published_at?: string | null;
+  snippet?: string | null;
+  url?: string;
+  source_type?: string;
+};
 
 type ResearchInsightRow = {
   id: string;
@@ -13,8 +23,10 @@ type ResearchInsightRow = {
   direction: string | null;
   confidence_score: number | null;
   time_horizon: string | null;
+  evidence_json: EvidenceItem[] | null;
   source_urls_json: string[] | null;
   created_at: string;
+  expires_at: string | null;
   symbols: { ticker: string; name: string | null } | { ticker: string; name: string | null }[] | null;
   research_runs:
     | { agent_name: string; run_type: string; created_at: string }
@@ -37,26 +49,75 @@ export default async function ResearchPage() {
   const { data: insights } = supabase
     ? await supabase
         .from("research_insights")
-        .select("id, title, summary, thesis, direction, confidence_score, time_horizon, source_urls_json, created_at, symbols(ticker, name), research_runs(agent_name, run_type, created_at)")
+        .select("id, title, summary, thesis, direction, confidence_score, time_horizon, evidence_json, source_urls_json, created_at, expires_at, symbols(ticker, name), research_runs(agent_name, run_type, created_at)")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
         .limit(30)
     : { data: [] as ResearchInsightRow[] };
+
+  const latestInsightsBySymbol = new Map<string, ResearchInsightRow>();
+  (insights || []).forEach((insight) => {
+    const symbol = firstRelation(insight.symbols);
+    if (!symbol?.ticker || latestInsightsBySymbol.has(symbol.ticker)) {
+      return;
+    }
+
+    latestInsightsBySymbol.set(symbol.ticker, insight);
+  });
+
+  const latestInsights = [...latestInsightsBySymbol.values()];
+  const corroboratedCount = latestInsights.filter((insight) => {
+    const evidence = insight.evidence_json || [];
+    const sourceTypes = new Set(evidence.map((item) => item.source_type).filter(Boolean));
+    return sourceTypes.size > 1;
+  }).length;
 
   return (
     <AppShell viewer={user}>
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="space-y-6">
           <SectionCard
-            title="Shared Research Feed"
-            description={`Reusable research artifacts live here so recommendations can eventually cite them instead of rethinking from scratch. Times shown in ${getAppTimeZoneLabel()}.`}
+            title="Tracked Symbol Research"
+            description={`This tab is now the shared intelligence layer for tracked symbols. It keeps the latest thesis, corroboration, and source evidence in one place. Times shown in ${getAppTimeZoneLabel()}.`}
+          >
+            {latestInsights.length > 0 ? (
+              <div className="space-y-3">
+                {latestInsights.map((insight) => {
+                  const symbol = firstRelation(insight.symbols);
+                  const evidence = insight.evidence_json || [];
+
+                  return (
+                    <ResearchSymbolCard
+                      key={insight.id}
+                      ticker={symbol?.ticker || "Shared"}
+                      name={symbol?.name || insight.title}
+                      summary={insight.summary || "No summary provided."}
+                      thesis={insight.thesis}
+                      direction={insight.direction}
+                      confidenceScore={insight.confidence_score}
+                      createdAt={insight.created_at}
+                      expiresAt={insight.expires_at}
+                      evidence={evidence}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+                No research insights yet. Run the first shared news pass to populate the tracked symbol intelligence feed.
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Recent research runs"
+            description="The latest raw research artifacts are still visible here for auditability and debugging."
           >
             {insights && insights.length > 0 ? (
               <div className="space-y-3">
-                {insights.map((insight) => {
+                {insights.slice(0, 10).map((insight) => {
                   const symbol = firstRelation(insight.symbols);
                   const run = firstRelation(insight.research_runs);
-
                   return (
                     <div key={insight.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                       <div className="flex items-start justify-between gap-4">
@@ -66,59 +127,35 @@ export default async function ResearchPage() {
                             <span className="ml-2 text-zinc-400">{symbol?.name || insight.title}</span>
                           </p>
                           <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
-                            {insight.direction || "mixed"} · {insight.time_horizon || "days"} horizon
+                            {insight.direction || "mixed"}
                             {typeof insight.confidence_score === "number" ? ` · ${insight.confidence_score}/100 confidence` : ""}
                           </p>
                         </div>
-                        <span className="rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
-                          {run?.run_type || "research"}
-                        </span>
+                        <span className="rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-300">{run?.run_type || "research"}</span>
                       </div>
-
                       <p className="mt-3 text-sm text-zinc-300">{insight.summary || "No summary provided."}</p>
-                      {insight.thesis ? <p className="mt-2 text-sm text-zinc-500">{insight.thesis}</p> : null}
-
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
                         <span className="rounded-full border border-zinc-700 px-2 py-1">{run?.agent_name || "agent"}</span>
                         <span className="rounded-full border border-zinc-700 px-2 py-1">{formatAppDateTime(insight.created_at)}</span>
-                        {insight.source_urls_json?.length ? (
-                          <span className="rounded-full border border-zinc-700 px-2 py-1">{insight.source_urls_json.length} sources</span>
-                        ) : null}
+                        {insight.source_urls_json?.length ? <span className="rounded-full border border-zinc-700 px-2 py-1">{insight.source_urls_json.length} URLs</span> : null}
                       </div>
-
-                      {insight.source_urls_json?.length ? (
-                        <div className="mt-3 space-y-1 text-sm text-sky-300">
-                          {insight.source_urls_json.slice(0, 3).map((url: string) => (
-                            <a key={url} href={url} target="_blank" rel="noreferrer" className="block truncate hover:text-sky-200">
-                              {url}
-                            </a>
-                          ))}
-                        </div>
-                      ) : null}
                     </div>
                   );
                 })}
               </div>
-            ) : (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                No research insights yet. Run the first shared news pass to populate the feed.
-              </div>
-            )}
+            ) : null}
           </SectionCard>
         </div>
 
         <div className="space-y-6">
           <RunNewsResearchForm />
 
-          <SectionCard
-            title="First pipeline scope"
-            description="This first slice is deliberately simple and reusable."
-          >
+          <SectionCard title="Research status" description="What the current research layer is doing for tracked symbols.">
             <ul className="space-y-3 text-sm text-zinc-300">
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Pull a shared tracked universe from portfolio and watchlist symbols.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Fetch recent grounded news results per symbol.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Store reusable insights in research_runs and research_insights.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Prepare the app for future recommendation evidence linking.</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Latest symbol snapshots: {latestInsights.length}</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Corroborated by multiple feeds: {corroboratedCount}</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Primary sources: Finnhub company news + Google News RSS</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Goal: reusable shared memory for recommendations, not one-off headline dumps</li>
             </ul>
           </SectionCard>
         </div>
