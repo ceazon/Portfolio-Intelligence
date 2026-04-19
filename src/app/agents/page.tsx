@@ -8,6 +8,8 @@ import { formatAppDateTime } from "@/lib/time";
 type AgentOutputRow = {
   id: string;
   agent_name: string;
+  scope_type: string | null;
+  scope_key: string | null;
   stance: string | null;
   normalized_score: number | null;
   confidence_score: number | null;
@@ -34,14 +36,23 @@ export default async function AgentsPage() {
   const { data: agentOutputs } = supabase
     ? await supabase
         .from("agent_outputs")
-        .select("id, agent_name, stance, normalized_score, confidence_score, action_bias, target_weight_delta, summary, thesis, created_at, symbols(id, ticker, name)")
+        .select("id, agent_name, scope_type, scope_key, stance, normalized_score, confidence_score, action_bias, target_weight_delta, summary, thesis, created_at, symbols(id, ticker, name)")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
         .limit(50)
     : { data: [] as AgentOutputRow[] };
 
   const latestBySymbol = new Map<string, AgentOutputRow[]>();
+  const globalOutputs: AgentOutputRow[] = [];
+
   (agentOutputs || []).forEach((row) => {
+    if (row.scope_type === "global") {
+      if (globalOutputs.length < 4) {
+        globalOutputs.push(row);
+      }
+      return;
+    }
+
     const symbol = firstRelation(row.symbols);
     if (!symbol?.ticker) {
       return;
@@ -59,8 +70,32 @@ export default async function AgentsPage() {
       <div className="space-y-6">
         <SectionCard
           title="Agent Detail"
-          description="This page is the per-symbol explainer for how news, macro, fundamentals, and synthesis combine into the final recommendation. News agent outputs are live first, with macro and synthesis to follow."
+          description="This page is the explainer for how news, macro, fundamentals, and synthesis combine into the final recommendation. News agent outputs are live, and the first macro global agent now sits beside them."
         >
+          {globalOutputs.length ? (
+            <div className="mb-4 rounded-2xl border border-indigo-800/60 bg-indigo-950/30 p-4">
+              <div className="mb-3">
+                <h3 className="text-base font-semibold text-zinc-100">Global Macro Agent</h3>
+                <p className="mt-1 text-sm text-zinc-400">A shared global posture layer that the future synthesizer can use across all symbols.</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {globalOutputs.map((output) => (
+                  <div key={output.id} className="rounded-xl border border-indigo-800/50 bg-zinc-900/60 p-3">
+                    <p className="text-xs uppercase tracking-wide text-zinc-500">{output.agent_name}</p>
+                    <p className="mt-2 text-sm font-medium text-zinc-100">{output.stance || "no stance"}</p>
+                    <p className="mt-1 text-sm text-zinc-400">{output.summary || output.thesis || "No summary yet."}</p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
+                      {output.normalized_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Score {output.normalized_score}</span> : null}
+                      {output.confidence_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Confidence {output.confidence_score}</span> : null}
+                      {output.action_bias ? <span className="rounded-full border border-zinc-700 px-2 py-1">Bias {output.action_bias}</span> : null}
+                    </div>
+                    <p className="mt-3 text-xs text-zinc-500">{formatAppDateTime(output.created_at)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {[...latestBySymbol.entries()].length ? (
             <div className="space-y-4">
               {[...latestBySymbol.entries()].map(([ticker, outputs]) => {
@@ -104,7 +139,7 @@ export default async function AgentsPage() {
             </div>
           ) : (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              No structured agent outputs yet. Run news research to populate the first live News Agent outputs here.
+              No structured agent outputs yet. Run news research to populate the live News Agent outputs and the first global Macro Agent output here.
             </div>
           )}
         </SectionCard>

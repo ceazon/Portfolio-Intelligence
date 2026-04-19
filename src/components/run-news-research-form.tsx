@@ -15,11 +15,11 @@ export function RunNewsResearchForm() {
     <form action={formAction} className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
       <div>
         <h3 className="text-base font-semibold text-zinc-100">Run shared news research</h3>
-        <p className="mt-1 text-sm text-zinc-400">Scan the shared tracked symbol universe, capture recent headlines, and store reusable research insights.</p>
+        <p className="mt-1 text-sm text-zinc-400">Scan the shared tracked symbol universe, capture recent headlines, store reusable research insights, and refresh the first global macro signal.</p>
       </div>
 
       {state?.error ? <p className="text-sm text-amber-300">{state.error}</p> : null}
-      {state?.ok ? <p className="text-sm text-emerald-300">Shared news research completed.</p> : null}
+      {state?.ok ? <p className="text-sm text-emerald-300">Shared news research and macro refresh completed.</p> : null}
 
       <button
         type="submit"

@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { searchFinnhubSymbols } from "@/lib/finnhub";
 import { refreshFxRate } from "@/lib/fx-sync";
 import { runSharedNewsResearch } from "@/lib/news-research";
+import { runGlobalMacroAgent } from "@/lib/macro-agent";
 import { getResearchEvidenceContext } from "@/lib/recommendation-evidence";
 import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
 
@@ -647,7 +648,9 @@ export async function runNewsResearch(_prevState: FormState): Promise<FormState>
     }
 
     await runSharedNewsResearch(auth.user.id);
+    await runGlobalMacroAgent(auth.user.id);
     revalidatePath("/research");
+    revalidatePath("/agents");
     revalidatePath("/agent-activity");
     revalidatePath("/dashboard");
     return { ok: true, error: "" };
