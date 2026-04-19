@@ -1,17 +1,15 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
-type SearchResult = {
-  title?: string;
-  url?: string;
-  source?: string;
-  published_at?: string;
-  snippet?: string;
-};
+import { getFinnhubCompanyNews } from "@/lib/finnhub-news";
+import { getGoogleNewsRssItems } from "@/lib/google-news";
 
-type SearchResponse = {
-  web?: {
-    results?: SearchResult[];
-  };
+type NewsItem = {
+  title: string;
+  url: string;
+  source: string;
+  published_at?: string | null;
+  snippet?: string | null;
+  source_type: "finnhub" | "google-news";
 };
 
 type TrackedSymbol = {
@@ -28,52 +26,9 @@ export type SharedNewsResearchResult = {
 };
 
 const NEWS_QUERY_LIMIT = 5;
-const NEWS_RESULT_LIMIT = 3;
+const NEWS_RESULT_LIMIT = 5;
 const SHARED_AGENT_NAME = "shared-news-agent";
 const SHARED_RUN_TYPE = "news-research";
-
-function getBraveApiKey() {
-  return process.env.BRAVE_API_KEY || "";
-}
-
-function buildQuery(symbol: TrackedSymbol) {
-  const parts = [symbol.ticker];
-  if (symbol.name) {
-    parts.push(`"${symbol.name}"`);
-  }
-
-  parts.push("stock OR company news OR earnings OR guidance");
-  return parts.join(" ");
-}
-
-async function fetchBraveNewsResults(query: string): Promise<SearchResult[]> {
-  const apiKey = getBraveApiKey();
-  if (!apiKey) {
-    throw new Error("BRAVE_API_KEY is not configured.");
-  }
-
-  const url = new URL("https://api.search.brave.com/res/v1/web/search");
-  url.searchParams.set("q", query);
-  url.searchParams.set("count", String(NEWS_RESULT_LIMIT));
-  url.searchParams.set("freshness", "pw");
-  url.searchParams.set("search_lang", "en");
-  url.searchParams.set("country", "us");
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      Accept: "application/json",
-      "X-Subscription-Token": apiKey,
-    },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Brave search failed with status ${response.status}`);
-  }
-
-  const json = (await response.json()) as SearchResponse;
-  return json.web?.results?.slice(0, NEWS_RESULT_LIMIT) || [];
-}
 
 function inferDirection(snippets: string[]) {
   const text = snippets.join(" ").toLowerCase();
@@ -90,31 +45,60 @@ function inferDirection(snippets: string[]) {
   return bullishScore > bearishScore ? "bullish" : "bearish";
 }
 
-function buildInsight(symbol: TrackedSymbol, results: SearchResult[]) {
-  const usable = results.filter((item) => item.title && item.url);
+function normalizeUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function dedupeNews(items: NewsItem[]) {
+  const seen = new Set<string>();
+  const deduped: NewsItem[] = [];
+
+  for (const item of items) {
+    const key = `${normalizeUrl(item.url)}::${item.title.trim().toLowerCase()}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    deduped.push(item);
+  }
+
+  return deduped;
+}
+
+function buildInsight(symbol: TrackedSymbol, results: NewsItem[]) {
+  const usable = dedupeNews(results).slice(0, NEWS_RESULT_LIMIT);
   const snippets = usable.map((item) => item.snippet || item.title || "").filter(Boolean);
   const direction = inferDirection(snippets);
-  const top = usable[0];
+  const uniqueFeeds = new Set(usable.map((item) => item.source_type));
   const sourceCount = usable.length;
+  const corroborated = uniqueFeeds.size > 1;
 
   return {
     title: `${symbol.ticker} shared news pulse`,
     summary:
       sourceCount > 0
-        ? `${symbol.ticker} surfaced ${sourceCount} recent news signal${sourceCount === 1 ? "" : "s"}, led by ${top?.source || "recent coverage"}.`
+        ? `${symbol.ticker} surfaced ${sourceCount} recent news signal${sourceCount === 1 ? "" : "s"}${corroborated ? " across Finnhub and Google News" : ""}.`
         : `${symbol.ticker} had no recent news coverage captured in this pass.`,
     thesis:
       sourceCount > 0
-        ? snippets.slice(0, 2).join(" ")
+        ? snippets.slice(0, 3).join(" ")
         : `No strong recent news signal was captured for ${symbol.ticker} in this pass.`,
     direction,
-    confidenceScore: Math.min(85, 35 + sourceCount * 15),
+    confidenceScore: Math.min(92, 35 + sourceCount * 10 + (corroborated ? 12 : 0)),
     evidenceJson: usable.map((item) => ({
       title: item.title,
-      source: item.source || null,
+      source: item.source,
       published_at: item.published_at || null,
       snippet: item.snippet || null,
       url: item.url,
+      source_type: item.source_type,
     })),
     sourceUrlsJson: usable.map((item) => item.url),
   };
@@ -148,7 +132,7 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
       scope_type: "shared",
       scope_key: "tracked-universe",
       status: "running",
-      summary: `Scanning recent news for ${trackedSymbols.length} tracked symbols.`,
+      summary: `Scanning recent news for ${trackedSymbols.length} tracked symbols via Finnhub and Google News.`,
       started_at: new Date().toISOString(),
     })
     .select("id")
@@ -162,12 +146,17 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
     const insightsToInsert: Array<Record<string, unknown>> = [];
 
     for (const symbol of trackedSymbols) {
-      const results = await fetchBraveNewsResults(buildQuery(symbol));
-      if (!results.length) {
+      const [finnhubResults, googleResults] = await Promise.all([
+        getFinnhubCompanyNews(symbol.ticker),
+        getGoogleNewsRssItems(symbol.ticker, symbol.name || undefined),
+      ]);
+
+      const mergedResults = dedupeNews([...finnhubResults, ...googleResults]);
+      if (!mergedResults.length) {
         continue;
       }
 
-      const insight = buildInsight(symbol, results);
+      const insight = buildInsight(symbol, mergedResults);
       insightsToInsert.push({
         owner_id: ownerId,
         research_run_id: runRow.id,
@@ -195,7 +184,7 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
     }
 
     const summary = insightsToInsert.length
-      ? `Generated ${insightsToInsert.length} shared news insight${insightsToInsert.length === 1 ? "" : "s"} across ${trackedSymbols.length} tracked symbols.`
+      ? `Generated ${insightsToInsert.length} shared news insight${insightsToInsert.length === 1 ? "" : "s"} across ${trackedSymbols.length} tracked symbols using Finnhub and Google News.`
       : `Scanned ${trackedSymbols.length} tracked symbols but did not capture usable news results.`;
 
     await supabase
