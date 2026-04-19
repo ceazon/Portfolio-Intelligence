@@ -1,21 +1,21 @@
 export const roadmapCards = [
   {
-    title: "Phase 1: MVP Spine",
-    body: "Portfolios, watchlists, symbol enrichment, quote snapshots, and rules-based recommendations are now in place.",
+    title: "Current System",
+    body: "The app now runs a synthesis-first recommendation engine powered by News, Bear Case, Fundamentals, and Macro agents, with tracked-symbol portfolio intelligence feeding the recommendation layer.",
   },
   {
-    title: "Phase 2: Operating Layer",
-    body: "Manual refreshes, activity logs, recommendation review controls, and dashboard visibility for system freshness.",
+    title: "Next Build Targets",
+    body: "Tighten recommendation quality, deepen company intelligence, improve target-price realism, and make the dashboard feel like a live operating console for the full agent stack.",
   },
   {
-    title: "Phase 3: Intelligence Upgrade",
-    body: "Smarter scoring, richer recommendation reasoning, automated refresh jobs, and eventually an AI explanation layer.",
+    title: "Roadmap Direction",
+    body: "Expand into more specialized style agents over time, strengthen automation, and move toward a more complete portfolio intelligence cockpit with clearer drill-downs and better monitoring.",
   },
 ];
 
 export const nextBuildTargets = [
-  "Add recommendation review actions like accepted, dismissed, and archived",
-  "Show data freshness, last quote sync, and latest run summaries across the dashboard",
-  "Add portfolio position editing and deletion flows",
-  "Introduce scheduled refresh jobs once the manual workflow feels solid",
+  "Improve synthesis quality and target-price realism with more agent balance and tuning",
+  "Add more specialized style agents beyond News, Bear Case, Fundamentals, and Macro",
+  "Create deeper drill-down surfaces for recommendation rationale and agent contributions",
+  "Expand refresh and monitoring flows so the intelligence layer stays current with less manual work",
 ];

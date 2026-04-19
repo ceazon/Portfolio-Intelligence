@@ -70,7 +70,7 @@ export default async function DashboardPage() {
   const stats = [
     { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${formatAppDateTime(latestQuoteSync)}` : "Quote sync ready" },
     { label: "Core Positions", value: positionCount, detail: "Live portfolio positions tracked" },
-    { label: "Open Recommendations", value: openRecommendationCount, detail: `Accepted ${acceptedRecommendationCount} · Dismissed ${dismissedRecommendationCount}` },
+    { label: "Active Recommendations", value: openRecommendationCount, detail: `Accepted ${acceptedRecommendationCount} · Dismissed ${dismissedRecommendationCount}` },
     { label: "Agent Runs", value: agentRunCount, detail: latestRunSummary || "Manual market refreshes log here" },
     { label: "Research Insights", value: researchInsightCount, detail: latestResearchRunSummary || "Shared research layer is ready" },
   ];
@@ -81,11 +81,11 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Mission control"
-            description="The MVP spine is now live. This dashboard tracks portfolio state, recommendation coverage, and market data freshness."
+            description="This dashboard tracks the live state of the portfolio intelligence system, including recommendation coverage, research depth, and agent freshness."
           >
             <div className="mb-4 space-y-3">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                Supabase status: {hasSupabaseEnv() ? "configured" : "not configured yet, add env vars before deployment"}
+                System status: {hasSupabaseEnv() ? "configured and running" : "not configured yet, add env vars before deployment"}
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-zinc-300">
                 Central quote scheduler: <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours mode" : "off hours mode"}</span>
@@ -104,8 +104,8 @@ export default async function DashboardPage() {
           </SectionCard>
 
           <SectionCard
-            title="Build roadmap"
-            description="The shell phase is behind us. The roadmap now reflects the real MVP path already underway."
+            title="Project status and roadmap"
+            description="The shell phase is behind us. This now reflects the real state of the synthesis-first portfolio intelligence system and what should be built next."
           >
             <div className="grid gap-4 lg:grid-cols-3">
               {roadmapCards.map((card) => (
@@ -121,7 +121,7 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Next build targets"
-            description="What we should wire next based on the product state that exists today."
+            description="The most valuable next improvements from here, based on the system that now actually exists."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
               {nextBuildTargets.map((item) => (
@@ -138,7 +138,7 @@ export default async function DashboardPage() {
 
           <SectionCard
             title="Agent status"
-            description="Manual sync runs and future automation status surface here."
+            description="Latest operating signal from research, fundamentals, quote refresh, and the broader agent system."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
               {latestResearchRunSummary || latestCentralQuoteRunSummary || latestRunSummary || "No refresh runs yet. Use the refresh and research actions above to start building signal history."}

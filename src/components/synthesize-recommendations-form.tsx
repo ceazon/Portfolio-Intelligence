@@ -15,7 +15,7 @@ export function SynthesizeRecommendationsForm() {
     <form action={formAction} className="space-y-3 rounded-2xl border border-indigo-800/60 bg-indigo-950/20 p-4">
       <div>
         <h3 className="text-base font-semibold text-zinc-100">Run synthesis</h3>
-        <p className="mt-1 text-sm text-zinc-400">Create side-by-side synthesized recommendations from the News Agent and Macro Agent without replacing the rules engine.</p>
+        <p className="mt-1 text-sm text-zinc-400">Create fresh synthesized recommendations from the News, Bear Case, Fundamentals, and Macro agents.</p>
       </div>
 
       {state?.error ? <p className="text-sm text-amber-300">{state.error}</p> : null}
