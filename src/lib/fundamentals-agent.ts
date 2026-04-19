@@ -32,15 +32,15 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-async function getTrackedSymbols() {
+async function getTrackedSymbols(ownerId: string) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     throw new Error("Supabase env vars are not configured yet.");
   }
 
   const [watchlistItemsResult, portfolioPositionsResult] = await Promise.all([
-    supabase.from("watchlist_items").select("symbol_id"),
-    supabase.from("portfolio_positions").select("symbol_id"),
+    supabase.from("watchlist_items").select("symbol_id, watchlists!inner(owner_id)").eq("watchlists.owner_id", ownerId),
+    supabase.from("portfolio_positions").select("symbol_id, portfolios!inner(owner_id)").eq("portfolios.owner_id", ownerId),
   ]);
 
   if (watchlistItemsResult.error) throw new Error(watchlistItemsResult.error.message);
@@ -142,7 +142,7 @@ export async function refreshFundamentalsAndAgent(ownerId: string) {
     throw new Error("Supabase env vars are not configured yet.");
   }
 
-  const trackedSymbols = await getTrackedSymbols();
+  const trackedSymbols = await getTrackedSymbols(ownerId);
   if (!trackedSymbols.length) {
     return { refreshedCount: 0 };
   }
