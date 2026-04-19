@@ -67,6 +67,16 @@ type WatchlistRow = {
     | null;
 };
 
+type AgentSignal = {
+  stance: string | null;
+  normalizedScore: number | null;
+  confidenceScore: number | null;
+  actionBias: string | null;
+  targetWeightDelta: number | null;
+  summary: string | null;
+  thesis: string | null;
+};
+
 type SynthesisCandidate = {
   symbolId: string;
   portfolioId: string | null;
@@ -76,15 +86,8 @@ type SynthesisCandidate = {
   gainLossPct: number | null;
   priceChangePct: number | null;
   currentPrice: number | null;
-  news: {
-    stance: string | null;
-    normalizedScore: number | null;
-    confidenceScore: number | null;
-    actionBias: string | null;
-    targetWeightDelta: number | null;
-    summary: string | null;
-    thesis: string | null;
-  } | null;
+  news: AgentSignal | null;
+  bearCase: AgentSignal | null;
 };
 
 type SynthesizedRecommendation = {
@@ -128,14 +131,17 @@ function getOpenAIClient() {
 function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: AgentOutputRow | null): SynthesizedRecommendation[] {
   return candidates.map((candidate) => {
     let score = 50;
-    score += ((candidate.news?.normalizedScore ?? 50) - 50) * 0.7;
-    score += ((macro?.normalized_score ?? 50) - 50) * 0.3;
-    score += (candidate.priceChangePct ?? 0) * 1.5;
+    score += ((candidate.news?.normalizedScore ?? 50) - 50) * 0.65;
+    score += ((macro?.normalized_score ?? 50) - 50) * 0.25;
+    score -= ((candidate.bearCase?.normalizedScore ?? 35) - 35) * 0.55;
+    score += (candidate.priceChangePct ?? 0) * 1.2;
     score -= Math.max(0, (candidate.currentWeight ?? 0) - 10) * 1.8;
     if ((candidate.gainLossPct ?? 0) < -10) score -= 6;
     if ((candidate.gainLossPct ?? 0) > 20) score += 4;
 
-    const conviction = clamp(Math.round((candidate.news?.confidenceScore ?? 50) * 0.65 + (macro?.confidence_score ?? 40) * 0.35), 10, 95);
+    const convictionBase = (candidate.news?.confidenceScore ?? 50) * 0.55 + (macro?.confidence_score ?? 40) * 0.25;
+    const bearPenalty = (candidate.bearCase?.confidenceScore ?? 30) * ((candidate.bearCase?.normalizedScore ?? 35) >= 55 ? 0.28 : 0.12);
+    const conviction = clamp(Math.round(convictionBase + 18 - bearPenalty), 10, 95);
     const finalScore = clamp(Math.round(score), 0, 100);
     const hasPosition = (candidate.currentWeight ?? 0) > 0;
     const action = finalScore >= 63 ? "buy" : finalScore <= 40 ? (hasPosition ? "trim" : "watch") : "hold";
@@ -161,8 +167,8 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
       targetWeight,
       targetPrice,
       convictionScore: conviction,
-      summary: `${candidate.ticker}: ${action === "buy" ? "add on strength with disciplined sizing" : action === "trim" ? "reduce exposure and lock in strength" : action === "watch" ? "stay patient and wait for a better setup" : "hold current positioning and monitor"}.`,
-      risks: `${candidate.ticker}: conviction can fade quickly if price action or the broader backdrop weakens.`,
+      summary: `${candidate.ticker}: ${action === "buy" ? "add selectively with disciplined sizing" : action === "trim" ? "reduce exposure and respect downside pressure" : action === "watch" ? "stay patient until the risk-reward improves" : "hold current positioning and stay selective"}.`,
+      risks: `${candidate.ticker}: downside pressure could build faster than expected if the bear case strengthens.`,
       confidence: confidenceLabel(conviction),
     };
   });
@@ -197,7 +203,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
           {
             type: "input_text",
             text:
-              "You are a portfolio recommendation synthesizer. Combine a global macro agent and per-symbol news agent outputs into advisory recommendations. Return strict JSON only. Actions must be one of: buy, hold, trim, watch. Conviction score must be 0-100. Confidence must be one of: low, medium, high. Keep summaries and risks concise, concrete, and investment-advisory in tone. Do not summarize headlines, do not mention agents, do not mention news feeds, and do not explain chain-of-thought. The summary should read like a short recommendation a user can act on, ideally one sentence. The risk should be one short sentence. Respect current weight and avoid absurd target weights.",
+              "You are a portfolio recommendation synthesizer. Combine a global macro agent, a per-symbol news agent, and a per-symbol bear case agent into advisory recommendations. Return strict JSON only. Actions must be one of: buy, hold, trim, watch. Conviction score must be 0-100. Confidence must be one of: low, medium, high. Keep summaries and risks concise, concrete, and investment-advisory in tone. Do not summarize headlines, do not mention agents, do not mention news feeds, and do not explain chain-of-thought. The summary should read like a short recommendation a user can act on, ideally one sentence. The risk should be one short sentence. Bear case output should materially reduce conviction and target price when downside pressure is meaningful. Respect current weight and avoid absurd target weights.",
           },
         ],
       },
@@ -289,7 +295,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         .from("agent_outputs")
         .select("id, symbol_id, scope_type, scope_key, agent_name, stance, normalized_score, confidence_score, action_bias, target_weight_delta, summary, thesis, created_at")
         .eq("owner_id", ownerId)
-        .in("agent_name", ["news-agent", "macro-agent"])
+        .in("agent_name", ["news-agent", "bear-case-agent", "macro-agent"])
         .order("created_at", { ascending: false }),
       supabase
         .from("portfolio_positions")
@@ -306,12 +312,20 @@ export async function runRecommendationSynthesis(ownerId: string) {
     const outputs = (agentOutputs || []) as AgentOutputRow[];
     const macro = outputs.find((row) => row.agent_name === "macro-agent" && row.scope_type === "global") || null;
     const newsBySymbol = new Map<string, AgentOutputRow>();
+    const bearCaseBySymbol = new Map<string, AgentOutputRow>();
 
     outputs.forEach((row) => {
-      if (row.agent_name !== "news-agent" || !row.symbol_id || newsBySymbol.has(row.symbol_id)) {
+      if (!row.symbol_id) {
         return;
       }
-      newsBySymbol.set(row.symbol_id, row);
+
+      if (row.agent_name === "news-agent" && !newsBySymbol.has(row.symbol_id)) {
+        newsBySymbol.set(row.symbol_id, row);
+      }
+
+      if (row.agent_name === "bear-case-agent" && !bearCaseBySymbol.has(row.symbol_id)) {
+        bearCaseBySymbol.set(row.symbol_id, row);
+      }
     });
 
     const positionRows = (positions || []) as PositionRow[];
@@ -341,6 +355,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
       const averageCost = position.average_cost ?? 0;
       const gainLossPct = quote?.price !== null && quote?.price !== undefined && averageCost > 0 ? ((quote.price - averageCost) / averageCost) * 100 : null;
       const news = newsBySymbol.get(symbol.id);
+      const bearCase = bearCaseBySymbol.get(symbol.id);
 
       candidates.push({
         symbolId: symbol.id,
@@ -362,6 +377,17 @@ export async function runRecommendationSynthesis(ownerId: string) {
               thesis: news.thesis,
             }
           : null,
+        bearCase: bearCase
+          ? {
+              stance: bearCase.stance,
+              normalizedScore: bearCase.normalized_score,
+              confidenceScore: bearCase.confidence_score,
+              actionBias: bearCase.action_bias,
+              targetWeightDelta: bearCase.target_weight_delta,
+              summary: bearCase.summary,
+              thesis: bearCase.thesis,
+            }
+          : null,
       });
     });
 
@@ -370,6 +396,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
       const quote = firstRelation(symbol?.symbol_price_snapshots || null);
       if (!symbol?.id || seenSymbolIds.has(symbol.id)) return;
       const news = newsBySymbol.get(symbol.id);
+      const bearCase = bearCaseBySymbol.get(symbol.id);
 
       candidates.push({
         symbolId: symbol.id,
@@ -389,6 +416,17 @@ export async function runRecommendationSynthesis(ownerId: string) {
               targetWeightDelta: news.target_weight_delta,
               summary: news.summary,
               thesis: news.thesis,
+            }
+          : null,
+        bearCase: bearCase
+          ? {
+              stance: bearCase.stance,
+              normalizedScore: bearCase.normalized_score,
+              confidenceScore: bearCase.confidence_score,
+              actionBias: bearCase.action_bias,
+              targetWeightDelta: bearCase.target_weight_delta,
+              summary: bearCase.summary,
+              thesis: bearCase.thesis,
             }
           : null,
       });

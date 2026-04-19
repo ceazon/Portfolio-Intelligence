@@ -70,7 +70,7 @@ export default async function AgentsPage() {
       <div className="space-y-6">
         <SectionCard
           title="Agent Detail"
-          description="This page is the explainer for how news, macro, fundamentals, and synthesis combine into the final recommendation. News agent outputs are live, and the first macro global agent now sits beside them."
+          description="This page is the explainer for how news, bear case, macro, fundamentals, and synthesis combine into the final recommendation."
         >
           {globalOutputs.length ? (
             <div className="mb-4 rounded-2xl border border-indigo-800/60 bg-indigo-950/30 p-4">
@@ -108,7 +108,7 @@ export default async function AgentsPage() {
                           {ticker}
                           <span className="ml-2 text-zinc-400">{symbol?.name || "Tracked symbol"}</span>
                         </h3>
-                        <p className="mt-1 text-sm text-zinc-400">Latest structured agent outputs for this symbol. This is the surface portfolio summary boxes will eventually drill into.</p>
+                        <p className="mt-1 text-sm text-zinc-400">Latest structured agent outputs for this symbol, including the bullish case, the bear case, and the macro-aware synthesis inputs.</p>
                       </div>
                       {symbol?.id ? (
                         <Link href={`/symbols`} className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500">
@@ -139,7 +139,7 @@ export default async function AgentsPage() {
             </div>
           ) : (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              No structured agent outputs yet. Run news research to populate the live News Agent outputs and the first global Macro Agent output here.
+              No structured agent outputs yet. Run news research to populate the live News Agent, Bear Case Agent, and global Macro Agent outputs here.
             </div>
           )}
         </SectionCard>

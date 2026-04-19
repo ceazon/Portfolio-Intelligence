@@ -30,6 +30,7 @@ const NEWS_RESULT_LIMIT = 5;
 const SHARED_AGENT_NAME = "shared-news-agent";
 const SHARED_RUN_TYPE = "news-research";
 const NEWS_AGENT_NAME = "news-agent";
+const BEAR_CASE_AGENT_NAME = "bear-case-agent";
 
 function inferDirection(snippets: string[]) {
   const text = snippets.join(" ").toLowerCase();
@@ -152,6 +153,54 @@ function buildNewsAgentOutput(ownerId: string, researchRunId: string, symbol: Tr
   };
 }
 
+function buildBearCaseAgentOutput(ownerId: string, researchRunId: string, symbol: TrackedSymbol, insight: ReturnType<typeof buildInsight>) {
+  const downsidePressure =
+    insight.direction === "bearish"
+      ? Math.min(95, 55 + insight.confidenceScore * 0.45)
+      : insight.direction === "bullish"
+        ? Math.max(18, 42 - insight.confidenceScore * 0.2)
+        : Math.min(70, 38 + insight.confidenceScore * 0.2);
+
+  const stance = downsidePressure >= 62 ? "bearish" : downsidePressure <= 32 ? "limited" : "cautious";
+  const actionBias = downsidePressure >= 62 ? "decrease" : downsidePressure <= 32 ? "hold" : "decrease";
+  const targetWeightDelta = downsidePressure >= 62 ? -Math.min(4.5, Number((insight.confidenceScore / 20).toFixed(2))) : downsidePressure >= 45 ? -Math.min(2.5, Number((insight.confidenceScore / 35).toFixed(2))) : 0;
+  const summary =
+    stance === "bearish"
+      ? `${symbol.ticker} bear case is material right now, with enough downside pressure to challenge the upside thesis.`
+      : stance === "cautious"
+        ? `${symbol.ticker} still has a live downside case, even if it is not strong enough yet to fully break the setup.`
+        : `${symbol.ticker} bear case currently looks limited, with no dominant downside signal in the latest research pass.`;
+  const thesis =
+    stance === "bearish"
+      ? `If the current setup weakens, ${symbol.ticker} could re-rate lower because recent signals include enough cautionary pressure to challenge confidence.`
+      : stance === "cautious"
+        ? `The downside case for ${symbol.ticker} is not dominant, but there is enough caution in recent coverage to justify tighter risk discipline.`
+        : `The downside case for ${symbol.ticker} currently looks contained, though that can change quickly if new negative catalysts appear.`;
+
+  return {
+    owner_id: ownerId,
+    research_run_id: researchRunId,
+    agent_name: BEAR_CASE_AGENT_NAME,
+    symbol_id: symbol.id,
+    scope_type: "symbol",
+    scope_key: symbol.ticker,
+    stance,
+    normalized_score: Number(downsidePressure.toFixed(2)),
+    confidence_score: Math.max(25, insight.confidenceScore - (insight.direction === "bullish" ? 10 : 0)),
+    action_bias: actionBias,
+    target_weight_delta: Number(targetWeightDelta.toFixed(2)),
+    time_horizon: "days",
+    thesis,
+    summary,
+    evidence_json: {
+      derived_from: "shared-news-research",
+      downside_pressure: Number(downsidePressure.toFixed(2)),
+      evidence: insight.evidenceJson,
+    },
+    expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+  };
+}
+
 async function getTrackedSymbols() {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -257,6 +306,7 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
       });
 
       agentOutputsToInsert.push(buildNewsAgentOutput(ownerId, runRow.id, symbol, insight));
+      agentOutputsToInsert.push(buildBearCaseAgentOutput(ownerId, runRow.id, symbol, insight));
     }
 
     if (insightsToInsert.length) {
@@ -269,7 +319,7 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
     if (agentOutputsToInsert.length) {
       const symbolIds = agentOutputsToInsert.map((row) => row.symbol_id).filter(Boolean);
       if (symbolIds.length) {
-        await supabase.from("agent_outputs").delete().eq("owner_id", ownerId).eq("agent_name", NEWS_AGENT_NAME).in("symbol_id", symbolIds);
+        await supabase.from("agent_outputs").delete().eq("owner_id", ownerId).in("agent_name", [NEWS_AGENT_NAME, BEAR_CASE_AGENT_NAME]).in("symbol_id", symbolIds);
       }
 
       const { error: agentOutputError } = await supabase.from("agent_outputs").insert(agentOutputsToInsert);
@@ -279,7 +329,7 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
     }
 
     const summary = insightsToInsert.length
-      ? `Generated ${insightsToInsert.length} shared news insight${insightsToInsert.length === 1 ? "" : "s"} and ${agentOutputsToInsert.length} news-agent output${agentOutputsToInsert.length === 1 ? "" : "s"} across ${trackedSymbols.length} tracked symbols using Finnhub and Google News.`
+      ? `Generated ${insightsToInsert.length} shared news insight${insightsToInsert.length === 1 ? "" : "s"} and ${agentOutputsToInsert.length} structured agent output${agentOutputsToInsert.length === 1 ? "" : "s"} across ${trackedSymbols.length} tracked symbols using Finnhub and Google News.`
       : `Scanned ${trackedSymbols.length} tracked symbols but did not capture usable news results.`;
 
     await supabase
