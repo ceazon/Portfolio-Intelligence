@@ -59,7 +59,7 @@ export default async function AgentsPage() {
       <div className="space-y-6">
         <SectionCard
           title="Agent Detail"
-          description="This page will become the per-symbol explainer for how news, macro, fundamentals, and synthesis combine into the final recommendation."
+          description="This page is the per-symbol explainer for how news, macro, fundamentals, and synthesis combine into the final recommendation. News agent outputs are live first, with macro and synthesis to follow."
         >
           {[...latestBySymbol.entries()].length ? (
             <div className="space-y-4">
@@ -73,7 +73,7 @@ export default async function AgentsPage() {
                           {ticker}
                           <span className="ml-2 text-zinc-400">{symbol?.name || "Tracked symbol"}</span>
                         </h3>
-                        <p className="mt-1 text-sm text-zinc-400">Latest structured agent outputs for this symbol.</p>
+                        <p className="mt-1 text-sm text-zinc-400">Latest structured agent outputs for this symbol. This is the surface portfolio summary boxes will eventually drill into.</p>
                       </div>
                       {symbol?.id ? (
                         <Link href={`/symbols`} className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500">
@@ -104,7 +104,7 @@ export default async function AgentsPage() {
             </div>
           ) : (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              No structured agent outputs yet. The next implementation slice will populate this page beginning with the news agent.
+              No structured agent outputs yet. Run news research to populate the first live News Agent outputs here.
             </div>
           )}
         </SectionCard>

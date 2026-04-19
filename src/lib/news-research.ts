@@ -29,6 +29,7 @@ const NEWS_QUERY_LIMIT = 5;
 const NEWS_RESULT_LIMIT = 5;
 const SHARED_AGENT_NAME = "shared-news-agent";
 const SHARED_RUN_TYPE = "news-research";
+const NEWS_AGENT_NAME = "news-agent";
 
 function inferDirection(snippets: string[]) {
   const text = snippets.join(" ").toLowerCase();
@@ -91,6 +92,8 @@ export function buildInsight(symbol: TrackedSymbol, results: NewsItem[]) {
         ? snippets.slice(0, 3).join(" ")
         : `No strong recent news signal was captured for ${symbol.ticker} in this pass.`,
     direction,
+    corroborated,
+    sourceCount,
     confidenceScore: Math.min(92, 35 + sourceCount * 10 + (corroborated ? 12 : 0)),
     evidenceJson: usable.map((item) => ({
       title: item.title,
@@ -101,6 +104,51 @@ export function buildInsight(symbol: TrackedSymbol, results: NewsItem[]) {
       source_type: item.source_type,
     })),
     sourceUrlsJson: usable.map((item) => item.url),
+  };
+}
+
+function buildNewsAgentOutput(ownerId: string, researchRunId: string, symbol: TrackedSymbol, insight: ReturnType<typeof buildInsight>) {
+  const stance = insight.direction;
+  const normalizedScore =
+    stance === "bullish"
+      ? Math.min(100, 55 + insight.confidenceScore * 0.45)
+      : stance === "bearish"
+        ? Math.max(0, 45 - insight.confidenceScore * 0.35)
+        : 50;
+  const actionBias =
+    stance === "bullish"
+      ? "increase"
+      : stance === "bearish"
+        ? "decrease"
+        : "hold";
+  const targetWeightDelta =
+    stance === "bullish"
+      ? Math.min(4, Number((insight.confidenceScore / 25).toFixed(2)))
+      : stance === "bearish"
+        ? -Math.min(4, Number((insight.confidenceScore / 28).toFixed(2)))
+        : 0;
+
+  return {
+    owner_id: ownerId,
+    research_run_id: researchRunId,
+    agent_name: NEWS_AGENT_NAME,
+    symbol_id: symbol.id,
+    scope_type: "symbol",
+    scope_key: symbol.ticker,
+    stance,
+    normalized_score: Number(normalizedScore.toFixed(2)),
+    confidence_score: insight.confidenceScore,
+    action_bias: actionBias,
+    target_weight_delta: Number(targetWeightDelta.toFixed(2)),
+    time_horizon: "days",
+    thesis: insight.thesis,
+    summary: insight.summary,
+    evidence_json: {
+      corroborated: insight.corroborated,
+      source_count: insight.sourceCount,
+      evidence: insight.evidenceJson,
+    },
+    expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
   };
 }
 
@@ -176,6 +224,7 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
 
   try {
     const insightsToInsert: Array<Record<string, unknown>> = [];
+    const agentOutputsToInsert: Array<Record<string, unknown>> = [];
 
     for (const symbol of trackedSymbols) {
       const [finnhubResults, googleResults] = await Promise.all([
@@ -206,6 +255,8 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
         source_urls_json: insight.sourceUrlsJson,
         expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
       });
+
+      agentOutputsToInsert.push(buildNewsAgentOutput(ownerId, runRow.id, symbol, insight));
     }
 
     if (insightsToInsert.length) {
@@ -215,8 +266,20 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
       }
     }
 
+    if (agentOutputsToInsert.length) {
+      const symbolIds = agentOutputsToInsert.map((row) => row.symbol_id).filter(Boolean);
+      if (symbolIds.length) {
+        await supabase.from("agent_outputs").delete().eq("owner_id", ownerId).eq("agent_name", NEWS_AGENT_NAME).in("symbol_id", symbolIds);
+      }
+
+      const { error: agentOutputError } = await supabase.from("agent_outputs").insert(agentOutputsToInsert);
+      if (agentOutputError) {
+        throw new Error(agentOutputError.message);
+      }
+    }
+
     const summary = insightsToInsert.length
-      ? `Generated ${insightsToInsert.length} shared news insight${insightsToInsert.length === 1 ? "" : "s"} across ${trackedSymbols.length} tracked symbols using Finnhub and Google News.`
+      ? `Generated ${insightsToInsert.length} shared news insight${insightsToInsert.length === 1 ? "" : "s"} and ${agentOutputsToInsert.length} news-agent output${agentOutputsToInsert.length === 1 ? "" : "s"} across ${trackedSymbols.length} tracked symbols using Finnhub and Google News.`
       : `Scanned ${trackedSymbols.length} tracked symbols but did not capture usable news results.`;
 
     await supabase
