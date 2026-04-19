@@ -9,6 +9,7 @@ import { runSharedNewsResearch } from "@/lib/news-research";
 import { runGlobalMacroAgent } from "@/lib/macro-agent";
 import { getResearchEvidenceContext } from "@/lib/recommendation-evidence";
 import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
+import { runRecommendationSynthesis } from "@/lib/synthesis-agent";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
@@ -656,6 +657,25 @@ export async function runNewsResearch(_prevState: FormState): Promise<FormState>
     return { ok: true, error: "" };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to run shared news research.") };
+  }
+}
+
+export async function synthesizeRecommendations(_prevState: FormState): Promise<FormState> {
+  try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
+    await runRecommendationSynthesis(auth.user.id);
+    revalidatePath("/recommendations");
+    revalidatePath("/portfolio");
+    revalidatePath("/agents");
+    revalidatePath("/dashboard");
+    revalidatePath("/agent-activity");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to synthesize recommendations.") };
   }
 }
 

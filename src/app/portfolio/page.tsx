@@ -21,6 +21,7 @@ type PortfolioRow = {
 type RecommendationRow = {
   symbol_id: string;
   action: string;
+  recommendation_engine?: string | null;
   target_weight: number | null;
   conviction_score: number | null;
   recommendation_evidence:
@@ -114,9 +115,10 @@ export default async function PortfolioPage() {
   const { data: recommendations } = supabase
     ? await supabase
         .from("recommendations")
-        .select("symbol_id, action, target_weight, conviction_score, recommendation_evidence(research_insights(direction, title))")
+        .select("symbol_id, action, recommendation_engine, target_weight, conviction_score, recommendation_evidence(research_insights(direction, title))")
         .eq("owner_id", user.id)
         .eq("status", "open")
+        .eq("recommendation_engine", "synthesis-v1")
     : { data: [] as RecommendationRow[] };
 
   const latestFxRate = supabase ? await getLatestFxRate("USD/CAD") : null;

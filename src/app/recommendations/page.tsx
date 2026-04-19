@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { GenerateRecommendationsForm } from "@/components/generate-recommendations-form";
+import { SynthesizeRecommendationsForm } from "@/components/synthesize-recommendations-form";
 import { RecommendationStatusForm } from "@/components/recommendation-status-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
@@ -8,6 +9,8 @@ import { requireUser } from "@/lib/auth";
 type RecommendationRow = {
   id: string;
   recommendation_run_id: string | null;
+  synthesis_run_id: string | null;
+  recommendation_engine: string | null;
   action: string;
   status: string;
   target_weight: number | null;
@@ -56,7 +59,7 @@ export default async function RecommendationsPage() {
     ? await supabase
         .from("recommendations")
         .select(
-          "id, recommendation_run_id, action, status, target_weight, conviction_score, summary, risks, confidence, created_at, recommendation_evidence(weight, note, research_insights(title, direction)), portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
+          "id, recommendation_run_id, synthesis_run_id, recommendation_engine, action, status, target_weight, conviction_score, summary, risks, confidence, created_at, recommendation_evidence(weight, note, research_insights(title, direction)), portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
         )
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false })
@@ -94,6 +97,7 @@ export default async function RecommendationsPage() {
                           <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
                             {recommendation.action} · {recommendation.confidence || "medium"} confidence
                             {portfolio?.name ? ` · ${portfolio.name}` : " · Watchlist candidate"}
+                            {recommendation.recommendation_engine ? ` · ${recommendation.recommendation_engine}` : ""}
                           </p>
                         </div>
 
@@ -114,7 +118,10 @@ export default async function RecommendationsPage() {
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
                         <span className="rounded-full border border-zinc-700 px-2 py-1">Status {recommendation.status}</span>
                         {recommendation.recommendation_run_id ? (
-                          <span className="rounded-full border border-zinc-700 px-2 py-1">Run {recommendation.recommendation_run_id.slice(0, 8)}</span>
+                          <span className="rounded-full border border-zinc-700 px-2 py-1">Rules run {recommendation.recommendation_run_id.slice(0, 8)}</span>
+                        ) : null}
+                        {recommendation.synthesis_run_id ? (
+                          <span className="rounded-full border border-indigo-700 px-2 py-1 text-indigo-200">Synth run {recommendation.synthesis_run_id.slice(0, 8)}</span>
                         ) : null}
                         {recommendation.target_weight !== null ? (
                           <span className="rounded-full border border-zinc-700 px-2 py-1">Target {recommendation.target_weight}%</span>
@@ -159,16 +166,17 @@ export default async function RecommendationsPage() {
 
         <div className="space-y-6">
           <GenerateRecommendationsForm />
+          <SynthesizeRecommendationsForm />
 
           <SectionCard
             title="Current logic"
-            description="This version now uses portfolio concentration as part of the recommendation process."
+            description="Rules and synthesis now run side by side so you can compare the old engine against the new advisory layer."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Trim winners that have become oversized relative to the rest of the portfolio.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Buy strong names that still look underweight in the portfolio.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Watch names that are materially below cost basis until the setup improves.</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Allow review workflow with accept, dismiss, and archive actions.</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Rules engine still handles the original portfolio concentration logic.</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Synthesis engine combines News Agent plus Macro Agent outputs into side-by-side advisory recommendations.</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Recommendation engine tags make it obvious which lane produced each output.</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">This is a validation phase, not a replacement phase.</li>
             </ul>
           </SectionCard>
         </div>
