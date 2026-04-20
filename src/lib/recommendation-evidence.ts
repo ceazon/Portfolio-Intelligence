@@ -1,3 +1,4 @@
+import { percentFromConfidence } from "@/lib/agent-output-contract";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 type ResearchInsightRow = {
@@ -59,7 +60,7 @@ export async function getResearchEvidenceContext(ownerId: string, symbolIds: str
     const bullish = insights.filter((item) => item.direction === "bullish").length;
     const bearish = insights.filter((item) => item.direction === "bearish").length;
     const mixed = insights.length - bullish - bearish;
-    const avgConfidence = insights.reduce((sum, item) => sum + (item.confidence_score ?? 50), 0) / insights.length;
+    const avgConfidence = insights.reduce((sum, item) => sum + (percentFromConfidence(item.confidence_score) ?? 50), 0) / insights.length;
     const dominant = bullish === bearish ? "mixed" : bullish > bearish ? "bullish" : "bearish";
 
     const summaryAddon =
@@ -80,7 +81,7 @@ export async function getResearchEvidenceContext(ownerId: string, symbolIds: str
 
     const evidenceRows = insights.map((insight, index) => ({
       research_insight_id: insight.id,
-      weight: Math.max(0.2, Number(((insight.confidence_score ?? 50) / 100 - index * 0.1).toFixed(2))),
+      weight: Math.max(0.2, Number((((percentFromConfidence(insight.confidence_score) ?? 50) / 100) - index * 0.1).toFixed(2))),
       note: insight.summary || insight.thesis || insight.title,
     }));
 

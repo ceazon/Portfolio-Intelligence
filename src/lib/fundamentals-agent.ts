@@ -1,3 +1,4 @@
+import { buildAgentOutputContract, confidenceFromPercent, scoreFromPercent } from "@/lib/agent-output-contract";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 const FINNHUB_BASE_URL = "https://finnhub.io/api/v1";
@@ -86,27 +87,30 @@ function buildFundamentalsAgentOutput(ownerId: string, symbol: TrackedSymbol, me
   if (ps !== null) score += ps > 12 ? -4 : ps < 4 ? 2 : 0;
   if (pb !== null) score += pb > 10 ? -3 : pb < 4 ? 1 : 0;
 
-  const normalizedScore = clamp(Math.round(score), 0, 100);
-  const confidenceScore = clamp(
+  const rawScore = clamp(Math.round(score), 0, 100);
+  const rawConfidence = clamp(
     35 + [pe, revenueGrowth, epsGrowth5Y, netMargin, operatingMargin, roe].filter((value) => value !== null).length * 8,
     30,
     90,
   );
 
-  const stance = normalizedScore >= 65 ? "supportive" : normalizedScore <= 40 ? "weak" : "mixed";
-  const actionBias = normalizedScore >= 65 ? "increase" : normalizedScore <= 40 ? "decrease" : "hold";
-  const targetWeightDelta = normalizedScore >= 65 ? 1.5 : normalizedScore <= 40 ? -1.5 : 0;
+  const normalizedScore = scoreFromPercent(rawScore);
+  const confidenceScore = confidenceFromPercent(rawConfidence);
+
+  const stance = normalizedScore >= 0.2 ? "bullish" : normalizedScore <= -0.2 ? "bearish" : "neutral";
+  const actionBias = normalizedScore >= 0.2 ? "increase" : normalizedScore <= -0.2 ? "reduce" : "hold";
+  const targetWeightDelta = normalizedScore >= 0.2 ? 1.5 : normalizedScore <= -0.2 ? -1.5 : 0;
 
   const summary =
-    stance === "supportive"
+    stance === "bullish"
       ? `${symbol.ticker} fundamentals look supportive overall, with enough quality and growth to reinforce the long case.`
-      : stance === "weak"
+      : stance === "bearish"
         ? `${symbol.ticker} fundamentals look weak enough to limit confidence in the current setup.`
         : `${symbol.ticker} fundamentals are mixed, with some support but not enough clarity to strongly raise conviction.`;
 
   const thesis = `P/E ${pe ?? "n/a"}, revenue growth ${revenueGrowth ?? "n/a"}%, EPS growth 5Y ${epsGrowth5Y ?? "n/a"}%, net margin ${netMargin ?? "n/a"}%, ROE ${roe ?? "n/a"}%.`;
 
-  return {
+  return buildAgentOutputContract({
     owner_id: ownerId,
     agent_name: FUNDAMENTALS_AGENT_NAME,
     symbol_id: symbol.id,
@@ -133,7 +137,7 @@ function buildFundamentalsAgentOutput(ownerId: string, symbol: TrackedSymbol, me
       market_cap_m: marketCap,
     },
     expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(),
-  };
+  });
 }
 
 export async function refreshFundamentalsAndAgent(ownerId: string) {

@@ -1,3 +1,4 @@
+import { buildAgentOutputContract, confidenceFromPercent, scoreFromPercent, type AgentStance } from "@/lib/agent-output-contract";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 import { getFinnhubCompanyNews } from "@/lib/finnhub-news";
@@ -109,18 +110,19 @@ export function buildInsight(symbol: TrackedSymbol, results: NewsItem[]) {
 }
 
 function buildNewsAgentOutput(ownerId: string, researchRunId: string, symbol: TrackedSymbol, insight: ReturnType<typeof buildInsight>) {
-  const stance = insight.direction;
-  const normalizedScore =
+  const stance: AgentStance = insight.direction === "bullish" ? "bullish" : insight.direction === "bearish" ? "bearish" : "neutral";
+  const rawScore =
     stance === "bullish"
       ? Math.min(100, 55 + insight.confidenceScore * 0.45)
       : stance === "bearish"
         ? Math.max(0, 45 - insight.confidenceScore * 0.35)
         : 50;
+  const normalizedScore = scoreFromPercent(rawScore);
   const actionBias =
     stance === "bullish"
       ? "increase"
       : stance === "bearish"
-        ? "decrease"
+        ? "reduce"
         : "hold";
   const targetWeightDelta =
     stance === "bullish"
@@ -129,7 +131,7 @@ function buildNewsAgentOutput(ownerId: string, researchRunId: string, symbol: Tr
         ? -Math.min(4, Number((insight.confidenceScore / 28).toFixed(2)))
         : 0;
 
-  return {
+  return buildAgentOutputContract({
     owner_id: ownerId,
     research_run_id: researchRunId,
     agent_name: NEWS_AGENT_NAME,
@@ -137,8 +139,8 @@ function buildNewsAgentOutput(ownerId: string, researchRunId: string, symbol: Tr
     scope_type: "symbol",
     scope_key: symbol.ticker,
     stance,
-    normalized_score: Number(normalizedScore.toFixed(2)),
-    confidence_score: insight.confidenceScore,
+    normalized_score: normalizedScore,
+    confidence_score: confidenceFromPercent(insight.confidenceScore),
     action_bias: actionBias,
     target_weight_delta: Number(targetWeightDelta.toFixed(2)),
     time_horizon: "days",
@@ -150,7 +152,7 @@ function buildNewsAgentOutput(ownerId: string, researchRunId: string, symbol: Tr
       evidence: insight.evidenceJson,
     },
     expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
-  };
+  });
 }
 
 function buildBearCaseAgentOutput(ownerId: string, researchRunId: string, symbol: TrackedSymbol, insight: ReturnType<typeof buildInsight>) {
@@ -161,23 +163,25 @@ function buildBearCaseAgentOutput(ownerId: string, researchRunId: string, symbol
         ? Math.max(18, 42 - insight.confidenceScore * 0.2)
         : Math.min(70, 38 + insight.confidenceScore * 0.2);
 
-  const stance = downsidePressure >= 62 ? "bearish" : downsidePressure <= 32 ? "limited" : "cautious";
-  const actionBias = downsidePressure >= 62 ? "decrease" : downsidePressure <= 32 ? "hold" : "decrease";
+  const rawScore = 50 - (downsidePressure - 50);
+  const normalizedScore = scoreFromPercent(rawScore);
+  const stance = normalizedScore <= -0.2 ? "bearish" : normalizedScore >= 0.2 ? "bullish" : "neutral";
+  const actionBias = normalizedScore <= -0.2 ? "reduce" : normalizedScore >= 0.2 ? "hold" : "avoid";
   const targetWeightDelta = downsidePressure >= 62 ? -Math.min(4.5, Number((insight.confidenceScore / 20).toFixed(2))) : downsidePressure >= 45 ? -Math.min(2.5, Number((insight.confidenceScore / 35).toFixed(2))) : 0;
   const summary =
-    stance === "bearish"
+    normalizedScore <= -0.2
       ? `${symbol.ticker} bear case is material right now, with enough downside pressure to challenge the upside thesis.`
-      : stance === "cautious"
+      : normalizedScore < 0.2
         ? `${symbol.ticker} still has a live downside case, even if it is not strong enough yet to fully break the setup.`
         : `${symbol.ticker} bear case currently looks limited, with no dominant downside signal in the latest research pass.`;
   const thesis =
-    stance === "bearish"
+    normalizedScore <= -0.2
       ? `If the current setup weakens, ${symbol.ticker} could re-rate lower because recent signals include enough cautionary pressure to challenge confidence.`
-      : stance === "cautious"
+      : normalizedScore < 0.2
         ? `The downside case for ${symbol.ticker} is not dominant, but there is enough caution in recent coverage to justify tighter risk discipline.`
         : `The downside case for ${symbol.ticker} currently looks contained, though that can change quickly if new negative catalysts appear.`;
 
-  return {
+  return buildAgentOutputContract({
     owner_id: ownerId,
     research_run_id: researchRunId,
     agent_name: BEAR_CASE_AGENT_NAME,
@@ -185,8 +189,8 @@ function buildBearCaseAgentOutput(ownerId: string, researchRunId: string, symbol
     scope_type: "symbol",
     scope_key: symbol.ticker,
     stance,
-    normalized_score: Number(downsidePressure.toFixed(2)),
-    confidence_score: Math.max(25, insight.confidenceScore - (insight.direction === "bullish" ? 10 : 0)),
+    normalized_score: normalizedScore,
+    confidence_score: confidenceFromPercent(Math.max(25, insight.confidenceScore - (insight.direction === "bullish" ? 10 : 0))),
     action_bias: actionBias,
     target_weight_delta: Number(targetWeightDelta.toFixed(2)),
     time_horizon: "days",
@@ -198,7 +202,7 @@ function buildBearCaseAgentOutput(ownerId: string, researchRunId: string, symbol
       evidence: insight.evidenceJson,
     },
     expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
-  };
+  });
 }
 
 async function getTrackedSymbols() {
@@ -298,7 +302,7 @@ export async function runSharedNewsResearch(ownerId: string): Promise<SharedNews
         summary: insight.summary,
         thesis: insight.thesis,
         direction: insight.direction,
-        confidence_score: insight.confidenceScore,
+        confidence_score: confidenceFromPercent(insight.confidenceScore),
         time_horizon: "days",
         evidence_json: insight.evidenceJson,
         source_urls_json: insight.sourceUrlsJson,

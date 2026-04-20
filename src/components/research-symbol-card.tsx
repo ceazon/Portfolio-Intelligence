@@ -1,3 +1,4 @@
+import { formatConfidencePercent } from "@/lib/agent-output-format";
 import { formatAppDateTime } from "@/lib/time";
 
 type EvidenceItem = {
@@ -51,7 +52,7 @@ export function ResearchSymbolCard({ ticker, name, summary, thesis, direction, c
           </p>
           <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
             {direction || "mixed"}
-            {typeof confidenceScore === "number" ? ` · ${confidenceScore}/100 confidence` : ""}
+            {typeof confidenceScore === "number" ? ` · ${formatConfidencePercent(confidenceScore)} confidence` : ""}
             {corroborated ? " · corroborated" : " · single-feed"}
           </p>
         </div>

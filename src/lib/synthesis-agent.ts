@@ -125,31 +125,31 @@ function getOpenAIClient() {
 
 function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: AgentOutputRow | null): SynthesizedRecommendation[] {
   return candidates.map((candidate) => {
-    let score = 50;
-    score += ((candidate.news?.normalizedScore ?? 50) - 50) * 0.5;
-    score += ((candidate.fundamentals?.normalizedScore ?? 50) - 50) * 0.35;
-    score += ((macro?.normalized_score ?? 50) - 50) * 0.2;
-    score -= ((candidate.bearCase?.normalizedScore ?? 35) - 35) * 0.55;
+    let score = 0;
+    score += (candidate.news?.normalizedScore ?? 0) * 0.5;
+    score += (candidate.fundamentals?.normalizedScore ?? 0) * 0.35;
+    score += (macro?.normalized_score ?? 0) * 0.2;
+    score -= (candidate.bearCase?.normalizedScore ?? -0.3) * 0.55;
     score += (candidate.priceChangePct ?? 0) * 1.2;
     score -= Math.max(0, (candidate.currentWeight ?? 0) - 10) * 1.8;
     if ((candidate.gainLossPct ?? 0) < -10) score -= 6;
     if ((candidate.gainLossPct ?? 0) > 20) score += 4;
 
-    const convictionBase = (candidate.news?.confidenceScore ?? 50) * 0.35 + (candidate.fundamentals?.confidenceScore ?? 50) * 0.3 + (macro?.confidence_score ?? 40) * 0.2;
-    const bearPenalty = (candidate.bearCase?.confidenceScore ?? 30) * ((candidate.bearCase?.normalizedScore ?? 35) >= 55 ? 0.28 : 0.12);
+    const convictionBase = ((candidate.news?.confidenceScore ?? 0.5) * 100) * 0.35 + ((candidate.fundamentals?.confidenceScore ?? 0.5) * 100) * 0.3 + ((macro?.confidence_score ?? 0.4) * 100) * 0.2;
+    const bearPenalty = ((candidate.bearCase?.confidenceScore ?? 0.3) * 100) * ((candidate.bearCase?.normalizedScore ?? -0.3) <= -0.1 ? 0.28 : 0.12);
     const conviction = clamp(Math.round(convictionBase + 18 - bearPenalty), 10, 95);
-    const finalScore = clamp(Math.round(score), 0, 100);
+    const finalScore = clamp(Math.round(50 + score * 50), 0, 100);
     const hasPosition = (candidate.currentWeight ?? 0) > 0;
     const action = finalScore >= 63 ? "buy" : finalScore <= 40 ? (hasPosition ? "trim" : "watch") : "hold";
     const targetWeight = hasPosition
-      ? clamp(Number((((candidate.currentWeight ?? 0) + (candidate.news?.targetWeightDelta ?? 0) + (candidate.fundamentals?.targetWeightDelta ?? 0) + (macro?.stance === "risk-on" ? 0.8 : macro?.stance === "risk-off" ? -0.8 : 0))).toFixed(2)), 1, 15)
+      ? clamp(Number((((candidate.currentWeight ?? 0) + (candidate.news?.targetWeightDelta ?? 0) + (candidate.fundamentals?.targetWeightDelta ?? 0) + (macro?.stance === "bullish" ? 0.8 : macro?.stance === "bearish" ? -0.8 : 0))).toFixed(2)), 1, 15)
       : action === "buy"
         ? clamp(Number((3 + (candidate.news?.targetWeightDelta ?? 0) / 2 + (candidate.fundamentals?.targetWeightDelta ?? 0) / 2).toFixed(2)), 1, 8)
         : null;
 
     const priceAnchor = candidate.currentPrice ?? null;
-    const fundamentalsLift = ((candidate.fundamentals?.normalizedScore ?? 50) - 50) / 250;
-    const bearDrag = ((candidate.bearCase?.normalizedScore ?? 35) - 35) / 220;
+    const fundamentalsLift = (candidate.fundamentals?.normalizedScore ?? 0) / 5;
+    const bearDrag = Math.max(0, -((candidate.bearCase?.normalizedScore ?? 0) / 4));
     const targetPrice =
       priceAnchor === null
         ? null

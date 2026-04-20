@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
+import { formatConfidencePercent, formatNormalizedScore, formatStanceLabel } from "@/lib/agent-output-format";
 import { formatAppDateTime } from "@/lib/time";
 
 type AgentOutputRow = {
@@ -82,11 +83,11 @@ export default async function AgentsPage() {
                 {globalOutputs.map((output) => (
                   <div key={output.id} className="rounded-xl border border-indigo-800/50 bg-zinc-900/60 p-3">
                     <p className="text-xs uppercase tracking-wide text-zinc-500">{output.agent_name}</p>
-                    <p className="mt-2 text-sm font-medium text-zinc-100">{output.stance || "no stance"}</p>
+                    <p className="mt-2 text-sm font-medium text-zinc-100">{formatStanceLabel(output.stance)}</p>
                     <p className="mt-1 text-sm text-zinc-400">{output.summary || output.thesis || "No summary yet."}</p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
-                      {output.normalized_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Score {output.normalized_score}</span> : null}
-                      {output.confidence_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Confidence {output.confidence_score}</span> : null}
+                      {output.normalized_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Score {formatNormalizedScore(output.normalized_score)}</span> : null}
+                      {output.confidence_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Confidence {formatConfidencePercent(output.confidence_score)}</span> : null}
                       {output.action_bias ? <span className="rounded-full border border-zinc-700 px-2 py-1">Bias {output.action_bias}</span> : null}
                     </div>
                     <p className="mt-3 text-xs text-zinc-500">{formatAppDateTime(output.created_at)}</p>
@@ -121,11 +122,11 @@ export default async function AgentsPage() {
                       {outputs.map((output) => (
                         <div key={output.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
                           <p className="text-xs uppercase tracking-wide text-zinc-500">{output.agent_name}</p>
-                          <p className="mt-2 text-sm font-medium text-zinc-100">{output.stance || "no stance"}</p>
+                          <p className="mt-2 text-sm font-medium text-zinc-100">{formatStanceLabel(output.stance)}</p>
                           <p className="mt-1 text-sm text-zinc-400">{output.summary || output.thesis || "No summary yet."}</p>
                           <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
-                            {output.normalized_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Score {output.normalized_score}</span> : null}
-                            {output.confidence_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Confidence {output.confidence_score}</span> : null}
+                            {output.normalized_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Score {formatNormalizedScore(output.normalized_score)}</span> : null}
+                            {output.confidence_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Confidence {formatConfidencePercent(output.confidence_score)}</span> : null}
                             {output.action_bias ? <span className="rounded-full border border-zinc-700 px-2 py-1">Bias {output.action_bias}</span> : null}
                             {output.target_weight_delta !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Δ {output.target_weight_delta}%</span> : null}
                           </div>

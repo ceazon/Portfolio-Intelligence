@@ -4,6 +4,7 @@ import { SectionCard } from "@/components/section-card";
 import { RunNewsResearchForm } from "@/components/run-news-research-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
+import { formatConfidencePercent } from "@/lib/agent-output-format";
 import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
 
 type EvidenceItem = {
@@ -128,7 +129,7 @@ export default async function ResearchPage() {
                           </p>
                           <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
                             {insight.direction || "mixed"}
-                            {typeof insight.confidence_score === "number" ? ` · ${insight.confidence_score}/100 confidence` : ""}
+                            {typeof insight.confidence_score === "number" ? ` · ${formatConfidencePercent(insight.confidence_score)} confidence` : ""}
                           </p>
                         </div>
                         <span className="rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-300">{run?.run_type || "research"}</span>
