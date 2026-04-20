@@ -17,6 +17,19 @@ type AgentOutputRow = {
   created_at: string;
 };
 
+type SymbolFundamentalsRow = {
+  symbol_id: string;
+  pe_ttm: number | null;
+  pb_ttm: number | null;
+  ps_ttm: number | null;
+  revenue_growth_ttm: number | null;
+  eps_growth_5y: number | null;
+  net_margin_ttm: number | null;
+  operating_margin_ttm: number | null;
+  roe_ttm: number | null;
+  market_cap_m: number | null;
+};
+
 type PositionRow = {
   portfolio_id: string;
   quantity: number | null;
@@ -86,9 +99,35 @@ type SynthesisCandidate = {
   gainLossPct: number | null;
   priceChangePct: number | null;
   currentPrice: number | null;
+  fundamentalsSnapshot?: {
+    peTtm: number | null;
+    pbTtm: number | null;
+    psTtm: number | null;
+    revenueGrowthTtm: number | null;
+    epsGrowth5Y: number | null;
+    netMarginTtm: number | null;
+    operatingMarginTtm: number | null;
+    roeTtm: number | null;
+    marketCapM: number | null;
+  } | null;
   news: AgentSignal | null;
   bearCase: AgentSignal | null;
   fundamentals: AgentSignal | null;
+};
+
+type ValuationArchetype = "high-growth" | "platform" | "financial" | "quality" | "cyclical" | "defensive";
+
+type ScenarioSet = {
+  archetype: ValuationArchetype;
+  bullTarget: number | null;
+  baseTarget: number | null;
+  bearTarget: number | null;
+  bullProbability: number;
+  baseProbability: number;
+  bearProbability: number;
+  weightedTarget: number | null;
+  valuationConfidence: number;
+  rationale: string;
 };
 
 type SynthesizedRecommendation = {
@@ -117,6 +156,129 @@ function confidenceLabel(score: number): "low" | "medium" | "high" {
   return "low";
 }
 
+function inferArchetype(candidate: SynthesisCandidate): ValuationArchetype {
+  const f = candidate.fundamentalsSnapshot;
+  const ps = f?.psTtm ?? null;
+  const pb = f?.pbTtm ?? null;
+  const pe = f?.peTtm ?? null;
+  const growth = f?.revenueGrowthTtm ?? null;
+  const margin = f?.netMarginTtm ?? null;
+  const marketCapM = f?.marketCapM ?? null;
+
+  if ((pb !== null && pb >= 1.2 && pb <= 3.5 && pe !== null && pe <= 16) || /bank|bancorp|financial/i.test(candidate.name || candidate.ticker)) {
+    return "financial";
+  }
+
+  if ((growth !== null && growth >= 18) || (ps !== null && ps >= 8)) {
+    return "high-growth";
+  }
+
+  if (marketCapM !== null && marketCapM >= 300000 && margin !== null && margin >= 18) {
+    return "platform";
+  }
+
+  if (margin !== null && margin >= 14 && pe !== null && pe <= 28) {
+    return "quality";
+  }
+
+  if (margin !== null && margin < 8 && growth !== null && growth < 5) {
+    return "defensive";
+  }
+
+  return "cyclical";
+}
+
+function buildScenarioSet(candidate: SynthesisCandidate, macro: AgentOutputRow | null): ScenarioSet {
+  const price = candidate.currentPrice;
+  const f = candidate.fundamentalsSnapshot;
+  const newsScore = candidate.news?.normalizedScore ?? 0;
+  const fundamentalsScore = candidate.fundamentals?.normalizedScore ?? 0;
+  const bearScore = candidate.bearCase?.normalizedScore ?? 0;
+  const macroScore = macro?.normalized_score ?? 0;
+  const archetype = inferArchetype(candidate);
+
+  if (price === null || price === undefined) {
+    return {
+      archetype,
+      bullTarget: null,
+      baseTarget: null,
+      bearTarget: null,
+      bullProbability: 0.25,
+      baseProbability: 0.5,
+      bearProbability: 0.25,
+      weightedTarget: null,
+      valuationConfidence: 45,
+      rationale: `${candidate.ticker}: no live price anchor was available for scenario valuation.`,
+    };
+  }
+
+  let baseUpside = 0.08;
+  let bullUpside = 0.18;
+  let bearDownside = 0.14;
+
+  if (archetype === "high-growth") {
+    baseUpside = 0.16;
+    bullUpside = 0.34;
+    bearDownside = 0.2;
+  } else if (archetype === "platform") {
+    baseUpside = 0.12;
+    bullUpside = 0.24;
+    bearDownside = 0.14;
+  } else if (archetype === "financial") {
+    baseUpside = 0.09;
+    bullUpside = 0.18;
+    bearDownside = 0.12;
+  } else if (archetype === "quality") {
+    baseUpside = 0.11;
+    bullUpside = 0.21;
+    bearDownside = 0.13;
+  } else if (archetype === "defensive") {
+    baseUpside = 0.07;
+    bullUpside = 0.14;
+    bearDownside = 0.1;
+  }
+
+  const growthLift = clamp(((f?.revenueGrowthTtm ?? 0) / 100) * 0.35, -0.06, 0.16);
+  const marginLift = clamp(((f?.netMarginTtm ?? 0) / 100) * 0.18, -0.04, 0.08);
+  const roeLift = clamp(((f?.roeTtm ?? 0) / 100) * 0.12, -0.03, 0.07);
+  const valuationDrag = clamp(((f?.peTtm ?? 20) - 22) / 180, -0.06, 0.12) + clamp(((f?.psTtm ?? 4) - 5) / 60, -0.04, 0.1);
+  const structuralAdjustment = growthLift + marginLift + roeLift - valuationDrag;
+  const agentAdjustment = newsScore * 0.08 + fundamentalsScore * 0.1 + macroScore * 0.04 + bearScore * 0.12;
+
+  const bullTarget = Number((price * (1 + bullUpside + structuralAdjustment + Math.max(0, agentAdjustment) * 0.9)).toFixed(2));
+  const baseTarget = Number((price * (1 + baseUpside + structuralAdjustment + agentAdjustment * 0.45)).toFixed(2));
+  const bearTarget = Number((price * (1 - bearDownside + Math.min(0, agentAdjustment) * 0.45 + Math.min(0, bearScore) * 0.18)).toFixed(2));
+
+  let bullProbability = 0.25 + Math.max(0, newsScore) * 0.08 + Math.max(0, fundamentalsScore) * 0.1 + Math.max(0, macroScore) * 0.03;
+  let baseProbability = 0.5 - Math.abs(newsScore - fundamentalsScore) * 0.08;
+  let bearProbability = 0.25 + Math.max(0, -bearScore) * 0.12 + Math.max(0, -macroScore) * 0.04;
+
+  const probabilityTotal = bullProbability + baseProbability + bearProbability;
+  bullProbability = bullProbability / probabilityTotal;
+  baseProbability = baseProbability / probabilityTotal;
+  bearProbability = bearProbability / probabilityTotal;
+
+  const weightedTarget = Number((bullTarget * bullProbability + baseTarget * baseProbability + bearTarget * bearProbability).toFixed(2));
+  const valuationConfidence = clamp(
+    Math.round(52 + (candidate.fundamentals?.confidenceScore ?? 0.45) * 24 + (candidate.news?.confidenceScore ?? 0.45) * 10 - Math.abs(newsScore - fundamentalsScore) * 10),
+    35,
+    88,
+  );
+
+  return {
+    archetype,
+    bullTarget,
+    baseTarget,
+    bearTarget,
+    bullProbability: Number(bullProbability.toFixed(2)),
+    baseProbability: Number(baseProbability.toFixed(2)),
+    bearProbability: Number(bearProbability.toFixed(2)),
+    weightedTarget,
+    valuationConfidence,
+    rationale: `${candidate.ticker}: ${archetype} valuation anchor built from current price, growth, margin, valuation, and agent pressure across bull/base/bear scenarios.`,
+  };
+}
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
@@ -125,6 +287,7 @@ function getOpenAIClient() {
 
 function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: AgentOutputRow | null): SynthesizedRecommendation[] {
   return candidates.map((candidate) => {
+    const scenarios = buildScenarioSet(candidate, macro);
     const newsScore = candidate.news?.normalizedScore ?? 0;
     const fundamentalsScore = candidate.fundamentals?.normalizedScore ?? 0;
     const macroScore = macro?.normalized_score ?? 0;
@@ -144,9 +307,8 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
 
     const blendedSignal = clamp(weightedSignal * 0.82 + momentumAdjustment + lossAdjustment - sizePenalty, -1, 1);
     const convictionBase = evidenceQuality * 100;
-    const disagreementPenalty = Math.abs(newsScore - fundamentalsScore) * 12 + Math.max(0, bearScore - Math.max(newsScore, fundamentalsScore)) * 18;
+    const disagreementPenalty = Math.abs(newsScore - fundamentalsScore) * 12 + Math.max(0, -bearScore - Math.max(newsScore, fundamentalsScore)) * 18;
     const conviction = clamp(Math.round(convictionBase + Math.max(0, blendedSignal) * 18 - disagreementPenalty), 18, 92);
-    const finalScore = clamp(Math.round(50 + blendedSignal * 50), 0, 100);
 
     const action = blendedSignal >= 0.22 ? "buy" : blendedSignal <= -0.24 ? (hasPosition ? "trim" : "watch") : "hold";
 
@@ -159,41 +321,29 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
         ? clamp(Number((2 + Math.max(0.4, rawWeightTilt) + Math.max(0, blendedSignal) * 2.2).toFixed(2)), 1, 7)
         : null;
 
-    const priceAnchor = candidate.currentPrice ?? null;
-    const upsideFactor = Math.max(0, blendedSignal) * 0.22 + Math.max(0, fundamentalsScore) * 0.1 + Math.max(0, macroScore) * 0.04;
-    const downsideFactor = Math.max(0, -bearScore) * 0.12 + Math.max(0, -blendedSignal) * 0.08;
-    const targetPrice =
-      priceAnchor === null
-        ? null
-        : action === "buy"
-          ? Number((priceAnchor * (1 + upsideFactor - downsideFactor / 2)).toFixed(2))
-          : action === "trim"
-            ? Number((priceAnchor * (1 - Math.max(0.04, downsideFactor) + Math.max(0, fundamentalsScore) * 0.03)).toFixed(2))
-            : Number((priceAnchor * (1 + upsideFactor * 0.45 - downsideFactor * 0.55)).toFixed(2));
-
     const summary =
       action === "buy"
-        ? `${candidate.ticker}: add selectively, because the combined news and fundamentals case is supportive enough to justify disciplined upside exposure.`
+        ? `${candidate.ticker}: add selectively, because the ${scenarios.archetype} valuation anchor and current agent mix still support disciplined upside exposure.`
         : action === "trim"
-          ? `${candidate.ticker}: reduce exposure, because downside pressure is strong enough to outweigh the current upside case.`
+          ? `${candidate.ticker}: reduce exposure, because the downside scenario is strong enough to outweigh the current upside case.`
           : action === "watch"
-            ? `${candidate.ticker}: stay on watch, because the setup is not yet attractive enough to justify new risk.`
-            : `${candidate.ticker}: hold current sizing, because the evidence is constructive but not decisive enough to press harder.`;
+            ? `${candidate.ticker}: stay on watch, because the scenario-weighted target is not attractive enough yet to justify new risk.`
+            : `${candidate.ticker}: hold current sizing, because the scenario-weighted valuation is constructive but not decisive enough to press harder.`;
 
     const risks =
       bearScore < -0.2
-        ? `${candidate.ticker}: the bear case is still live, so negative follow-through could cut conviction quickly.`
-        : `${candidate.ticker}: mixed evidence or weaker follow-through could cap upside faster than expected.`;
+        ? `${candidate.ticker}: the bear case is still live, with roughly ${Math.round(scenarios.bearProbability * 100)}% weight on the downside scenario.`
+        : `${candidate.ticker}: mixed evidence or weaker follow-through could pull the outcome back toward the bear case.`;
 
     return {
       symbolId: candidate.symbolId,
       action,
       targetWeight,
-      targetPrice,
-      convictionScore: conviction,
+      targetPrice: scenarios.weightedTarget,
+      convictionScore: Math.max(conviction, scenarios.valuationConfidence),
       summary,
       risks,
-      confidence: confidenceLabel(conviction),
+      confidence: confidenceLabel(Math.max(conviction, scenarios.valuationConfidence)),
     };
   });
 }
@@ -213,7 +363,10 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
           thesis: macro.thesis,
         }
       : null,
-    candidates,
+    candidates: candidates.map((candidate) => ({
+      ...candidate,
+      valuationScenarios: buildScenarioSet(candidate, macro),
+    })),
   };
 
   const response = await client.responses.create({
@@ -225,7 +378,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
           {
             type: "input_text",
             text:
-              "You are a portfolio recommendation synthesizer. Combine a global macro agent, a per-symbol news agent, a per-symbol bear case agent, and a per-symbol fundamentals agent into advisory recommendations. Return strict JSON only. Actions must be one of: buy, hold, trim, watch. Conviction score must be 0-100. Confidence must be one of: low, medium, high. Keep summaries and risks concise, concrete, and investment-advisory in tone. Do not summarize headlines, do not mention agents, do not mention news feeds, and do not explain chain-of-thought. The summary should read like a short recommendation a user can act on, ideally one sentence. The risk should be one short sentence. Bear case output should materially reduce conviction and target price when downside pressure is meaningful. Strong fundamentals should support conviction and target price, while weak fundamentals should cap both. Respect current weight and avoid absurd target weights.",
+              "You are a portfolio recommendation synthesizer. Combine a global macro agent, a per-symbol news agent, a per-symbol bear case agent, a per-symbol fundamentals agent, and a valuation scenario engine into advisory recommendations. The valuation engine provides archetype-based bull/base/bear scenarios and a weighted target. Use that valuation output as the target-price anchor. Return strict JSON only. Actions must be one of: buy, hold, trim, watch. Conviction score must be 0-100. Confidence must be one of: low, medium, high. Keep summaries and risks concise, concrete, and investment-advisory in tone. Do not summarize headlines, do not mention agents, and do not explain chain-of-thought. Respect current weight and avoid absurd target weights. When the valuation anchor and agent stack disagree, lower conviction instead of forcing a strong call.",
           },
         ],
       },
@@ -299,7 +452,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
       model: "gpt-4.1-mini",
       status: "running",
       trigger_type: "manual",
-      summary: "Synthesizing advisory recommendations from current news, bear case, fundamentals, and macro agent outputs.",
+      summary: "Synthesizing advisory recommendations from current news, bear case, fundamentals, macro, and valuation scenario outputs.",
       started_at: new Date().toISOString(),
     })
     .select("id")
@@ -310,7 +463,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
   }
 
   try {
-    const [{ data: agentOutputs, error: agentOutputsError }, { data: positions, error: positionsError }, { data: watchlistItems, error: watchlistError }] = await Promise.all([
+    const [{ data: agentOutputs, error: agentOutputsError }, { data: positions, error: positionsError }, { data: watchlistItems, error: watchlistError }, { data: fundamentalsSnapshots, error: fundamentalsSnapshotsError }] = await Promise.all([
       supabase
         .from("agent_outputs")
         .select("id, symbol_id, scope_type, scope_key, agent_name, stance, normalized_score, confidence_score, action_bias, target_weight_delta, summary, thesis, created_at")
@@ -323,11 +476,15 @@ export async function runRecommendationSynthesis(ownerId: string) {
       supabase
         .from("watchlist_items")
         .select("symbols(id, ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))"),
+      supabase
+        .from("symbol_fundamentals")
+        .select("symbol_id, pe_ttm, pb_ttm, ps_ttm, revenue_growth_ttm, eps_growth_5y, net_margin_ttm, operating_margin_ttm, roe_ttm, market_cap_m"),
     ]);
 
     if (agentOutputsError) throw new Error(agentOutputsError.message);
     if (positionsError) throw new Error(positionsError.message);
     if (watchlistError) throw new Error(watchlistError.message);
+    if (fundamentalsSnapshotsError) throw new Error(fundamentalsSnapshotsError.message);
 
     const outputs = (agentOutputs || []) as AgentOutputRow[];
     const macro = outputs.find((row) => row.agent_name === "macro-agent" && row.scope_type === "global") || null;
@@ -344,6 +501,8 @@ export async function runRecommendationSynthesis(ownerId: string) {
 
     const positionRows = (positions || []) as PositionRow[];
     const watchlistRows = (watchlistItems || []) as WatchlistRow[];
+    const fundamentalsRows = (fundamentalsSnapshots || []) as SymbolFundamentalsRow[];
+    const fundamentalsSnapshotsBySymbol = new Map(fundamentalsRows.map((row) => [row.symbol_id, row]));
 
     const portfolioTotals = new Map<string, number>();
     positionRows.forEach((position) => {
@@ -371,6 +530,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
       const news = newsBySymbol.get(symbol.id);
       const bearCase = bearCaseBySymbol.get(symbol.id);
       const fundamentals = fundamentalsBySymbol.get(symbol.id);
+      const fundamentalsSnapshot = fundamentalsSnapshotsBySymbol.get(symbol.id);
 
       candidates.push({
         symbolId: symbol.id,
@@ -381,6 +541,19 @@ export async function runRecommendationSynthesis(ownerId: string) {
         gainLossPct,
         priceChangePct: quote?.percent_change ?? null,
         currentPrice: quote?.price ?? null,
+        fundamentalsSnapshot: fundamentalsSnapshot
+          ? {
+              peTtm: fundamentalsSnapshot.pe_ttm ?? null,
+              pbTtm: fundamentalsSnapshot.pb_ttm ?? null,
+              psTtm: fundamentalsSnapshot.ps_ttm ?? null,
+              revenueGrowthTtm: fundamentalsSnapshot.revenue_growth_ttm ?? null,
+              epsGrowth5Y: fundamentalsSnapshot.eps_growth_5y ?? null,
+              netMarginTtm: fundamentalsSnapshot.net_margin_ttm ?? null,
+              operatingMarginTtm: fundamentalsSnapshot.operating_margin_ttm ?? null,
+              roeTtm: fundamentalsSnapshot.roe_ttm ?? null,
+              marketCapM: fundamentalsSnapshot.market_cap_m ?? null,
+            }
+          : null,
         news: news
           ? {
               stance: news.stance,
@@ -424,6 +597,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
       const news = newsBySymbol.get(symbol.id);
       const bearCase = bearCaseBySymbol.get(symbol.id);
       const fundamentals = fundamentalsBySymbol.get(symbol.id);
+      const fundamentalsSnapshot = fundamentalsSnapshotsBySymbol.get(symbol.id);
 
       candidates.push({
         symbolId: symbol.id,
@@ -434,6 +608,19 @@ export async function runRecommendationSynthesis(ownerId: string) {
         gainLossPct: null,
         priceChangePct: quote?.percent_change ?? null,
         currentPrice: quote?.price ?? null,
+        fundamentalsSnapshot: fundamentalsSnapshot
+          ? {
+              peTtm: fundamentalsSnapshot.pe_ttm ?? null,
+              pbTtm: fundamentalsSnapshot.pb_ttm ?? null,
+              psTtm: fundamentalsSnapshot.ps_ttm ?? null,
+              revenueGrowthTtm: fundamentalsSnapshot.revenue_growth_ttm ?? null,
+              epsGrowth5Y: fundamentalsSnapshot.eps_growth_5y ?? null,
+              netMarginTtm: fundamentalsSnapshot.net_margin_ttm ?? null,
+              operatingMarginTtm: fundamentalsSnapshot.operating_margin_ttm ?? null,
+              roeTtm: fundamentalsSnapshot.roe_ttm ?? null,
+              marketCapM: fundamentalsSnapshot.market_cap_m ?? null,
+            }
+          : null,
         news: news
           ? {
               stance: news.stance,
@@ -515,7 +702,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
       .update({
         model: usedModel,
         status: "completed",
-        summary: `Synthesized ${rowsToInsert.length} advisory recommendation${rowsToInsert.length === 1 ? "" : "s"} from news, bear case, fundamentals, and macro agent outputs.`,
+        summary: `Synthesized ${rowsToInsert.length} advisory recommendation${rowsToInsert.length === 1 ? "" : "s"} from news, bear case, fundamentals, macro, and valuation scenarios.`,
         completed_at: new Date().toISOString(),
       })
       .eq("id", synthesisRun.id);
