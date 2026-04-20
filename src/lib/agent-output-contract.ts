@@ -24,7 +24,6 @@ export type AgentOutputContract = {
   evidence_json: AgentEvidence;
   action_bias?: AgentActionBias;
   target_weight_delta?: number;
-  target_price?: number;
   time_horizon?: string;
   expires_at?: string;
 };
@@ -73,6 +72,5 @@ export function buildAgentOutputContract(input: AgentOutputContract): AgentOutpu
     stance: inferStanceFromScore(input.normalized_score),
     action_bias: input.action_bias,
     target_weight_delta: typeof input.target_weight_delta === "number" ? Number(input.target_weight_delta.toFixed(2)) : undefined,
-    target_price: typeof input.target_price === "number" ? Number(input.target_price.toFixed(2)) : undefined,
   };
 }
