@@ -125,39 +125,65 @@ function getOpenAIClient() {
 
 function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: AgentOutputRow | null): SynthesizedRecommendation[] {
   return candidates.map((candidate) => {
-    let score = 0;
-    score += (candidate.news?.normalizedScore ?? 0) * 0.5;
-    score += (candidate.fundamentals?.normalizedScore ?? 0) * 0.35;
-    score += (macro?.normalized_score ?? 0) * 0.2;
-    score -= (candidate.bearCase?.normalizedScore ?? -0.3) * 0.55;
-    score += (candidate.priceChangePct ?? 0) * 1.2;
-    score -= Math.max(0, (candidate.currentWeight ?? 0) - 10) * 1.8;
-    if ((candidate.gainLossPct ?? 0) < -10) score -= 6;
-    if ((candidate.gainLossPct ?? 0) > 20) score += 4;
-
-    const convictionBase = ((candidate.news?.confidenceScore ?? 0.5) * 100) * 0.35 + ((candidate.fundamentals?.confidenceScore ?? 0.5) * 100) * 0.3 + ((macro?.confidence_score ?? 0.4) * 100) * 0.2;
-    const bearPenalty = ((candidate.bearCase?.confidenceScore ?? 0.3) * 100) * ((candidate.bearCase?.normalizedScore ?? -0.3) <= -0.1 ? 0.28 : 0.12);
-    const conviction = clamp(Math.round(convictionBase + 18 - bearPenalty), 10, 95);
-    const finalScore = clamp(Math.round(50 + score * 50), 0, 100);
+    const newsScore = candidate.news?.normalizedScore ?? 0;
+    const fundamentalsScore = candidate.fundamentals?.normalizedScore ?? 0;
+    const macroScore = macro?.normalized_score ?? 0;
+    const bearScore = candidate.bearCase?.normalizedScore ?? 0;
+    const newsConfidence = candidate.news?.confidenceScore ?? 0.45;
+    const fundamentalsConfidence = candidate.fundamentals?.confidenceScore ?? 0.45;
+    const macroConfidence = macro?.confidence_score ?? 0.4;
+    const bearConfidence = candidate.bearCase?.confidenceScore ?? 0.35;
     const hasPosition = (candidate.currentWeight ?? 0) > 0;
-    const action = finalScore >= 63 ? "buy" : finalScore <= 40 ? (hasPosition ? "trim" : "watch") : "hold";
+    const currentWeight = candidate.currentWeight ?? 0;
+
+    const weightedSignal = newsScore * 0.34 + fundamentalsScore * 0.33 + macroScore * 0.13 + bearScore * 0.2;
+    const evidenceQuality = newsConfidence * 0.34 + fundamentalsConfidence * 0.3 + macroConfidence * 0.14 + bearConfidence * 0.22;
+    const momentumAdjustment = clamp((candidate.priceChangePct ?? 0) / 40, -0.18, 0.18);
+    const lossAdjustment = (candidate.gainLossPct ?? 0) < -12 ? -0.06 : (candidate.gainLossPct ?? 0) > 25 ? 0.03 : 0;
+    const sizePenalty = currentWeight > 12 ? clamp((currentWeight - 12) / 20, 0, 0.22) : 0;
+
+    const blendedSignal = clamp(weightedSignal * 0.82 + momentumAdjustment + lossAdjustment - sizePenalty, -1, 1);
+    const convictionBase = evidenceQuality * 100;
+    const disagreementPenalty = Math.abs(newsScore - fundamentalsScore) * 12 + Math.max(0, bearScore - Math.max(newsScore, fundamentalsScore)) * 18;
+    const conviction = clamp(Math.round(convictionBase + Math.max(0, blendedSignal) * 18 - disagreementPenalty), 18, 92);
+    const finalScore = clamp(Math.round(50 + blendedSignal * 50), 0, 100);
+
+    const action = blendedSignal >= 0.22 ? "buy" : blendedSignal <= -0.24 ? (hasPosition ? "trim" : "watch") : "hold";
+
+    const rawWeightTilt = (candidate.news?.targetWeightDelta ?? 0) * 0.45 + (candidate.fundamentals?.targetWeightDelta ?? 0) * 0.4 + (macroScore > 0.2 ? 0.6 : macroScore < -0.2 ? -0.75 : 0);
     const targetWeight = hasPosition
-      ? clamp(Number((((candidate.currentWeight ?? 0) + (candidate.news?.targetWeightDelta ?? 0) + (candidate.fundamentals?.targetWeightDelta ?? 0) + (macro?.stance === "bullish" ? 0.8 : macro?.stance === "bearish" ? -0.8 : 0))).toFixed(2)), 1, 15)
+      ? action === "trim"
+        ? clamp(Number(Math.max(0, currentWeight + Math.min(rawWeightTilt, -0.75) - Math.max(0.5, conviction / 120)).toFixed(2)), 0, 15)
+        : clamp(Number((currentWeight + (action === "buy" ? Math.max(0.5, rawWeightTilt) : rawWeightTilt * 0.35)).toFixed(2)), 0.5, 15)
       : action === "buy"
-        ? clamp(Number((3 + (candidate.news?.targetWeightDelta ?? 0) / 2 + (candidate.fundamentals?.targetWeightDelta ?? 0) / 2).toFixed(2)), 1, 8)
+        ? clamp(Number((2 + Math.max(0.4, rawWeightTilt) + Math.max(0, blendedSignal) * 2.2).toFixed(2)), 1, 7)
         : null;
 
     const priceAnchor = candidate.currentPrice ?? null;
-    const fundamentalsLift = (candidate.fundamentals?.normalizedScore ?? 0) / 5;
-    const bearDrag = Math.max(0, -((candidate.bearCase?.normalizedScore ?? 0) / 4));
+    const upsideFactor = Math.max(0, blendedSignal) * 0.22 + Math.max(0, fundamentalsScore) * 0.1 + Math.max(0, macroScore) * 0.04;
+    const downsideFactor = Math.max(0, -bearScore) * 0.12 + Math.max(0, -blendedSignal) * 0.08;
     const targetPrice =
       priceAnchor === null
         ? null
         : action === "buy"
-          ? Number((priceAnchor * (1 + conviction / 220 + fundamentalsLift - bearDrag)).toFixed(2))
+          ? Number((priceAnchor * (1 + upsideFactor - downsideFactor / 2)).toFixed(2))
           : action === "trim"
-            ? Number((priceAnchor * (1 - Math.max(0.03, conviction / 500) - Math.min(0, fundamentalsLift) + bearDrag)).toFixed(2))
-            : Number((priceAnchor * (1 + fundamentalsLift / 2 - bearDrag / 2)).toFixed(2));
+            ? Number((priceAnchor * (1 - Math.max(0.04, downsideFactor) + Math.max(0, fundamentalsScore) * 0.03)).toFixed(2))
+            : Number((priceAnchor * (1 + upsideFactor * 0.45 - downsideFactor * 0.55)).toFixed(2));
+
+    const summary =
+      action === "buy"
+        ? `${candidate.ticker}: add selectively, because the combined news and fundamentals case is supportive enough to justify disciplined upside exposure.`
+        : action === "trim"
+          ? `${candidate.ticker}: reduce exposure, because downside pressure is strong enough to outweigh the current upside case.`
+          : action === "watch"
+            ? `${candidate.ticker}: stay on watch, because the setup is not yet attractive enough to justify new risk.`
+            : `${candidate.ticker}: hold current sizing, because the evidence is constructive but not decisive enough to press harder.`;
+
+    const risks =
+      bearScore < -0.2
+        ? `${candidate.ticker}: the bear case is still live, so negative follow-through could cut conviction quickly.`
+        : `${candidate.ticker}: mixed evidence or weaker follow-through could cap upside faster than expected.`;
 
     return {
       symbolId: candidate.symbolId,
@@ -165,8 +191,8 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
       targetWeight,
       targetPrice,
       convictionScore: conviction,
-      summary: `${candidate.ticker}: ${action === "buy" ? "add selectively with disciplined sizing" : action === "trim" ? "reduce exposure and respect downside pressure" : action === "watch" ? "stay patient until the risk-reward improves" : "hold current positioning and stay selective"}.`,
-      risks: `${candidate.ticker}: downside pressure or weaker fundamentals could cap upside faster than expected.`,
+      summary,
+      risks,
       confidence: confidenceLabel(conviction),
     };
   });
