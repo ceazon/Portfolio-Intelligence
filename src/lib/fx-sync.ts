@@ -1,7 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
-import { getFinnhubExchangeRate } from "@/lib/finnhub";
 
 const DEFAULT_PAIR = "USD/CAD";
+const OPEN_ER_API_BASE_URL = "https://open.er-api.com/v6/latest";
 
 export async function getLatestFxRate(pair = DEFAULT_PAIR) {
   const supabase = createSupabaseAdminClient();
@@ -15,6 +15,34 @@ export async function getLatestFxRate(pair = DEFAULT_PAIR) {
   }
 
   return data || null;
+}
+
+async function getPublicExchangeRate(from: string, to: string) {
+  const response = await fetch(`${OPEN_ER_API_BASE_URL}/${encodeURIComponent(from.trim().toUpperCase())}`, {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Public FX request failed with status ${response.status}`);
+  }
+
+  const json = (await response.json()) as {
+    result?: string;
+    rates?: Record<string, number>;
+    time_last_update_utc?: string;
+    time_next_update_utc?: string;
+  };
+
+  const rate = json.rates?.[to.trim().toUpperCase()];
+  if (typeof rate !== "number" || !Number.isFinite(rate)) {
+    throw new Error(`No FX rate returned for ${from}/${to}.`);
+  }
+
+  return {
+    rate,
+    provider: "open.er-api.com",
+    raw: json,
+  };
 }
 
 export async function refreshFxRate(pair = DEFAULT_PAIR, triggerType = "manual") {
@@ -41,17 +69,14 @@ export async function refreshFxRate(pair = DEFAULT_PAIR, triggerType = "manual")
 
   try {
     const [from, to] = pair.split("/");
-    const rate = await getFinnhubExchangeRate(from, to);
-    if (!rate) {
-      throw new Error(`No FX rate returned for ${pair}.`);
-    }
+    const result = await getPublicExchangeRate(from, to);
 
     const payload = {
       pair,
-      rate,
+      rate: result.rate,
       fetched_at: new Date().toISOString(),
-      source: "finnhub",
-      raw_payload: { pair, rate },
+      source: result.provider,
+      raw_payload: result.raw,
     };
 
     const { error: upsertError } = await supabase.from("fx_rate_snapshots").upsert(payload, { onConflict: "pair" });
@@ -63,12 +88,12 @@ export async function refreshFxRate(pair = DEFAULT_PAIR, triggerType = "manual")
       .from("fx_refresh_runs")
       .update({
         status: "completed",
-        summary: `FX refresh completed for ${pair} at ${rate}.`,
+        summary: `FX refresh completed for ${pair} at ${result.rate}.`,
         completed_at: new Date().toISOString(),
       })
       .eq("id", runRow.id);
 
-    return { runId: runRow.id, pair, rate };
+    return { runId: runRow.id, pair, rate: result.rate };
   } catch (error) {
     const message = error instanceof Error ? error.message : "FX refresh failed.";
     await supabase
