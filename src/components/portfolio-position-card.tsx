@@ -163,7 +163,7 @@ export function PortfolioPositionCard(props: PositionCardProps) {
             setExpanded((value) => !value);
           }
         }} className="cursor-pointer rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10">
-          <p className="text-xs uppercase tracking-wide text-zinc-500">Target weight</p>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">Target portfolio weight</p>
           <p className="mt-1 font-medium text-zinc-100">{recommendation?.target_weight !== null && recommendation?.target_weight !== undefined ? `${recommendation.target_weight}%` : "--"}</p>
         </div>
         <div role="button" tabIndex={0} onClick={() => setExpanded((value) => !value)} onKeyDown={(event) => {

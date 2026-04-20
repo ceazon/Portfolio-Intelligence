@@ -76,6 +76,7 @@ export default async function RecommendationsPage() {
                   const quote = firstRelation(symbol?.symbol_price_snapshots || null);
                   const quotePositive = typeof quote?.percent_change === "number" ? quote.percent_change >= 0 : null;
                   const actionLabel = recommendation.action.toUpperCase();
+                  const targetWeightLabel = portfolio?.name ? "Target portfolio weight" : "Suggested starter weight";
 
                   return (
                     <div key={recommendation.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -105,8 +106,8 @@ export default async function RecommendationsPage() {
                       <p className="mt-3 text-base text-zinc-200">{recommendation.summary || "No recommendation provided."}</p>
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
-                        {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Target {recommendation.target_weight}%</span> : null}
-                        {recommendation.target_price !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Target price ${recommendation.target_price.toFixed(2)}</span> : null}
+                        {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">{targetWeightLabel} {recommendation.target_weight}%</span> : null}
+                        {recommendation.target_price !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">12-month target price ${recommendation.target_price.toFixed(2)}</span> : null}
                         {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
                       </div>
 
