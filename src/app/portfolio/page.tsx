@@ -3,7 +3,7 @@ import { SectionCard } from "@/components/section-card";
 import { CreatePortfolioForm } from "@/components/create-portfolio-form";
 import { CreatePositionForm } from "@/components/create-position-form";
 import { EditPortfolioForm } from "@/components/edit-portfolio-form";
-import { PortfolioPositionCard } from "@/components/portfolio-position-card";
+import { PortfolioPositionListItem } from "@/components/portfolio-position-list-item";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
@@ -23,7 +23,10 @@ type RecommendationRow = {
   action: string;
   recommendation_engine?: string | null;
   target_weight: number | null;
+  target_price: number | null;
   conviction_score: number | null;
+  summary: string | null;
+  risks: string | null;
   recommendation_evidence:
     | { research_insights: { direction: string | null; title: string } | { direction: string | null; title: string }[] | null }
     | { research_insights: { direction: string | null; title: string } | { direction: string | null; title: string }[] | null }[]
@@ -115,7 +118,7 @@ export default async function PortfolioPage() {
   const { data: recommendations } = supabase
     ? await supabase
         .from("recommendations")
-        .select("symbol_id, action, recommendation_engine, target_weight, conviction_score, recommendation_evidence(research_insights(direction, title))")
+        .select("symbol_id, action, recommendation_engine, target_weight, target_price, conviction_score, summary, risks, recommendation_evidence(research_insights(direction, title))")
         .eq("owner_id", user.id)
         .eq("status", "open")
         .eq("recommendation_engine", "synthesis-v1")
@@ -195,7 +198,7 @@ export default async function PortfolioPage() {
                               const currentWeight = totalMarketValue > 0 ? (marketValue / totalMarketValue) * 100 : null;
 
                               return (
-                                <PortfolioPositionCard
+                                <PortfolioPositionListItem
                                   key={position.id}
                                   portfolioId={portfolio.id}
                                   positionId={position.id}
@@ -213,6 +216,7 @@ export default async function PortfolioPage() {
                                   currentWeight={currentWeight}
                                   notes={position.notes}
                                   recommendation={recommendation}
+                                  updatedAt={quote?.fetched_at ?? null}
                                 />
                               );
                             })}
