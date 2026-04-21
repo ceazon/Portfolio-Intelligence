@@ -122,6 +122,14 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
                   {exchange || "Exchange unavailable"}
                   {currentWeight !== null ? ` · ${currentWeight.toFixed(2)}% portfolio weight` : ""}
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
+                  <span className="rounded-full border border-sky-500/20 bg-sky-500/5 px-2 py-1 text-sky-200">
+                    Program Action {recommendation?.action || "--"}
+                  </span>
+                  <span className="rounded-full border border-zinc-700 px-2 py-1">
+                    Target Price {recommendation?.target_price !== null && recommendation?.target_price !== undefined ? formatMoney(recommendation.target_price, displayCurrency) : "--"}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
