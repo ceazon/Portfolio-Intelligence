@@ -4,6 +4,7 @@ import { SynthesizeRecommendationsForm } from "@/components/synthesize-recommend
 import { RecommendationStatusForm } from "@/components/recommendation-status-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
+import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
 
 type RecommendationRow = {
   id: string;
@@ -70,19 +71,25 @@ export default async function RecommendationsPage() {
           <SectionCard title="Recommendations" description="Focused synthesized recommendations ranked by strongest conviction.">
             {recommendations && recommendations.length > 0 ? (
               <div className="space-y-3">
-                {recommendations.map((recommendation) => {
-                  const symbol = firstRelation(recommendation.symbols);
-                  const portfolio = firstRelation(recommendation.portfolios);
-                  const quote = firstRelation(symbol?.symbol_price_snapshots || null);
-                  const quotePositive = typeof quote?.percent_change === "number" ? quote.percent_change >= 0 : null;
-                  const actionLabel = recommendation.action.toUpperCase();
-                  const targetWeightLabel = portfolio?.name ? "Target portfolio weight" : "Suggested starter weight";
-                  const targetPriceUpsidePct =
-                    typeof recommendation.target_price === "number" && typeof quote?.price === "number" && quote.price > 0
-                      ? ((recommendation.target_price - quote.price) / quote.price) * 100
-                      : null;
+                {await Promise.all(
+                  recommendations.map(async (recommendation) => {
+                    const symbol = firstRelation(recommendation.symbols);
+                    const portfolio = firstRelation(recommendation.portfolios);
+                    const quote = firstRelation(symbol?.symbol_price_snapshots || null);
+                    const consensus = symbol?.ticker ? await getConsensusTargetForSymbol(symbol.ticker) : null;
+                    const quotePositive = typeof quote?.percent_change === "number" ? quote.percent_change >= 0 : null;
+                    const actionLabel = recommendation.action.toUpperCase();
+                    const targetWeightLabel = portfolio?.name ? "Target portfolio weight" : "Suggested starter weight";
+                    const targetPriceUpsidePct =
+                      typeof recommendation.target_price === "number" && typeof quote?.price === "number" && quote.price > 0
+                        ? ((recommendation.target_price - quote.price) / quote.price) * 100
+                        : null;
+                    const consensusUpsidePct =
+                      typeof consensus?.meanTarget === "number" && typeof quote?.price === "number" && quote.price > 0
+                        ? ((consensus.meanTarget - quote.price) / quote.price) * 100
+                        : null;
 
-                  return (
+                    return (
                     <div key={recommendation.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
@@ -122,24 +129,26 @@ export default async function RecommendationsPage() {
                             ) : null}
                           </span>
                         ) : null}
+                        {typeof consensus?.meanTarget === "number" ? (
+                          <span className="rounded-full border border-zinc-700 px-2 py-1">
+                            Analyst consensus ${consensus.meanTarget?.toFixed(2)}
+                            {consensusUpsidePct !== null ? (
+                              <span className={consensusUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
+                                ({consensusUpsidePct >= 0 ? "+" : ""}{consensusUpsidePct.toFixed(1)}%)
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : null}
                         {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
                       </div>
 
-                      <div className="mt-3 space-y-2 text-sm">
-                        {recommendation.risks?.includes("Validation:") ? (
-                          <>
-                            <div className="text-zinc-500">Risk: {recommendation.risks.split("Validation:")[0].trim() || "No risk summary provided."}</div>
-                            <div className="text-zinc-400">Target validation: {recommendation.risks.split("Validation:")[1]?.trim() || "Unavailable."}</div>
-                          </>
-                        ) : (
-                          <div className="text-zinc-500">Risk: {recommendation.risks || "No risk summary provided."}</div>
-                        )}
-                      </div>
+                      <div className="mt-3 text-sm text-zinc-500">Risk: {recommendation.risks || "No risk summary provided."}</div>
 
                       <RecommendationStatusForm recommendationId={recommendation.id} currentStatus={recommendation.status} />
                     </div>
-                  );
-                })}
+                    );
+                  }),
+                )}
               </div>
             ) : (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">

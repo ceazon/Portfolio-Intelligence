@@ -43,6 +43,14 @@ type FinnhubQuote = {
   t?: number;
 };
 
+type FinnhubPriceTarget = {
+  lastUpdated?: string;
+  targetHigh?: number;
+  targetLow?: number;
+  targetMean?: number;
+  targetMedian?: number;
+};
+
 async function fetchFinnhub<T>(path: string, params: Record<string, string>) {
   const apiKey = getFinnhubKey();
   if (!apiKey) {
@@ -97,6 +105,19 @@ export async function getFinnhubQuote(symbol: string): Promise<FinnhubQuote | nu
   return hasData ? quote : null;
 }
 
+export async function getFinnhubPriceTarget(symbol: string): Promise<FinnhubPriceTarget | null> {
+  if (!symbol.trim()) {
+    return null;
+  }
+
+  const target = await fetchFinnhub<FinnhubPriceTarget>("/stock/price-target", {
+    symbol: symbol.trim(),
+  });
+
+  const hasData = [target.targetHigh, target.targetLow, target.targetMean, target.targetMedian].some((value) => typeof value === "number");
+  return hasData ? target : null;
+}
+
 export async function getFinnhubExchangeRate(from: string, to: string) {
   if (!from.trim() || !to.trim()) {
     return null;
@@ -115,4 +136,4 @@ export async function getFinnhubExchangeRate(from: string, to: string) {
   return null;
 }
 
-export type { FinnhubCompanyProfile, FinnhubQuote, FinnhubSymbolResult };
+export type { FinnhubCompanyProfile, FinnhubPriceTarget, FinnhubQuote, FinnhubSymbolResult };

@@ -786,7 +786,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         target_price: item.targetPrice,
         conviction_score: item.convictionScore,
         summary: item.summary,
-        risks: `${item.risks} Validation: ${item.targetValidationSummary}`,
+        risks: item.risks,
         confidence: item.confidence,
       };
     });
