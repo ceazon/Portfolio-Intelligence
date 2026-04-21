@@ -77,6 +77,10 @@ export default async function RecommendationsPage() {
                   const quotePositive = typeof quote?.percent_change === "number" ? quote.percent_change >= 0 : null;
                   const actionLabel = recommendation.action.toUpperCase();
                   const targetWeightLabel = portfolio?.name ? "Target portfolio weight" : "Suggested starter weight";
+                  const targetPriceUpsidePct =
+                    typeof recommendation.target_price === "number" && typeof quote?.price === "number" && quote.price > 0
+                      ? ((recommendation.target_price - quote.price) / quote.price) * 100
+                      : null;
 
                   return (
                     <div key={recommendation.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -107,7 +111,17 @@ export default async function RecommendationsPage() {
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
                         {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">{targetWeightLabel} {recommendation.target_weight}%</span> : null}
-                        {recommendation.target_price !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">12-month target price ${recommendation.target_price.toFixed(2)}</span> : null}
+                        {recommendation.target_price !== null ? (
+                          <span className="rounded-full border border-zinc-700 px-2 py-1">
+                            12-month target price ${recommendation.target_price.toFixed(2)}
+                            {targetPriceUpsidePct !== null ? (
+                              <span className={targetPriceUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
+                                ({targetPriceUpsidePct >= 0 ? "+" : ""}
+                                {targetPriceUpsidePct.toFixed(1)}%)
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : null}
                         {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
                       </div>
 
