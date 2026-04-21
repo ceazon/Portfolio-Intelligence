@@ -35,8 +35,8 @@ const BEAR_CASE_AGENT_NAME = "bear-case-agent";
 
 function inferDirection(snippets: string[]) {
   const text = snippets.join(" ").toLowerCase();
-  const bullishTerms = ["beat", "surge", "growth", "upgrade", "record", "profit", "strong", "partnership"];
-  const bearishTerms = ["miss", "fall", "drop", "downgrade", "probe", "lawsuit", "cut", "weak", "decline"];
+  const bullishTerms = ["beat", "surge", "growth", "upgrade", "record", "profit", "strong", "partnership", "expands", "raises", "outperform"];
+  const bearishTerms = ["miss", "fall", "drop", "downgrade", "probe", "lawsuit", "cut", "weak", "decline", "warning", "slowdown", "risk"];
 
   const bullishScore = bullishTerms.reduce((count, term) => count + (text.includes(term) ? 1 : 0), 0);
   const bearishScore = bearishTerms.reduce((count, term) => count + (text.includes(term) ? 1 : 0), 0);
@@ -46,6 +46,23 @@ function inferDirection(snippets: string[]) {
   }
 
   return bullishScore > bearishScore ? "bullish" : "bearish";
+}
+
+function extractNewsThemes(snippets: string[]) {
+  const text = snippets.join(" ").toLowerCase();
+  const themes = [
+    { label: "earnings strength", terms: ["beat", "earnings", "profit", "record"] },
+    { label: "growth momentum", terms: ["growth", "surge", "expands", "demand"] },
+    { label: "analyst support", terms: ["upgrade", "outperform", "price target", "raised"] },
+    { label: "partnership or product momentum", terms: ["partnership", "launch", "product", "deal"] },
+    { label: "legal or regulatory risk", terms: ["lawsuit", "probe", "regulatory", "investigation"] },
+    { label: "guidance or execution risk", terms: ["warning", "cut", "slowdown", "miss", "weak"] },
+  ];
+
+  return themes
+    .filter((theme) => theme.terms.some((term) => text.includes(term)))
+    .map((theme) => theme.label)
+    .slice(0, 3);
 }
 
 function normalizeUrl(url: string) {
@@ -79,15 +96,18 @@ export function buildInsight(symbol: TrackedSymbol, results: NewsItem[]) {
   const usable = dedupeNews(results).slice(0, NEWS_RESULT_LIMIT);
   const snippets = usable.map((item) => item.snippet || item.title || "").filter(Boolean);
   const direction = inferDirection(snippets);
+  const themes = extractNewsThemes(snippets);
   const uniqueFeeds = new Set(usable.map((item) => item.source_type));
   const sourceCount = usable.length;
   const corroborated = uniqueFeeds.size > 1;
+  const toneLabel = direction === "bullish" ? "positive" : direction === "bearish" ? "negative" : "mixed";
+  const themeSummary = themes.length ? ` Key highlights: ${themes.join(", ")}.` : "";
 
   return {
     title: `${symbol.ticker} shared news pulse`,
     summary:
       sourceCount > 0
-        ? `${symbol.ticker} surfaced ${sourceCount} recent news signal${sourceCount === 1 ? "" : "s"}${corroborated ? " across Finnhub and Google News" : ""}.`
+        ? `${symbol.ticker} recent coverage is ${toneLabel}${corroborated ? " across multiple sources" : ""}.${themeSummary}`
         : `${symbol.ticker} had no recent news coverage captured in this pass.`,
     thesis:
       sourceCount > 0
@@ -96,6 +116,7 @@ export function buildInsight(symbol: TrackedSymbol, results: NewsItem[]) {
     direction,
     corroborated,
     sourceCount,
+    themes,
     confidenceScore: Math.min(92, 35 + sourceCount * 10 + (corroborated ? 12 : 0)),
     evidenceJson: usable.map((item) => ({
       title: item.title,
@@ -149,6 +170,7 @@ function buildNewsAgentOutput(ownerId: string, researchRunId: string, symbol: Tr
     evidence_json: {
       corroborated: insight.corroborated,
       source_count: insight.sourceCount,
+      themes: insight.themes,
       evidence: insight.evidenceJson,
     },
     expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
@@ -199,6 +221,7 @@ function buildBearCaseAgentOutput(ownerId: string, researchRunId: string, symbol
     evidence_json: {
       derived_from: "shared-news-research",
       downside_pressure: Number(downsidePressure.toFixed(2)),
+      themes: insight.themes,
       evidence: insight.evidenceJson,
     },
     expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),

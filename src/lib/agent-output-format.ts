@@ -53,12 +53,6 @@ export function getReadableBiasLabel(value: string | null | undefined) {
   return null;
 }
 
-export function getReadableSizingEffect(delta: number | null | undefined) {
-  if (typeof delta !== "number") return null;
-  if (Math.abs(delta) < 0.25) return "Sizing effect: no major change";
-  return `Sizing effect: ${delta > 0 ? "+" : ""}${delta.toFixed(1)}%`;
-}
-
 export function getSignalStrengthLabel(score: number | null | undefined) {
   if (typeof score !== "number") return null;
   const magnitude = Math.abs(clamp(score, -1, 1));

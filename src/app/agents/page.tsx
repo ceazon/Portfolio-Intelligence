@@ -10,7 +10,6 @@ import {
   getContributionLabel,
   getMacroContributionLabel,
   getReadableBiasLabel,
-  getReadableSizingEffect,
   getSignalStrengthLabel,
 } from "@/lib/agent-output-format";
 import { formatAppDateTime } from "@/lib/time";
@@ -93,13 +92,6 @@ function getReadableSummary(output: AgentOutputRow) {
     return output.thesis || "No summary yet.";
   }
 
-  if (output.agent_name === "news-agent") {
-    return output.summary
-      .replace(/surfaced\s+\d+\s+recent news signals?/i, "recent coverage is being interpreted")
-      .replace(/captured in this pass/gi, "in the current news read")
-      .replace(/across Finnhub and Google News/gi, "across multiple sources");
-  }
-
   return output.summary;
 }
 
@@ -107,7 +99,6 @@ function AgentTile({ output }: { output: AgentOutputRow }) {
   const confidence = formatConfidencePercent(output.confidence_score);
   const signal = formatNormalizedScore(output.normalized_score);
   const readableBias = getReadableBiasLabel(output.action_bias);
-  const readableSizing = getReadableSizingEffect(output.target_weight_delta);
   const signalStrength = getSignalStrengthLabel(output.normalized_score);
 
   return (
@@ -122,7 +113,6 @@ function AgentTile({ output }: { output: AgentOutputRow }) {
         {confidence ? <span className="rounded-full border border-zinc-700 px-2 py-1">Confidence {confidence}</span> : null}
         {signal && signalStrength ? <span className="rounded-full border border-zinc-700 px-2 py-1">{signalStrength} ({signal})</span> : null}
         {readableBias ? <span className="rounded-full border border-zinc-700 px-2 py-1">{readableBias}</span> : null}
-        {readableSizing ? <span className="rounded-full border border-zinc-700 px-2 py-1">{readableSizing}</span> : null}
       </div>
 
       <p className="mt-4 text-xs text-zinc-500">{formatAppDateTime(output.created_at)}</p>
