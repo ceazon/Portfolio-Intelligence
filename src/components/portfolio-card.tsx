@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { EditPortfolioForm } from "@/components/edit-portfolio-form";
 import { PortfolioPositionListItem } from "@/components/portfolio-position-list-item";
+import { PortfolioSettingsPanel } from "@/components/portfolio-settings-panel";
 import { convertMoney, formatMoney, type SupportedCurrency } from "@/lib/currency";
 
 type ResearchInsight = {
@@ -147,7 +147,7 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
 
       {expanded ? (
         <div className="mt-4 space-y-4 border-t border-zinc-800 pt-4">
-          <EditPortfolioForm id={id} name={name} description={description} benchmark={benchmark} displayCurrency={displayCurrency} />
+          <PortfolioSettingsPanel id={id} name={name} description={description} benchmark={benchmark} displayCurrency={displayCurrency} />
 
           {positions.length > 0 ? (
             <div className="space-y-3">
