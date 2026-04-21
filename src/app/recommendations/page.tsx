@@ -88,6 +88,12 @@ export default async function RecommendationsPage() {
                       typeof consensus?.meanTarget === "number" && typeof quote?.price === "number" && quote.price > 0
                         ? ((consensus.meanTarget - quote.price) / quote.price) * 100
                         : null;
+                    const consensusGapPct =
+                      typeof consensus?.meanTarget === "number" && typeof recommendation.target_price === "number" && consensus.meanTarget > 0
+                        ? ((recommendation.target_price - consensus.meanTarget) / consensus.meanTarget) * 100
+                        : null;
+                    const consensusPositionLabel =
+                      consensusGapPct === null ? null : Math.abs(consensusGapPct) <= 7 ? "In line with consensus" : consensusGapPct > 0 ? "Above consensus" : "Below consensus";
 
                     return (
                     <div key={recommendation.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -130,14 +136,22 @@ export default async function RecommendationsPage() {
                           </span>
                         ) : null}
                         {typeof consensus?.meanTarget === "number" ? (
-                          <span className="rounded-full border border-zinc-700 px-2 py-1">
-                            Analyst consensus ${consensus.meanTarget?.toFixed(2)}
-                            {consensusUpsidePct !== null ? (
-                              <span className={consensusUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
-                                ({consensusUpsidePct >= 0 ? "+" : ""}{consensusUpsidePct.toFixed(1)}%)
+                          <>
+                            <span className="rounded-full border border-zinc-700 px-2 py-1">
+                              Analyst consensus ${consensus.meanTarget.toFixed(2)}
+                              {consensusUpsidePct !== null ? (
+                                <span className={consensusUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
+                                  ({consensusUpsidePct >= 0 ? "+" : ""}{consensusUpsidePct.toFixed(1)}%)
+                                </span>
+                              ) : null}
+                            </span>
+                            {consensusPositionLabel ? (
+                              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200">
+                                {consensusPositionLabel}
+                                {consensusGapPct !== null ? ` (${consensusGapPct > 0 ? "+" : ""}${consensusGapPct.toFixed(1)}%)` : ""}
                               </span>
                             ) : null}
-                          </span>
+                          </>
                         ) : null}
                         {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
                       </div>
