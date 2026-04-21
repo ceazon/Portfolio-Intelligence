@@ -125,7 +125,16 @@ export default async function RecommendationsPage() {
                         {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
                       </div>
 
-                      <div className="mt-3 text-sm text-zinc-500">Risk: {recommendation.risks || "No risk summary provided."}</div>
+                      <div className="mt-3 space-y-2 text-sm">
+                        {recommendation.risks?.includes("Validation:") ? (
+                          <>
+                            <div className="text-zinc-500">Risk: {recommendation.risks.split("Validation:")[0].trim() || "No risk summary provided."}</div>
+                            <div className="text-zinc-400">Target validation: {recommendation.risks.split("Validation:")[1]?.trim() || "Unavailable."}</div>
+                          </>
+                        ) : (
+                          <div className="text-zinc-500">Risk: {recommendation.risks || "No risk summary provided."}</div>
+                        )}
+                      </div>
 
                       <RecommendationStatusForm recommendationId={recommendation.id} currentStatus={recommendation.status} />
                     </div>

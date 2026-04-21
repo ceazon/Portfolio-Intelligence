@@ -130,6 +130,14 @@ type ScenarioSet = {
   rationale: string;
 };
 
+type TargetValidationStatus = "plausible" | "stretched" | "aggressive" | "unavailable";
+
+type TargetValidationResult = {
+  status: TargetValidationStatus;
+  summary: string;
+  impliedUpsidePct: number | null;
+};
+
 type SynthesizedRecommendation = {
   symbolId: string;
   action: "buy" | "hold" | "trim" | "watch";
@@ -139,6 +147,9 @@ type SynthesizedRecommendation = {
   summary: string;
   risks: string;
   confidence: "low" | "medium" | "high";
+  targetValidationStatus: TargetValidationStatus;
+  targetValidationSummary: string;
+  impliedUpsidePct: number | null;
 };
 
 function firstRelation<T>(value: T | T[] | null): T | null {
@@ -279,6 +290,84 @@ function buildScenarioSet(candidate: SynthesisCandidate, macro: AgentOutputRow |
   };
 }
 
+function validateTarget(candidate: SynthesisCandidate, scenarios: ScenarioSet): TargetValidationResult {
+  const currentPrice = candidate.currentPrice;
+  const targetPrice = scenarios.weightedTarget;
+  if (typeof currentPrice !== "number" || typeof targetPrice !== "number" || currentPrice <= 0) {
+    return {
+      status: "unavailable",
+      summary: "Target validation unavailable because a live price anchor is missing.",
+      impliedUpsidePct: null,
+    };
+  }
+
+  const impliedUpsidePct = Number((((targetPrice - currentPrice) / currentPrice) * 100).toFixed(1));
+  const f = candidate.fundamentalsSnapshot;
+  const archetype = scenarios.archetype;
+
+  if (archetype === "financial") {
+    if (impliedUpsidePct > 35) {
+      return {
+        status: "aggressive",
+        summary: `${candidate.ticker}: the target implies unusually large 12-month upside for a financial, which looks aggressive without stronger valuation dislocation evidence.`,
+        impliedUpsidePct,
+      };
+    }
+
+    if (impliedUpsidePct > 25 || ((f?.pbTtm ?? 0) > 1.8 && (f?.roeTtm ?? 0) < 14)) {
+      return {
+        status: "stretched",
+        summary: `${candidate.ticker}: the target asks for a fairly strong rerating for a financial, so it looks stretched relative to typical bank-style upside.`,
+        impliedUpsidePct,
+      };
+    }
+
+    return {
+      status: "plausible",
+      summary: `${candidate.ticker}: the target sits in a more normal range for a financial if earnings and valuation hold up.`,
+      impliedUpsidePct,
+    };
+  }
+
+  if (archetype === "high-growth" || archetype === "platform") {
+    if (impliedUpsidePct > 45 && ((f?.revenueGrowthTtm ?? 0) < 15 || (f?.netMarginTtm ?? 0) < 10)) {
+      return {
+        status: "aggressive",
+        summary: `${candidate.ticker}: the target assumes very strong upside without enough growth or margin support, so it looks aggressive.`,
+        impliedUpsidePct,
+      };
+    }
+
+    if (impliedUpsidePct > 30 && ((f?.psTtm ?? 0) > 10 || (f?.revenueGrowthTtm ?? 0) < 12)) {
+      return {
+        status: "stretched",
+        summary: `${candidate.ticker}: the target still looks stretched because the upside relies on a rich valuation or slower growth re-accelerating.`,
+        impliedUpsidePct,
+      };
+    }
+
+    return {
+      status: "plausible",
+      summary: `${candidate.ticker}: the target looks plausible for this growth archetype if execution and growth durability stay intact.`,
+      impliedUpsidePct,
+    };
+  }
+
+  if (impliedUpsidePct > 30) {
+    return {
+      status: "stretched",
+      summary: `${candidate.ticker}: the target asks for a fairly large 12-month move, so it should be treated as stretched rather than base-case certain.`,
+      impliedUpsidePct,
+    };
+  }
+
+  return {
+    status: "plausible",
+    summary: `${candidate.ticker}: the target looks broadly plausible relative to the current price and valuation setup.`,
+    impliedUpsidePct,
+  };
+}
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
@@ -335,6 +424,8 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
         ? `${candidate.ticker}: the bear case is still live, with roughly ${Math.round(scenarios.bearProbability * 100)}% weight on the downside scenario.`
         : `${candidate.ticker}: mixed evidence or weaker follow-through could pull the outcome back toward the bear case.`;
 
+    const validation = validateTarget(candidate, scenarios);
+
     return {
       symbolId: candidate.symbolId,
       action,
@@ -344,6 +435,9 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
       summary,
       risks,
       confidence: confidenceLabel(Math.max(conviction, scenarios.valuationConfidence)),
+      targetValidationStatus: validation.status,
+      targetValidationSummary: validation.summary,
+      impliedUpsidePct: validation.impliedUpsidePct,
     };
   });
 }
@@ -414,8 +508,11 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
                   summary: { type: "string" },
                   risks: { type: "string" },
                   confidence: { type: "string", enum: ["low", "medium", "high"] },
+                  targetValidationStatus: { type: "string", enum: ["plausible", "stretched", "aggressive", "unavailable"] },
+                  targetValidationSummary: { type: "string" },
+                  impliedUpsidePct: { type: ["number", "null"] },
                 },
-                required: ["symbolId", "action", "targetWeight", "targetPrice", "convictionScore", "summary", "risks", "confidence"],
+                required: ["symbolId", "action", "targetWeight", "targetPrice", "convictionScore", "summary", "risks", "confidence", "targetValidationStatus", "targetValidationSummary", "impliedUpsidePct"],
               },
             },
           },
@@ -438,6 +535,11 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
     summary: String(item.summary || "No summary provided."),
     risks: String(item.risks || "No risk summary provided."),
     confidence: ["low", "medium", "high"].includes(item.confidence) ? item.confidence : confidenceLabel(Number(item.convictionScore) || 50),
+    targetValidationStatus: ["plausible", "stretched", "aggressive", "unavailable"].includes(item.targetValidationStatus)
+      ? item.targetValidationStatus
+      : "unavailable",
+    targetValidationSummary: String(item.targetValidationSummary || "Target validation unavailable."),
+    impliedUpsidePct: item.impliedUpsidePct === null ? null : Number(item.impliedUpsidePct),
   }));
 }
 
@@ -684,7 +786,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         target_price: item.targetPrice,
         conviction_score: item.convictionScore,
         summary: item.summary,
-        risks: item.risks,
+        risks: `${item.risks} Validation: ${item.targetValidationSummary}`,
         confidence: item.confidence,
       };
     });
