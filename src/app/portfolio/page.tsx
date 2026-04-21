@@ -48,6 +48,7 @@ type PortfolioPositionRow = {
         ticker: string;
         name: string | null;
         exchange: string | null;
+        logo_url: string | null;
         symbol_price_snapshots:
           | {
               price: number | null;
@@ -66,6 +67,7 @@ type PortfolioPositionRow = {
         ticker: string;
         name: string | null;
         exchange: string | null;
+        logo_url: string | null;
         symbol_price_snapshots:
           | {
               price: number | null;
@@ -107,7 +109,7 @@ export default async function PortfolioPage() {
   const { data: positions } = supabase
     ? await supabase
         .from("portfolio_positions")
-        .select("id, portfolio_id, symbol_id, quantity, average_cost, average_cost_currency, notes, portfolios(id, name), symbols(id, ticker, name, exchange, symbol_price_snapshots(price, percent_change, fetched_at))")
+        .select("id, portfolio_id, symbol_id, quantity, average_cost, average_cost_currency, notes, portfolios(id, name), symbols(id, ticker, name, exchange, logo_url, symbol_price_snapshots(price, percent_change, fetched_at))")
         .order("created_at", { ascending: false })
     : { data: [] as PortfolioPositionRow[] };
 
@@ -206,6 +208,7 @@ export default async function PortfolioPage() {
                                   ticker={symbol?.ticker || "Unknown ticker"}
                                   name={symbol?.name || "Unnamed symbol"}
                                   exchange={symbol?.exchange || null}
+                                  logoUrl={symbol?.logo_url || null}
                                   quantity={quantity}
                                   averageCost={position.average_cost ?? 0}
                                   averageCostCurrency={normalizeCurrency(position.average_cost_currency)}

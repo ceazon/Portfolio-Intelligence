@@ -5,7 +5,6 @@ export function formatAppDateTime(value: string | Date) {
 
   return new Intl.DateTimeFormat("en-US", {
     timeZone: APP_TIME_ZONE,
-    year: "numeric",
     month: "short",
     day: "numeric",
     hour: "numeric",

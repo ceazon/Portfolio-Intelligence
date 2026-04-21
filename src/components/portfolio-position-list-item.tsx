@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { DeletePositionForm } from "@/components/delete-position-form";
 import { EditPositionInlineForm } from "@/components/edit-position-inline-form";
 import { convertMoney, formatMoney, formatQuantity, type SupportedCurrency } from "@/lib/currency";
+import { formatAppDateTime } from "@/lib/time";
 
 type ResearchInsight = {
   direction: string | null;
@@ -31,6 +32,7 @@ type PositionListItemProps = {
   ticker: string;
   name: string;
   exchange: string | null;
+  logoUrl: string | null;
   quantity: number;
   averageCost: number;
   averageCostCurrency: SupportedCurrency;
@@ -59,6 +61,7 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
     ticker,
     name,
     exchange,
+    logoUrl,
     quantity,
     averageCost,
     averageCostCurrency,
@@ -105,14 +108,22 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
       <button type="button" onClick={() => setExpanded((value) => !value)} className="w-full text-left">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-zinc-100">
-              {ticker}
-              <span className="ml-2 text-zinc-400">{name}</span>
-            </p>
-            <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
-              {exchange || "Exchange unavailable"}
-              {currentWeight !== null ? ` · ${currentWeight.toFixed(2)}% portfolio weight` : ""}
-            </p>
+            <div className="flex items-center gap-3">
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt="" className="h-8 w-8 rounded-full bg-white object-contain p-1" />
+              ) : null}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-zinc-100">
+                  {ticker}
+                  <span className="ml-2 text-zinc-400">{name}</span>
+                </p>
+                <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                  {exchange || "Exchange unavailable"}
+                  {currentWeight !== null ? ` · ${currentWeight.toFixed(2)}% portfolio weight` : ""}
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="min-w-[140px] text-right">
@@ -124,7 +135,7 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
                 {percentChange.toFixed(2)}%
               </p>
             ) : null}
-            {updatedAt ? <p className="mt-1 text-xs text-zinc-500">Updated {updatedAt}</p> : null}
+            {updatedAt ? <p className="mt-1 text-xs text-zinc-500">Updated {formatAppDateTime(updatedAt)}</p> : null}
           </div>
         </div>
       </button>
