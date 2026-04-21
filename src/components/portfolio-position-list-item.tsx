@@ -126,16 +126,21 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
             </div>
           </div>
 
-          <div className="min-w-[140px] text-right">
-            <div className="mb-2 inline-flex rounded-xl border border-zinc-700 bg-zinc-950/70 px-2 py-1 text-xs text-zinc-300">Display {displayCurrency}</div>
-            {typeof converted.currentPriceDisplay === "number" ? <p className="text-lg font-semibold text-zinc-100">{formatMoney(converted.currentPriceDisplay, displayCurrency)}</p> : null}
-            {typeof percentChange === "number" ? (
-              <p className={quotePositive ? "mt-1 text-sm text-emerald-300" : "mt-1 text-sm text-rose-300"}>
-                {quotePositive ? "+" : ""}
-                {percentChange.toFixed(2)}%
-              </p>
-            ) : null}
-            {updatedAt ? <p className="mt-1 text-xs text-zinc-500">Updated {formatAppDateTime(updatedAt)}</p> : null}
+          <div className="flex items-start gap-3">
+            <div className="min-w-[140px] text-right">
+              <div className="mb-2 inline-flex rounded-xl border border-zinc-700 bg-zinc-950/70 px-2 py-1 text-xs text-zinc-300">Display {displayCurrency}</div>
+              {typeof converted.currentPriceDisplay === "number" ? <p className="text-lg font-semibold text-zinc-100">{formatMoney(converted.currentPriceDisplay, displayCurrency)}</p> : null}
+              {typeof percentChange === "number" ? (
+                <p className={quotePositive ? "mt-1 text-sm text-emerald-300" : "mt-1 text-sm text-rose-300"}>
+                  {quotePositive ? "+" : ""}
+                  {percentChange.toFixed(2)}%
+                </p>
+              ) : null}
+              {updatedAt ? <p className="mt-1 text-xs text-zinc-500">Updated {formatAppDateTime(updatedAt)}</p> : null}
+            </div>
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-lg font-semibold text-zinc-300">
+              {expanded ? "−" : "+"}
+            </span>
           </div>
         </div>
       </button>

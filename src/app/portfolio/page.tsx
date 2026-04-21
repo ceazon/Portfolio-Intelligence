@@ -2,8 +2,7 @@ import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { CreatePortfolioForm } from "@/components/create-portfolio-form";
 import { CreatePositionForm } from "@/components/create-position-form";
-import { EditPortfolioForm } from "@/components/edit-portfolio-form";
-import { PortfolioPositionListItem } from "@/components/portfolio-position-list-item";
+import { PortfolioCard } from "@/components/portfolio-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
@@ -135,12 +134,9 @@ export default async function PortfolioPage() {
   });
 
   const positionsByPortfolio = new Map<string, PortfolioPositionRow[]>();
-  const portfolioMarketValues = new Map<string, number>();
 
   (positions || []).forEach((position) => {
     const portfolio = firstRelation(position.portfolios);
-    const symbol = firstRelation(position.symbols);
-    const quote = firstRelation(symbol?.symbol_price_snapshots || null);
     if (!portfolio) {
       return;
     }
@@ -148,9 +144,6 @@ export default async function PortfolioPage() {
     const existing = positionsByPortfolio.get(portfolio.id) || [];
     existing.push(position);
     positionsByPortfolio.set(portfolio.id, existing);
-
-    const marketValue = (position.quantity ?? 0) * (quote?.price ?? 0);
-    portfolioMarketValues.set(portfolio.id, (portfolioMarketValues.get(portfolio.id) || 0) + marketValue);
   });
 
   return (
@@ -165,72 +158,19 @@ export default async function PortfolioPage() {
               <div className="space-y-4">
                 {portfolios.map((portfolio) => {
                   const portfolioPositions = positionsByPortfolio.get(portfolio.id) || [];
-                  const totalMarketValue = portfolioMarketValues.get(portfolio.id) || 0;
 
                   return (
-                    <div key={portfolio.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h3 className="text-base font-semibold text-zinc-100">{portfolio.name}</h3>
-                          <p className="mt-1 text-sm text-zinc-400">{portfolio.description || "No description yet."}</p>
-                        </div>
-                        <span className="rounded-full border border-sky-500/40 px-3 py-1 text-xs text-sky-300">
-                          Benchmark {portfolio.benchmark || "SPY"}
-                        </span>
-                      </div>
-
-                      <EditPortfolioForm
-                        id={portfolio.id}
-                        name={portfolio.name}
-                        description={portfolio.description}
-                        benchmark={portfolio.benchmark}
-                        displayCurrency={normalizeCurrency(portfolio.display_currency)}
-                      />
-
-                      <div className="mt-4">
-                        {portfolioPositions.length > 0 ? (
-                          <div className="space-y-3">
-                            {portfolioPositions.map((position) => {
-                              const symbol = firstRelation(position.symbols);
-                              const quote = firstRelation(symbol?.symbol_price_snapshots || null);
-                              const recommendation = symbol?.id ? recommendationBySymbol.get(symbol.id) : undefined;
-                              const currentPrice = quote?.price ?? null;
-                              const quantity = position.quantity ?? 0;
-                              const marketValue = quantity * (currentPrice ?? 0);
-                              const currentWeight = totalMarketValue > 0 ? (marketValue / totalMarketValue) * 100 : null;
-
-                              return (
-                                <PortfolioPositionListItem
-                                  key={position.id}
-                                  portfolioId={portfolio.id}
-                                  positionId={position.id}
-                                  symbolId={symbol?.id || ""}
-                                  ticker={symbol?.ticker || "Unknown ticker"}
-                                  name={symbol?.name || "Unnamed symbol"}
-                                  exchange={symbol?.exchange || null}
-                                  logoUrl={symbol?.logo_url || null}
-                                  quantity={quantity}
-                                  averageCost={position.average_cost ?? 0}
-                                  averageCostCurrency={normalizeCurrency(position.average_cost_currency)}
-                                  currentPrice={currentPrice}
-                                  displayCurrency={normalizeCurrency(portfolio.display_currency)}
-                                  usdCadRate={usdCadRate}
-                                  percentChange={quote?.percent_change ?? null}
-                                  currentWeight={currentWeight}
-                                  notes={position.notes}
-                                  recommendation={recommendation}
-                                  updatedAt={quote?.fetched_at ?? null}
-                                />
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 text-sm text-zinc-400">
-                            No positions yet. Add an imported symbol on the right to start building this portfolio.
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <PortfolioCard
+                      key={portfolio.id}
+                      id={portfolio.id}
+                      name={portfolio.name}
+                      description={portfolio.description}
+                      benchmark={portfolio.benchmark}
+                      displayCurrency={normalizeCurrency(portfolio.display_currency)}
+                      positions={portfolioPositions}
+                      recommendationBySymbol={recommendationBySymbol}
+                      usdCadRate={usdCadRate}
+                    />
                   );
                 })}
               </div>
