@@ -409,6 +409,27 @@ function trimTrailingPeriod(value: string) {
   return value.replace(/[.\s]+$/, "");
 }
 
+function lowercaseFirst(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+function removeTickerPrefix(value: string, ticker: string) {
+  return value.replace(new RegExp(`^${ticker}\\s+`, "i"), "");
+}
+
+function distinctDetail(detail: string, used: Set<string>, fallback: string) {
+  const normalized = trimTrailingPeriod(detail).toLowerCase();
+  if (normalized && !used.has(normalized)) {
+    used.add(normalized);
+    return trimTrailingPeriod(detail);
+  }
+
+  const fallbackNormalized = trimTrailingPeriod(fallback).toLowerCase();
+  used.add(fallbackNormalized);
+  return trimTrailingPeriod(fallback);
+}
+
 function inferDecisionStyle(action: SynthesizedRecommendation["action"], currentWeight: number | null, conviction: number): DecisionStyle {
   if (action === "watch") return "watchlist";
   if (action === "trim") return "trim";
@@ -559,10 +580,6 @@ function buildNarrative(candidate: SynthesisCandidate, action: SynthesizedRecomm
 } {
   const supports = buildSupportingFactors(candidate, macro);
   const risks = buildRiskFactors(candidate, macro);
-  const support1 = supports[0]?.detail || `${candidate.ticker} still has enough business support to stay investable.`;
-  const support2 = supports[1]?.detail || null;
-  const hesitation = risks[0]?.detail || `The setup still requires solid execution to work.`;
-  const mainRisk = risks[0]?.detail || `The main risk is that the business fails to deliver enough to support the current outlook.`;
   const f = candidate.fundamentalsSnapshot;
   const expensiveValuation = (f?.peTtm ?? 0) >= 30 || (f?.psTtm ?? 0) >= 8;
   const cheapValuation = ((f?.peTtm ?? 999) <= 20 || (f?.psTtm ?? 999) <= 4) && (candidate.fundamentals?.normalizedScore ?? 0) >= 0;
@@ -570,6 +587,29 @@ function buildNarrative(candidate: SynthesisCandidate, action: SynthesizedRecomm
   const strongDemand = (candidate.news?.normalizedScore ?? 0) >= 0.25;
   const negativeSetup = action === "trim" || action === "watch";
   const decisionStyle = inferDecisionStyle(action, candidate.currentWeight, conviction);
+  const usedSupportDetails = new Set<string>();
+  const usedRiskDetails = new Set<string>();
+
+  const primarySupport = distinctDetail(
+    supports[0]?.detail || `${candidate.ticker} still has enough business support to stay investable.`,
+    usedSupportDetails,
+    `${candidate.ticker} still has enough business support to stay investable`,
+  );
+  const secondarySupport = distinctDetail(
+    supports[1]?.detail || `${candidate.ticker} has additional support from the broader setup.`,
+    usedSupportDetails,
+    `${candidate.ticker} has additional support from the broader setup`,
+  );
+  const primaryRisk = distinctDetail(
+    risks[0]?.detail || `The setup still requires solid execution to work.`,
+    usedRiskDetails,
+    `The setup still requires solid execution to work`,
+  );
+  const secondaryRisk = distinctDetail(
+    risks[1]?.detail || `Any change in the setup could weaken the current thesis.`,
+    usedRiskDetails,
+    `Any change in the setup could weaken the current thesis`,
+  );
 
   const valuationView = cheapValuation
     ? `Valuation looks supportive relative to the current business outlook.`
@@ -591,8 +631,9 @@ function buildNarrative(candidate: SynthesisCandidate, action: SynthesizedRecomm
         ? `The current setup does not offer enough reward relative to the visible risks.`
         : `There is not yet enough change in the setup to justify a more aggressive stance.`;
 
-  const goodBuyBecause = trimTrailingPeriod(toSentenceCase(support1));
-  const hesitationBecause = trimTrailingPeriod(toSentenceCase(hesitation));
+  const goodBuyBecause = toSentenceCase(removeTickerPrefix(primarySupport, candidate.ticker));
+  const hesitationBecause = toSentenceCase(removeTickerPrefix(primaryRisk, candidate.ticker));
+  const mainRisk = toSentenceCase(removeTickerPrefix(secondaryRisk || primaryRisk, candidate.ticker));
   const riskMonitor = action === "buy"
     ? "Watch for signs of slowing growth, weaker margins, or deteriorating demand."
     : action === "hold"
@@ -601,21 +642,33 @@ function buildNarrative(candidate: SynthesisCandidate, action: SynthesizedRecomm
         ? "Watch for further evidence that downside risks are outweighing the remaining upside case."
         : "Watch for either a better entry point or stronger business evidence that improves the reward-to-risk setup.";
 
+  const leadSupportLabel = supports[0]?.label?.toLowerCase() || "the current business case";
+  const leadRiskLabel = risks[0]?.label?.toLowerCase() || "the current risk balance";
+
   const headline = action === "buy"
-    ? `${candidate.ticker} looks attractive because ${trimTrailingPeriod(support1).toLowerCase()}.`
+    ? `${candidate.ticker} earns a ${decisionStyle === "core" ? "core" : "starter"} buy on ${leadSupportLabel}.`
     : action === "hold"
-      ? `${candidate.ticker} remains a reasonable hold because the core business case is still intact.`
+      ? `${candidate.ticker} still merits a hold, but the setup is balanced.`
       : action === "trim"
-        ? `${candidate.ticker} looks less attractive at current levels as the downside balance has worsened.`
-        : `${candidate.ticker} is worth watching, but the current setup is not compelling enough yet.`;
+        ? `${candidate.ticker} should be trimmed as ${leadRiskLabel} becomes harder to ignore.`
+        : `${candidate.ticker} stays on the watchlist until the setup improves.`;
 
   const thesis = action === "buy"
-    ? `${candidate.ticker} is a buy because ${trimTrailingPeriod(goodBuyBecause).toLowerCase()}, although ${trimTrailingPeriod(hesitationBecause).toLowerCase()}.`
+    ? `${lowercaseFirst(goodBuyBecause)}. ${lowercaseFirst(valuationView)} ${lowercaseFirst(hesitationBecause)}.`
     : action === "hold"
-      ? `${candidate.ticker} is worth holding because ${trimTrailingPeriod(goodBuyBecause).toLowerCase()}, but ${trimTrailingPeriod(hesitationBecause).toLowerCase()}.`
+      ? `${lowercaseFirst(goodBuyBecause)}. ${lowercaseFirst(hesitationBecause)} keeps the upside from looking strong enough to add.`
       : action === "trim"
-        ? `${candidate.ticker} should be trimmed because ${trimTrailingPeriod(mainRisk).toLowerCase()}, even though ${trimTrailingPeriod(goodBuyBecause).toLowerCase()}.`
-        : `${candidate.ticker} stays on the watchlist because ${trimTrailingPeriod(goodBuyBecause).toLowerCase()}, but ${trimTrailingPeriod(hesitationBecause).toLowerCase()}.`;
+        ? `${lowercaseFirst(mainRisk)}. ${lowercaseFirst(goodBuyBecause)} is no longer enough to outweigh that pressure.`
+        : `${lowercaseFirst(goodBuyBecause)}. ${lowercaseFirst(hesitationBecause)} keeps it in watchlist territory for now.`;
+
+  const dedupedSupports = supports.map((support, index) => ({
+    ...support,
+    detail: trimTrailingPeriod(index === 0 ? primarySupport : index === 1 ? secondarySupport : support.detail),
+  }));
+  const dedupedRisks = risks.map((risk, index) => ({
+    ...risk,
+    detail: trimTrailingPeriod(index === 0 ? primaryRisk : index === 1 ? secondaryRisk : risk.detail),
+  }));
 
   return {
     decisionStyle,
@@ -624,14 +677,14 @@ function buildNarrative(candidate: SynthesisCandidate, action: SynthesizedRecomm
     whyNow,
     valuationView,
     businessQualityView,
-    goodBuyBecause,
-    hesitationBecause,
-    mainRisk: trimTrailingPeriod(toSentenceCase(mainRisk)),
+    goodBuyBecause: trimTrailingPeriod(goodBuyBecause),
+    hesitationBecause: trimTrailingPeriod(hesitationBecause),
+    mainRisk: trimTrailingPeriod(mainRisk),
     riskMonitor,
-    supportingFactors: supports,
-    riskFactors: risks,
-    summary: thesis,
-    risks: trimTrailingPeriod(toSentenceCase(mainRisk)),
+    supportingFactors: dedupedSupports,
+    riskFactors: dedupedRisks,
+    summary: headline,
+    risks: trimTrailingPeriod(mainRisk),
   };
 }
 
