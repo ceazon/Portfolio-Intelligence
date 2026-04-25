@@ -6,6 +6,12 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
 
+function compactText(value: string | null | undefined, fallback: string) {
+  const text = (value || "").trim();
+  if (!text) return fallback;
+  return text;
+}
+
 type RecommendationReason = {
   label: string;
   detail: string;
@@ -119,11 +125,11 @@ export default async function RecommendationsPage() {
                     const consensusPositionLabel =
                       consensusGapPct === null ? null : Math.abs(consensusGapPct) <= 7 ? "In line with consensus" : consensusGapPct > 0 ? "Above consensus" : "Below consensus";
 
-                    const headline = recommendation.headline || recommendation.summary || "No recommendation provided.";
-                    const thesis = recommendation.thesis || recommendation.summary || "No thesis provided.";
-                    const whyAttractive = recommendation.good_buy_because || "No upside rationale provided.";
-                    const cautionLine = recommendation.hesitation_because || recommendation.risks || "No caution provided.";
-                    const riskLine = recommendation.main_risk || recommendation.risks || "No risk summary provided.";
+                    const headline = compactText(recommendation.headline || recommendation.summary, "No recommendation provided.");
+                    const thesis = compactText(recommendation.thesis, headline);
+                    const whyAttractive = compactText(recommendation.good_buy_because, "No upside rationale provided.");
+                    const cautionLine = compactText(recommendation.hesitation_because || recommendation.risks, "No caution provided.");
+                    const riskLine = compactText(recommendation.main_risk || recommendation.risks, "No risk summary provided.");
                     const whyNow = recommendation.why_now || null;
                     const valuationView = recommendation.valuation_view || null;
                     const businessQualityView = recommendation.business_quality_view || null;
@@ -132,142 +138,146 @@ export default async function RecommendationsPage() {
                     const riskFactors = Array.isArray(recommendation.risk_factors_json) ? recommendation.risk_factors_json.slice(0, 2) : [];
 
                     return (
-                    <div key={recommendation.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-zinc-100">
-                            {symbol?.ticker || "Unknown ticker"}
-                            <span className="ml-2 text-zinc-400">{symbol?.name || "Unnamed symbol"}</span>
-                          </p>
-                          <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
-                            {actionLabel} · {recommendation.confidence || "medium"} confidence
-                            {portfolio?.name ? ` · ${portfolio.name}` : " · Watchlist candidate"}
-                          </p>
-                        </div>
-
-                        <div className="text-right text-sm">
-                          {typeof quote?.price === "number" ? <p className="text-zinc-100">${quote.price.toFixed(2)}</p> : null}
-                          {typeof quote?.percent_change === "number" ? (
-                            <p className={quotePositive ? "text-emerald-300" : "text-rose-300"}>
-                              {quotePositive ? "+" : ""}
-                              {quote.percent_change.toFixed(2)}%
+                    <details key={recommendation.id} className="group rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 open:border-zinc-700 open:bg-zinc-950">
+                      <summary className="cursor-pointer list-none">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold text-zinc-100">
+                              {symbol?.ticker || "Unknown ticker"}
+                              <span className="ml-2 text-zinc-400">{symbol?.name || "Unnamed symbol"}</span>
                             </p>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <p className="mt-3 text-base font-medium text-zinc-100">{headline}</p>
-                      <p className="mt-2 text-sm text-zinc-300">{thesis}</p>
-
-                      <div className="mt-4 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
-                          <p className="text-xs uppercase tracking-wide text-zinc-500">Why it&apos;s attractive</p>
-                          <p className="mt-2 text-sm text-zinc-300">{whyAttractive}</p>
-                        </div>
-                        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
-                          <p className="text-xs uppercase tracking-wide text-zinc-500">What keeps us cautious</p>
-                          <p className="mt-2 text-sm text-zinc-300">{cautionLine}</p>
-                        </div>
-                        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
-                          <p className="text-xs uppercase tracking-wide text-zinc-500">Main risk</p>
-                          <p className="mt-2 text-sm text-zinc-300">{riskLine}</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                        {whyNow ? (
-                          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                            <p className="text-xs uppercase tracking-wide text-zinc-500">Why now</p>
-                            <p className="mt-2 text-sm text-zinc-300">{whyNow}</p>
+                            <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                              {actionLabel} · {recommendation.confidence || "medium"} confidence
+                              {portfolio?.name ? ` · ${portfolio.name}` : " · Watchlist candidate"}
+                            </p>
                           </div>
-                        ) : null}
-                        {valuationView ? (
-                          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                            <p className="text-xs uppercase tracking-wide text-zinc-500">Valuation view</p>
-                            <p className="mt-2 text-sm text-zinc-300">{valuationView}</p>
-                          </div>
-                        ) : null}
-                        {businessQualityView ? (
-                          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                            <p className="text-xs uppercase tracking-wide text-zinc-500">Business quality</p>
-                            <p className="mt-2 text-sm text-zinc-300">{businessQualityView}</p>
-                          </div>
-                        ) : null}
-                        {riskMonitor ? (
-                          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                            <p className="text-xs uppercase tracking-wide text-zinc-500">Risk monitor</p>
-                            <p className="mt-2 text-sm text-zinc-300">{riskMonitor}</p>
-                          </div>
-                        ) : null}
-                      </div>
 
-                      {(supportingFactors.length || riskFactors.length) ? (
-                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                          {supportingFactors.length ? (
-                            <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/10 p-3">
-                              <p className="text-xs uppercase tracking-wide text-emerald-300">Top supports</p>
-                              <div className="mt-2 space-y-2">
-                                {supportingFactors.map((factor, index) => (
-                                  <div key={`${recommendation.id}-support-${index}`}>
-                                    <p className="text-sm font-medium text-zinc-100">{factor.label}</p>
-                                    <p className="text-sm text-zinc-400">{factor.detail}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                          {riskFactors.length ? (
-                            <div className="rounded-xl border border-rose-800/40 bg-rose-950/10 p-3">
-                              <p className="text-xs uppercase tracking-wide text-rose-300">Top risks</p>
-                              <div className="mt-2 space-y-2">
-                                {riskFactors.map((factor, index) => (
-                                  <div key={`${recommendation.id}-risk-${index}`}>
-                                    <p className="text-sm font-medium text-zinc-100">{factor.label}</p>
-                                    <p className="text-sm text-zinc-400">{factor.detail}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
-                        {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">{targetWeightLabel} {recommendation.target_weight}%</span> : null}
-                        {recommendation.target_price !== null ? (
-                          <span className="rounded-full border border-zinc-700 px-2 py-1">
-                            12-month target price ${recommendation.target_price.toFixed(2)}
-                            {targetPriceUpsidePct !== null ? (
-                              <span className={targetPriceUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
-                                ({targetPriceUpsidePct >= 0 ? "+" : ""}
-                                {targetPriceUpsidePct.toFixed(1)}%)
-                              </span>
+                          <div className="text-right text-sm">
+                            {typeof quote?.price === "number" ? <p className="text-zinc-100">${quote.price.toFixed(2)}</p> : null}
+                            {typeof quote?.percent_change === "number" ? (
+                              <p className={quotePositive ? "text-emerald-300" : "text-rose-300"}>
+                                {quotePositive ? "+" : ""}
+                                {quote.percent_change.toFixed(2)}%
+                              </p>
                             ) : null}
-                          </span>
-                        ) : null}
-                        {typeof consensus?.meanTarget === "number" ? (
-                          <>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-start justify-between gap-4">
+                          <p className="text-base font-medium text-zinc-100">{headline}</p>
+                          <span className="mt-0.5 text-xs text-zinc-500 group-open:hidden">Click to expand</span>
+                          <span className="mt-0.5 hidden text-xs text-zinc-500 group-open:inline">Click to collapse</span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
+                          {supportingFactors.length ? <span className="rounded-full border border-emerald-800/40 bg-emerald-950/10 px-2 py-1 text-emerald-300">Top supports {supportingFactors.length}</span> : null}
+                          {riskFactors.length ? <span className="rounded-full border border-rose-800/40 bg-rose-950/10 px-2 py-1 text-rose-300">Top risks {riskFactors.length}</span> : null}
+                          {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">{targetWeightLabel} {recommendation.target_weight}%</span> : null}
+                          {recommendation.target_price !== null ? (
                             <span className="rounded-full border border-zinc-700 px-2 py-1">
-                              Analyst consensus ${consensus.meanTarget.toFixed(2)}
-                              {consensusUpsidePct !== null ? (
-                                <span className={consensusUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
-                                  ({consensusUpsidePct >= 0 ? "+" : ""}{consensusUpsidePct.toFixed(1)}%)
+                              12-month target ${recommendation.target_price.toFixed(2)}
+                              {targetPriceUpsidePct !== null ? (
+                                <span className={targetPriceUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
+                                  ({targetPriceUpsidePct >= 0 ? "+" : ""}{targetPriceUpsidePct.toFixed(1)}%)
                                 </span>
                               ) : null}
                             </span>
-                            {consensusPositionLabel ? (
-                              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200">
-                                {consensusPositionLabel}
-                                {consensusGapPct !== null ? ` (${consensusGapPct > 0 ? "+" : ""}${consensusGapPct.toFixed(1)}%)` : ""}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : null}
-                        {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
-                      </div>
+                          ) : null}
+                          {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
+                        </div>
+                      </summary>
 
-                      <RecommendationStatusForm recommendationId={recommendation.id} currentStatus={recommendation.status} />
-                    </div>
+                      <div className="mt-4 border-t border-zinc-800 pt-4">
+                        <p className="text-sm text-zinc-300">{thesis}</p>
+
+                        {(supportingFactors.length || riskFactors.length) ? (
+                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                            {supportingFactors.length ? (
+                              <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/10 p-3">
+                                <p className="text-xs uppercase tracking-wide text-emerald-300">Top supports</p>
+                                <div className="mt-2 space-y-2">
+                                  {supportingFactors.map((factor, index) => (
+                                    <div key={`${recommendation.id}-support-${index}`}>
+                                      <p className="text-sm font-medium text-zinc-100">{factor.label}</p>
+                                      <p className="text-sm text-zinc-400">{factor.detail}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                            {riskFactors.length ? (
+                              <div className="rounded-xl border border-rose-800/40 bg-rose-950/10 p-3">
+                                <p className="text-xs uppercase tracking-wide text-rose-300">Top risks</p>
+                                <div className="mt-2 space-y-2">
+                                  {riskFactors.map((factor, index) => (
+                                    <div key={`${recommendation.id}-risk-${index}`}>
+                                      <p className="text-sm font-medium text-zinc-100">{factor.label}</p>
+                                      <p className="text-sm text-zinc-400">{factor.detail}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                          {whyNow ? (
+                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                              <p className="text-xs uppercase tracking-wide text-zinc-500">Why now</p>
+                              <p className="mt-2 text-sm text-zinc-300">{whyNow}</p>
+                            </div>
+                          ) : null}
+                          {valuationView ? (
+                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                              <p className="text-xs uppercase tracking-wide text-zinc-500">Valuation view</p>
+                              <p className="mt-2 text-sm text-zinc-300">{valuationView}</p>
+                            </div>
+                          ) : null}
+                          {businessQualityView ? (
+                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                              <p className="text-xs uppercase tracking-wide text-zinc-500">Business quality</p>
+                              <p className="mt-2 text-sm text-zinc-300">{businessQualityView}</p>
+                            </div>
+                          ) : null}
+                          {riskMonitor ? (
+                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                              <p className="text-xs uppercase tracking-wide text-zinc-500">Risk monitor</p>
+                              <p className="mt-2 text-sm text-zinc-300">{riskMonitor}</p>
+                            </div>
+                          ) : null}
+                          {!riskMonitor && riskLine ? (
+                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                              <p className="text-xs uppercase tracking-wide text-zinc-500">Main risk</p>
+                              <p className="mt-2 text-sm text-zinc-300">{riskLine}</p>
+                            </div>
+                          ) : null}
+                          {typeof consensus?.meanTarget === "number" ? (
+                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                              <p className="text-xs uppercase tracking-wide text-zinc-500">Analyst consensus</p>
+                              <p className="mt-2 text-sm text-zinc-300">
+                                ${consensus.meanTarget.toFixed(2)}
+                                {consensusUpsidePct !== null ? (
+                                  <span className={consensusUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
+                                    ({consensusUpsidePct >= 0 ? "+" : ""}{consensusUpsidePct.toFixed(1)}%)
+                                  </span>
+                                ) : null}
+                              </p>
+                              {consensusPositionLabel ? (
+                                <p className="mt-1 text-xs text-amber-200">
+                                  {consensusPositionLabel}
+                                  {consensusGapPct !== null ? ` (${consensusGapPct > 0 ? "+" : ""}${consensusGapPct.toFixed(1)}%)` : ""}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-4">
+                          <RecommendationStatusForm recommendationId={recommendation.id} currentStatus={recommendation.status} />
+                        </div>
+                      </div>
+                    </details>
                     );
                   }),
                 )}
