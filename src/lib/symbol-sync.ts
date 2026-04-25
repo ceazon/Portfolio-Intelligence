@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
-import { getFinnhubCompanyProfile, getFinnhubQuote } from "@/lib/finnhub";
+import { FinnhubError, getFinnhubCompanyProfile, getFinnhubQuote } from "@/lib/finnhub";
 
 async function recordAgentRun(runType: string, status: string, summary: string, ownerId?: string) {
   const supabase = createSupabaseAdminClient();
@@ -89,7 +89,18 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
     throw new Error("Supabase env vars are not configured yet.");
   }
 
-  const [profile, quote] = await Promise.all([getFinnhubCompanyProfile(ticker), getFinnhubQuote(ticker)]);
+  const [profileResult, quoteResult] = await Promise.allSettled([getFinnhubCompanyProfile(ticker), getFinnhubQuote(ticker)]);
+
+  const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
+  const quote = quoteResult.status === "fulfilled" ? quoteResult.value : null;
+
+  const profileError = profileResult.status === "rejected" ? profileResult.reason : null;
+  const quoteError = quoteResult.status === "rejected" ? quoteResult.reason : null;
+
+  const nonFinnhubError = [profileError, quoteError].find((error) => error && !(error instanceof FinnhubError));
+  if (nonFinnhubError) {
+    throw nonFinnhubError;
+  }
 
   if (profile) {
     const { error: symbolUpdateError } = await supabase
@@ -142,14 +153,17 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
     }
   }
 
+  const finnhubIssue = [profileError, quoteError].find((error) => error instanceof FinnhubError) as FinnhubError | undefined;
   await recordAgentRun(
     "symbol-refresh",
     "completed",
-    `Refreshed ${ticker} profile=${profile ? "yes" : "no"} quote=${quote ? "yes" : "no"}`,
+    finnhubIssue
+      ? `Refreshed ${ticker} with partial data. Finnhub unavailable: ${finnhubIssue.message}`
+      : `Refreshed ${ticker} profile=${profile ? "yes" : "no"} quote=${quote ? "yes" : "no"}`,
     ownerId,
   );
 
-  return { profileLoaded: Boolean(profile), quoteLoaded: Boolean(quote) };
+  return { profileLoaded: Boolean(profile), quoteLoaded: Boolean(quote), partial: Boolean(finnhubIssue) };
 }
 
 export async function refreshTrackedSymbols(ownerId?: string) {

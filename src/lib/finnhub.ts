@@ -1,5 +1,14 @@
 const FINNHUB_BASE_URL = "https://finnhub.io/api/v1";
 
+export class FinnhubError extends Error {
+  status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "FinnhubError";
+    this.status = status;
+  }
+}
+
 function getFinnhubKey() {
   return process.env.FINNHUB_API_KEY || "";
 }
@@ -54,7 +63,7 @@ type FinnhubPriceTarget = {
 async function fetchFinnhub<T>(path: string, params: Record<string, string>) {
   const apiKey = getFinnhubKey();
   if (!apiKey) {
-    throw new Error("Finnhub API key is not configured.");
+    throw new FinnhubError("Finnhub API key is not configured.");
   }
 
   const searchParams = new URLSearchParams({ ...params, token: apiKey });
@@ -62,7 +71,10 @@ async function fetchFinnhub<T>(path: string, params: Record<string, string>) {
   const response = await fetch(url, { cache: "no-store" });
 
   if (!response.ok) {
-    throw new Error(`Finnhub request failed with status ${response.status}`);
+    const message = response.status === 401 || response.status === 403
+      ? "Finnhub credentials are invalid or this Finnhub plan does not include the requested endpoint."
+      : `Finnhub request failed with status ${response.status}`;
+    throw new FinnhubError(message, response.status);
   }
 
   return (await response.json()) as T;

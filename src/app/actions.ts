@@ -630,13 +630,26 @@ export async function refreshMarketData(_prevState: FormState): Promise<FormStat
       return { ok: false, error: auth.error || "You must be logged in." };
     }
 
-    const [quoteResult] = await Promise.all([runCentralQuoteRefresh("manual"), refreshFxRate("USD/CAD", "manual")]);
+    const [quoteOutcome, fxOutcome] = await Promise.allSettled([runCentralQuoteRefresh("manual"), refreshFxRate("USD/CAD", "manual")]);
     revalidatePath("/symbols");
     revalidatePath("/dashboard");
     revalidatePath("/agent-activity");
     revalidatePath("/recommendations");
     revalidatePath("/portfolio");
-    return { ok: true, error: quoteResult.refreshedCount ? "" : "No symbols refreshed." };
+
+    const quoteError = quoteOutcome.status === "rejected" ? getErrorMessage(quoteOutcome.reason, "Quote refresh failed.") : "";
+    const fxError = fxOutcome.status === "rejected" ? getErrorMessage(fxOutcome.reason, "FX refresh failed.") : "";
+
+    if (quoteError && fxError) {
+      return { ok: false, error: `${quoteError} ${fxError}`.trim() };
+    }
+
+    if (quoteError || fxError) {
+      return { ok: true, error: quoteError || fxError };
+    }
+
+    const quoteResult = quoteOutcome.status === "fulfilled" ? quoteOutcome.value : null;
+    return { ok: true, error: quoteResult?.refreshedCount ? "" : "No symbols refreshed." };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to refresh tracked symbols.") };
   }
@@ -651,12 +664,20 @@ export async function runNewsResearch(_prevState: FormState): Promise<FormState>
 
     await runSharedNewsResearch(auth.user.id);
     await runGlobalMacroAgent(auth.user.id);
-    await refreshFundamentalsAndAgent(auth.user.id);
+    const fundamentalsResult = await refreshFundamentalsAndAgent(auth.user.id);
     revalidatePath("/research");
     revalidatePath("/fundamentals");
     revalidatePath("/agents");
     revalidatePath("/agent-activity");
     revalidatePath("/dashboard");
+
+    if (fundamentalsResult.skippedSymbols?.length) {
+      return {
+        ok: true,
+        error: `News research completed, but fundamentals were skipped for ${fundamentalsResult.skippedSymbols.join(", ")} because Finnhub access is unavailable.`,
+      };
+    }
+
     return { ok: true, error: "" };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to run shared news research.") };
