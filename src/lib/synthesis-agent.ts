@@ -144,7 +144,7 @@ type ExternalTargetReference = {
   medianTarget: number | null;
   highTarget: number | null;
   lowTarget: number | null;
-  source: "finnhub" | "unavailable";
+  source: "fmp" | "finnhub" | "unavailable";
 };
 
 type RecommendationReason = {
