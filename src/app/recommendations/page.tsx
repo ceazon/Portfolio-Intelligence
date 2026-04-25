@@ -123,7 +123,7 @@ export default async function RecommendationsPage() {
                         ? ((recommendation.target_price - consensus.meanTarget) / consensus.meanTarget) * 100
                         : null;
                     const consensusPositionLabel =
-                      consensusGapPct === null ? null : Math.abs(consensusGapPct) <= 7 ? "In line with consensus" : consensusGapPct > 0 ? "Above consensus" : "Below consensus";
+                      consensusGapPct === null ? null : Math.abs(consensusGapPct) <= 7 ? "In line with market" : consensusGapPct > 0 ? "Above market" : "Below market";
 
                     const headline = compactText(recommendation.headline || recommendation.summary, "No recommendation provided.");
                     const thesis = compactText(recommendation.thesis, headline);
@@ -175,12 +175,28 @@ export default async function RecommendationsPage() {
                           {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">{targetWeightLabel} {recommendation.target_weight}%</span> : null}
                           {recommendation.target_price !== null ? (
                             <span className="rounded-full border border-zinc-700 px-2 py-1">
-                              12-month target ${recommendation.target_price.toFixed(2)}
+                              Our target ${recommendation.target_price.toFixed(2)}
                               {targetPriceUpsidePct !== null ? (
                                 <span className={targetPriceUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
                                   ({targetPriceUpsidePct >= 0 ? "+" : ""}{targetPriceUpsidePct.toFixed(1)}%)
                                 </span>
                               ) : null}
+                            </span>
+                          ) : null}
+                          {typeof consensus?.meanTarget === "number" ? (
+                            <span className="rounded-full border border-indigo-700/60 bg-indigo-950/20 px-2 py-1 text-indigo-200">
+                              Market target ${consensus.meanTarget.toFixed(2)}
+                              {consensusUpsidePct !== null ? (
+                                <span className={consensusUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
+                                  ({consensusUpsidePct >= 0 ? "+" : ""}{consensusUpsidePct.toFixed(1)}%)
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : null}
+                          {consensusPositionLabel ? (
+                            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200">
+                              {consensusPositionLabel}
+                              {consensusGapPct !== null ? ` (${consensusGapPct > 0 ? "+" : ""}${consensusGapPct.toFixed(1)}%)` : ""}
                             </span>
                           ) : null}
                           {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
@@ -254,7 +270,7 @@ export default async function RecommendationsPage() {
                           ) : null}
                           {typeof consensus?.meanTarget === "number" ? (
                             <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                              <p className="text-xs uppercase tracking-wide text-zinc-500">Analyst consensus</p>
+                              <p className="text-xs uppercase tracking-wide text-zinc-500">Market consensus target</p>
                               <p className="mt-2 text-sm text-zinc-300">
                                 ${consensus.meanTarget.toFixed(2)}
                                 {consensusUpsidePct !== null ? (
