@@ -1,7 +1,8 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
-import { CreatePortfolioForm } from "@/components/create-portfolio-form";
-import { CreatePositionForm } from "@/components/create-position-form";
+import { PortfolioActionBar } from "@/components/portfolio-action-bar";
+import { PortfolioAllocationOverview } from "@/components/portfolio-allocation-overview";
+import { PortfolioRebalanceSummary } from "@/components/portfolio-rebalance-summary";
 import { PortfolioCard } from "@/components/portfolio-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
@@ -97,6 +98,11 @@ function firstRelation<T>(value: T | T[] | null): T | null {
   return value;
 }
 
+function convertUsdToDisplay(value: number | null, currency: SupportedCurrency, usdCadRate: number) {
+  if (value === null || !Number.isFinite(value)) return 0;
+  return currency === "CAD" ? value * usdCadRate : value;
+}
+
 export default async function PortfolioPage() {
   const user = await requireUser();
   const supabase = await createSupabaseServerClient();
@@ -146,67 +152,118 @@ export default async function PortfolioPage() {
     positionsByPortfolio.set(portfolio.id, existing);
   });
 
+  const portfolioOptions = (portfolios || []).map((portfolio) => ({ id: portfolio.id, name: portfolio.name }));
+  const symbolOptions = (symbols || []).map((symbol) => ({ id: symbol.id, ticker: symbol.ticker, name: symbol.name }));
+
+  const overviewCards = (portfolios || []).map((portfolio) => {
+    const portfolioPositions = positionsByPortfolio.get(portfolio.id) || [];
+    const displayCurrency = normalizeCurrency(portfolio.display_currency);
+
+    const baseSlices = portfolioPositions
+      .map((position) => {
+        const symbol = firstRelation(position.symbols);
+        const quote = firstRelation(symbol?.symbol_price_snapshots || null);
+        const price = quote?.price ?? null;
+        const quantity = position.quantity ?? 0;
+        const marketValue = convertUsdToDisplay((price ?? 0) * quantity, displayCurrency, usdCadRate);
+        return {
+          symbolId: symbol?.id || "",
+          label: symbol?.ticker || "Unknown",
+          marketValue,
+        };
+      })
+      .filter((slice) => slice.marketValue > 0);
+
+    const totalValue = baseSlices.reduce((sum, slice) => sum + slice.marketValue, 0);
+
+    const currentSlices = baseSlices.map((slice) => {
+      const recommendation = recommendationBySymbol.get(slice.symbolId);
+      return {
+        label: slice.label,
+        value: slice.marketValue,
+        weight: totalValue > 0 ? (slice.marketValue / totalValue) * 100 : 0,
+        targetWeight: recommendation?.target_weight ?? null,
+      };
+    });
+
+    const targetWeightSum = currentSlices.reduce((sum, slice) => sum + Math.max(slice.targetWeight ?? slice.weight, 0), 0);
+
+    const compareSlices = currentSlices.map((slice) => {
+      const rawTarget = Math.max(slice.targetWeight ?? slice.weight, 0);
+      const normalizedTarget = targetWeightSum > 0 ? (rawTarget / targetWeightSum) * 100 : slice.weight;
+      return {
+        ...slice,
+        weight: normalizedTarget,
+        targetWeight: normalizedTarget,
+      };
+    });
+
+    return {
+      portfolio,
+      positions: portfolioPositions,
+      displayCurrency,
+      currentSlices,
+      compareSlices,
+    };
+  });
+
   return (
     <AppShell viewer={user}>
-      <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-        <div className="space-y-6">
+      <div className="space-y-6">
+        <PortfolioActionBar portfolios={portfolioOptions} symbols={symbolOptions} />
+
+        {(portfolios || []).length > 0 ? (
+          overviewCards.map(({ portfolio, positions, displayCurrency, currentSlices, compareSlices }) => (
+            <div key={portfolio.id} className="grid gap-6 xl:grid-cols-[1.1fr_1.1fr_1.2fr_1.6fr]">
+              <PortfolioAllocationOverview
+                title={`${portfolio.name} current allocation`}
+                description="Current holdings mix based on live market value weightings."
+                slices={currentSlices}
+              />
+
+              <PortfolioAllocationOverview
+                title={`${portfolio.name} compare to target`}
+                description="If you took the active recommendations, this is what the target weighting mix would look like."
+                slices={compareSlices}
+                compareMode
+              />
+
+              <PortfolioRebalanceSummary
+                rows={currentSlices.map((slice) => ({
+                  label: slice.label,
+                  currentWeight: slice.weight,
+                  targetWeight:
+                    compareSlices.find((targetSlice) => targetSlice.label === slice.label)?.weight ?? slice.weight,
+                }))}
+              />
+
+              <SectionCard
+                title={portfolio.name}
+                description="Manage the current state of each holding inline. Calculated metrics update from quantity, average cost, live prices, and recommendation context."
+              >
+                <PortfolioCard
+                  id={portfolio.id}
+                  name={portfolio.name}
+                  description={portfolio.description}
+                  benchmark={portfolio.benchmark}
+                  displayCurrency={displayCurrency}
+                  positions={positions}
+                  recommendationBySymbol={recommendationBySymbol}
+                  usdCadRate={usdCadRate}
+                />
+              </SectionCard>
+            </div>
+          ))
+        ) : (
           <SectionCard
             title="Portfolios"
-            description="Manage the current state of each holding inline. Calculated metrics update from quantity, average cost, and live prices."
+            description="Create your first portfolio from the action bar, then we’ll replace empty space with live allocation views and recommendation comparison."
           >
-            {portfolios && portfolios.length > 0 ? (
-              <div className="space-y-4">
-                {portfolios.map((portfolio) => {
-                  const portfolioPositions = positionsByPortfolio.get(portfolio.id) || [];
-
-                  return (
-                    <PortfolioCard
-                      key={portfolio.id}
-                      id={portfolio.id}
-                      name={portfolio.name}
-                      description={portfolio.description}
-                      benchmark={portfolio.benchmark}
-                      displayCurrency={normalizeCurrency(portfolio.display_currency)}
-                      positions={portfolioPositions}
-                      recommendationBySymbol={recommendationBySymbol}
-                      usdCadRate={usdCadRate}
-                    />
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                No portfolios yet. Create your first paper portfolio on the right, then we’ll start attaching positions and recommendation history.
-              </div>
-            )}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+              No portfolios yet. Create your first paper portfolio to unlock allocation charts, holding comparisons, and target-weight analysis.
+            </div>
           </SectionCard>
-        </div>
-
-        <div className="space-y-6">
-          <CreatePortfolioForm />
-
-          <SectionCard
-            title="Add new position"
-            description="Add a new symbol to a portfolio. Existing holdings can be edited or removed inline directly in the portfolio cards."
-          >
-            {portfolios && portfolios.length > 0 ? (
-              symbols && symbols.length > 0 ? (
-                <CreatePositionForm
-                  portfolios={portfolios.map((portfolio) => ({ id: portfolio.id, name: portfolio.name }))}
-                  symbols={(symbols || []).map((symbol) => ({ id: symbol.id, ticker: symbol.ticker, name: symbol.name }))}
-                />
-              ) : (
-                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-                  Import symbols first on the Symbols page before adding positions.
-                </div>
-              )
-            ) : (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                Create a portfolio first, then add symbols as positions here.
-              </div>
-            )}
-          </SectionCard>
-        </div>
+        )}
       </div>
     </AppShell>
   );
