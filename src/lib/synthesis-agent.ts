@@ -138,6 +138,20 @@ type TargetValidationResult = {
   impliedUpsidePct: number | null;
 };
 
+type RecommendationReason = {
+  label: string;
+  detail: string;
+  strength: "primary" | "secondary";
+};
+
+type RecommendationRisk = {
+  label: string;
+  detail: string;
+  severity: "high" | "medium" | "low";
+};
+
+type DecisionStyle = "core" | "starter" | "hold" | "trim" | "watchlist";
+
 type SynthesizedRecommendation = {
   symbolId: string;
   action: "buy" | "hold" | "trim" | "watch";
@@ -150,6 +164,18 @@ type SynthesizedRecommendation = {
   targetValidationStatus: TargetValidationStatus;
   targetValidationSummary: string;
   impliedUpsidePct: number | null;
+  decisionStyle: DecisionStyle;
+  headline: string;
+  thesis: string;
+  whyNow: string;
+  valuationView: string;
+  businessQualityView: string;
+  goodBuyBecause: string;
+  hesitationBecause: string;
+  mainRisk: string;
+  riskMonitor: string;
+  supportingFactors: RecommendationReason[];
+  riskFactors: RecommendationRisk[];
 };
 
 function firstRelation<T>(value: T | T[] | null): T | null {
@@ -374,6 +400,241 @@ function getOpenAIClient() {
   return new OpenAI({ apiKey });
 }
 
+function toSentenceCase(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function trimTrailingPeriod(value: string) {
+  return value.replace(/[.\s]+$/, "");
+}
+
+function inferDecisionStyle(action: SynthesizedRecommendation["action"], currentWeight: number | null, conviction: number): DecisionStyle {
+  if (action === "watch") return "watchlist";
+  if (action === "trim") return "trim";
+  if (action === "hold") return "hold";
+  if ((currentWeight ?? 0) >= 4 || conviction >= 78) return "core";
+  return "starter";
+}
+
+function buildSupportingFactors(candidate: SynthesisCandidate, macro: AgentOutputRow | null) {
+  const factors: RecommendationReason[] = [];
+  const f = candidate.fundamentalsSnapshot;
+  const revenueGrowth = f?.revenueGrowthTtm ?? null;
+  const netMargin = f?.netMarginTtm ?? null;
+  const roe = f?.roeTtm ?? null;
+  const pe = f?.peTtm ?? null;
+  const ps = f?.psTtm ?? null;
+  const newsScore = candidate.news?.normalizedScore ?? 0;
+  const fundamentalsScore = candidate.fundamentals?.normalizedScore ?? 0;
+  const macroScore = macro?.normalized_score ?? 0;
+
+  if (revenueGrowth !== null && revenueGrowth >= 12) {
+    factors.push({
+      label: "Durable growth",
+      detail: `${candidate.ticker} is still delivering revenue growth strong enough to support a constructive 12-month outlook.`,
+      strength: "primary",
+    });
+  }
+
+  if ((netMargin !== null && netMargin >= 15) || (roe !== null && roe >= 15)) {
+    factors.push({
+      label: "Business quality",
+      detail: `${candidate.ticker} shows strong profitability and operating quality, which helps support earnings durability.`,
+      strength: factors.length ? "secondary" : "primary",
+    });
+  }
+
+  if (newsScore >= 0.25) {
+    factors.push({
+      label: "Healthy demand and momentum",
+      detail: `Recent company-specific developments still reinforce the bullish case rather than weakening it.`,
+      strength: factors.length ? "secondary" : "primary",
+    });
+  }
+
+  if ((pe !== null && pe <= 20) || (ps !== null && ps <= 4 && fundamentalsScore >= 0.1)) {
+    factors.push({
+      label: "Reasonable valuation",
+      detail: `Valuation does not look stretched relative to the current business setup.`,
+      strength: factors.length ? "secondary" : "primary",
+    });
+  }
+
+  if (macroScore >= 0.2) {
+    factors.push({
+      label: "Supportive backdrop",
+      detail: `The broader market and macro backdrop are not working against the stock right now.`,
+      strength: factors.length ? "secondary" : "primary",
+    });
+  }
+
+  if (!factors.length) {
+    factors.push({
+      label: "Mixed but workable setup",
+      detail: `${candidate.ticker} still has enough support to remain investable, even if the upside case is not overwhelming.`,
+      strength: "primary",
+    });
+  }
+
+  return factors.slice(0, 3);
+}
+
+function buildRiskFactors(candidate: SynthesisCandidate, macro: AgentOutputRow | null) {
+  const risks: RecommendationRisk[] = [];
+  const f = candidate.fundamentalsSnapshot;
+  const revenueGrowth = f?.revenueGrowthTtm ?? null;
+  const netMargin = f?.netMarginTtm ?? null;
+  const pe = f?.peTtm ?? null;
+  const ps = f?.psTtm ?? null;
+  const bearScore = candidate.bearCase?.normalizedScore ?? 0;
+  const macroScore = macro?.normalized_score ?? 0;
+
+  if ((pe !== null && pe >= 30) || (ps !== null && ps >= 8)) {
+    risks.push({
+      label: "Premium valuation",
+      detail: `The stock already reflects a meaningful amount of future execution, which limits room for disappointment.`,
+      severity: "medium",
+    });
+  }
+
+  if (bearScore <= -0.25) {
+    risks.push({
+      label: "Meaningful downside case",
+      detail: `There is still a live downside scenario that could outweigh the base case if execution weakens.`,
+      severity: "high",
+    });
+  }
+
+  if (revenueGrowth !== null && revenueGrowth < 6) {
+    risks.push({
+      label: "Slower growth profile",
+      detail: `Growth is not strong enough to make the upside case especially forgiving.`,
+      severity: risks.length ? "medium" : "high",
+    });
+  }
+
+  if (netMargin !== null && netMargin < 8) {
+    risks.push({
+      label: "Thin margins",
+      detail: `A weaker margin profile leaves less cushion if demand softens or costs rise.`,
+      severity: risks.length ? "medium" : "high",
+    });
+  }
+
+  if (macroScore <= -0.2) {
+    risks.push({
+      label: "Less supportive backdrop",
+      detail: `The broader macro backdrop adds pressure rather than providing a tailwind.`,
+      severity: risks.length ? "low" : "medium",
+    });
+  }
+
+  if (!risks.length) {
+    risks.push({
+      label: "Execution risk",
+      detail: `The company still needs to execute well enough to support the current outlook and valuation.`,
+      severity: "medium",
+    });
+  }
+
+  return risks.slice(0, 3);
+}
+
+function buildNarrative(candidate: SynthesisCandidate, action: SynthesizedRecommendation["action"], conviction: number, scenarios: ScenarioSet, macro: AgentOutputRow | null): {
+  decisionStyle: DecisionStyle;
+  headline: string;
+  thesis: string;
+  whyNow: string;
+  valuationView: string;
+  businessQualityView: string;
+  goodBuyBecause: string;
+  hesitationBecause: string;
+  mainRisk: string;
+  riskMonitor: string;
+  supportingFactors: RecommendationReason[];
+  riskFactors: RecommendationRisk[];
+  summary: string;
+  risks: string;
+} {
+  const supports = buildSupportingFactors(candidate, macro);
+  const risks = buildRiskFactors(candidate, macro);
+  const support1 = supports[0]?.detail || `${candidate.ticker} still has enough business support to stay investable.`;
+  const support2 = supports[1]?.detail || null;
+  const hesitation = risks[0]?.detail || `The setup still requires solid execution to work.`;
+  const mainRisk = risks[0]?.detail || `The main risk is that the business fails to deliver enough to support the current outlook.`;
+  const f = candidate.fundamentalsSnapshot;
+  const expensiveValuation = (f?.peTtm ?? 0) >= 30 || (f?.psTtm ?? 0) >= 8;
+  const cheapValuation = ((f?.peTtm ?? 999) <= 20 || (f?.psTtm ?? 999) <= 4) && (candidate.fundamentals?.normalizedScore ?? 0) >= 0;
+  const strongQuality = (f?.netMarginTtm ?? 0) >= 15 || (f?.roeTtm ?? 0) >= 15;
+  const strongDemand = (candidate.news?.normalizedScore ?? 0) >= 0.25;
+  const negativeSetup = action === "trim" || action === "watch";
+  const decisionStyle = inferDecisionStyle(action, candidate.currentWeight, conviction);
+
+  const valuationView = cheapValuation
+    ? `Valuation looks supportive relative to the current business outlook.`
+    : expensiveValuation
+      ? `Valuation is demanding, so continued execution will need to stay strong.`
+      : `Valuation looks reasonable enough for the current business outlook.`;
+
+  const businessQualityView = strongQuality
+    ? `${candidate.ticker} has strong business quality, supported by profitability and operating efficiency.`
+    : (candidate.fundamentals?.normalizedScore ?? 0) >= 0
+      ? `${candidate.ticker} has enough business quality to stay investable, but not enough to remove execution risk.`
+      : `${candidate.ticker}'s business quality looks less reliable, which limits confidence in the upside case.`;
+
+  const whyNow = strongDemand
+    ? `Recent demand and operating momentum still support the case over the next 12 months.`
+    : (candidate.fundamentals?.normalizedScore ?? 0) >= 0.2
+      ? `The business fundamentals remain supportive enough to justify attention now.`
+      : negativeSetup
+        ? `The current setup does not offer enough reward relative to the visible risks.`
+        : `There is not yet enough change in the setup to justify a more aggressive stance.`;
+
+  const goodBuyBecause = trimTrailingPeriod(toSentenceCase(support1));
+  const hesitationBecause = trimTrailingPeriod(toSentenceCase(hesitation));
+  const riskMonitor = action === "buy"
+    ? "Watch for signs of slowing growth, weaker margins, or deteriorating demand."
+    : action === "hold"
+      ? "Watch for a change in earnings momentum or valuation support."
+      : action === "trim"
+        ? "Watch for further evidence that downside risks are outweighing the remaining upside case."
+        : "Watch for either a better entry point or stronger business evidence that improves the reward-to-risk setup.";
+
+  const headline = action === "buy"
+    ? `${candidate.ticker} looks attractive because ${trimTrailingPeriod(support1).toLowerCase()}.`
+    : action === "hold"
+      ? `${candidate.ticker} remains a reasonable hold because the core business case is still intact.`
+      : action === "trim"
+        ? `${candidate.ticker} looks less attractive at current levels as the downside balance has worsened.`
+        : `${candidate.ticker} is worth watching, but the current setup is not compelling enough yet.`;
+
+  const thesis = action === "buy"
+    ? `${candidate.ticker} is a buy because ${trimTrailingPeriod(goodBuyBecause).toLowerCase()}, although ${trimTrailingPeriod(hesitationBecause).toLowerCase()}.`
+    : action === "hold"
+      ? `${candidate.ticker} is worth holding because ${trimTrailingPeriod(goodBuyBecause).toLowerCase()}, but ${trimTrailingPeriod(hesitationBecause).toLowerCase()}.`
+      : action === "trim"
+        ? `${candidate.ticker} should be trimmed because ${trimTrailingPeriod(mainRisk).toLowerCase()}, even though ${trimTrailingPeriod(goodBuyBecause).toLowerCase()}.`
+        : `${candidate.ticker} stays on the watchlist because ${trimTrailingPeriod(goodBuyBecause).toLowerCase()}, but ${trimTrailingPeriod(hesitationBecause).toLowerCase()}.`;
+
+  return {
+    decisionStyle,
+    headline,
+    thesis,
+    whyNow,
+    valuationView,
+    businessQualityView,
+    goodBuyBecause,
+    hesitationBecause,
+    mainRisk: trimTrailingPeriod(toSentenceCase(mainRisk)),
+    riskMonitor,
+    supportingFactors: supports,
+    riskFactors: risks,
+    summary: thesis,
+    risks: trimTrailingPeriod(toSentenceCase(mainRisk)),
+  };
+}
+
 function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: AgentOutputRow | null): SynthesizedRecommendation[] {
   return candidates.map((candidate) => {
     const scenarios = buildScenarioSet(candidate, macro);
@@ -410,34 +671,34 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
         ? clamp(Number((2 + Math.max(0.4, rawWeightTilt) + Math.max(0, blendedSignal) * 2.2).toFixed(2)), 1, 7)
         : null;
 
-    const summary =
-      action === "buy"
-        ? `${candidate.ticker}: add selectively, because the ${scenarios.archetype} valuation anchor and current agent mix still support disciplined upside exposure.`
-        : action === "trim"
-          ? `${candidate.ticker}: reduce exposure, because the downside scenario is strong enough to outweigh the current upside case.`
-          : action === "watch"
-            ? `${candidate.ticker}: stay on watch, because the scenario-weighted target is not attractive enough yet to justify new risk.`
-            : `${candidate.ticker}: hold current sizing, because the scenario-weighted valuation is constructive but not decisive enough to press harder.`;
-
-    const risks =
-      bearScore < -0.2
-        ? `${candidate.ticker}: the bear case is still live, with roughly ${Math.round(scenarios.bearProbability * 100)}% weight on the downside scenario.`
-        : `${candidate.ticker}: mixed evidence or weaker follow-through could pull the outcome back toward the bear case.`;
-
+    const finalConviction = Math.max(conviction, scenarios.valuationConfidence);
     const validation = validateTarget(candidate, scenarios);
+    const narrative = buildNarrative(candidate, action, finalConviction, scenarios, macro);
 
     return {
       symbolId: candidate.symbolId,
       action,
       targetWeight,
       targetPrice: scenarios.weightedTarget,
-      convictionScore: Math.max(conviction, scenarios.valuationConfidence),
-      summary,
-      risks,
-      confidence: confidenceLabel(Math.max(conviction, scenarios.valuationConfidence)),
+      convictionScore: finalConviction,
+      summary: narrative.summary,
+      risks: narrative.risks,
+      confidence: confidenceLabel(finalConviction),
       targetValidationStatus: validation.status,
       targetValidationSummary: validation.summary,
       impliedUpsidePct: validation.impliedUpsidePct,
+      decisionStyle: narrative.decisionStyle,
+      headline: narrative.headline,
+      thesis: narrative.thesis,
+      whyNow: narrative.whyNow,
+      valuationView: narrative.valuationView,
+      businessQualityView: narrative.businessQualityView,
+      goodBuyBecause: narrative.goodBuyBecause,
+      hesitationBecause: narrative.hesitationBecause,
+      mainRisk: narrative.mainRisk,
+      riskMonitor: narrative.riskMonitor,
+      supportingFactors: narrative.supportingFactors,
+      riskFactors: narrative.riskFactors,
     };
   });
 }
@@ -472,7 +733,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
           {
             type: "input_text",
             text:
-              "You are a portfolio recommendation synthesizer. Combine a global macro agent, a per-symbol news agent, a per-symbol bear case agent, a per-symbol fundamentals agent, and a valuation scenario engine into advisory recommendations. The valuation engine provides archetype-based bull/base/bear scenarios and a weighted target. Use that valuation output as the target-price anchor. Return strict JSON only. Actions must be one of: buy, hold, trim, watch. Conviction score must be 0-100. Confidence must be one of: low, medium, high. Keep summaries and risks concise, concrete, and investment-advisory in tone. Do not summarize headlines, do not mention agents, and do not explain chain-of-thought. Respect current weight and avoid absurd target weights. When the valuation anchor and agent stack disagree, lower conviction instead of forcing a strong call.",
+              "You are a senior equity recommendation synthesizer. Convert structured company evidence into clear investment recommendations for an end investor. You will receive portfolio/watchlist context, current sizing, macro, news, bear-case and fundamentals assessments, plus valuation scenario outputs with bull/base/bear targets and a weighted target. Decide whether each stock is a buy, hold, trim, or watch. Set a sensible conviction score from 0-100. Suggest a realistic target weight and 12-month target price when appropriate. Explain the recommendation in plain investor language. Speak about the company and stock directly. Use concepts like growth, margins, valuation, demand, execution, cyclicality, competitive position, balance sheet, business quality, and catalysts. Never mention agents, models, signals, normalized scores, anchors, synthesis mechanics, or chain-of-thought. Never say agent mix, valuation anchor, signal stack, or similar internal terms. Give both the positive case and the limiting factor. If valuation is rich, say so clearly even when the business is strong. If evidence is mixed, prefer hold or watch over forced conviction. Respect current weight and avoid absurd portfolio weights. Return strict JSON only matching the required schema.",
           },
         ],
       },
@@ -511,8 +772,44 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
                   targetValidationStatus: { type: "string", enum: ["plausible", "stretched", "aggressive", "unavailable"] },
                   targetValidationSummary: { type: "string" },
                   impliedUpsidePct: { type: ["number", "null"] },
+                  decisionStyle: { type: "string", enum: ["core", "starter", "hold", "trim", "watchlist"] },
+                  headline: { type: "string" },
+                  thesis: { type: "string" },
+                  whyNow: { type: "string" },
+                  valuationView: { type: "string" },
+                  businessQualityView: { type: "string" },
+                  goodBuyBecause: { type: "string" },
+                  hesitationBecause: { type: "string" },
+                  mainRisk: { type: "string" },
+                  riskMonitor: { type: "string" },
+                  supportingFactors: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        label: { type: "string" },
+                        detail: { type: "string" },
+                        strength: { type: "string", enum: ["primary", "secondary"] },
+                      },
+                      required: ["label", "detail", "strength"],
+                    },
+                  },
+                  riskFactors: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        label: { type: "string" },
+                        detail: { type: "string" },
+                        severity: { type: "string", enum: ["high", "medium", "low"] },
+                      },
+                      required: ["label", "detail", "severity"],
+                    },
+                  },
                 },
-                required: ["symbolId", "action", "targetWeight", "targetPrice", "convictionScore", "summary", "risks", "confidence", "targetValidationStatus", "targetValidationSummary", "impliedUpsidePct"],
+                required: ["symbolId", "action", "targetWeight", "targetPrice", "convictionScore", "summary", "risks", "confidence", "targetValidationStatus", "targetValidationSummary", "impliedUpsidePct", "decisionStyle", "headline", "thesis", "whyNow", "valuationView", "businessQualityView", "goodBuyBecause", "hesitationBecause", "mainRisk", "riskMonitor", "supportingFactors", "riskFactors"],
               },
             },
           },
@@ -532,14 +829,26 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
     targetWeight: item.targetWeight === null ? null : clamp(Number(item.targetWeight), 0, 20),
     targetPrice: item.targetPrice === null ? null : Math.max(0, Number(item.targetPrice)),
     convictionScore: clamp(Math.round(Number(item.convictionScore)), 0, 100),
-    summary: String(item.summary || "No summary provided."),
-    risks: String(item.risks || "No risk summary provided."),
+    summary: String(item.summary || item.thesis || "No summary provided."),
+    risks: String(item.risks || item.mainRisk || "No risk summary provided."),
     confidence: ["low", "medium", "high"].includes(item.confidence) ? item.confidence : confidenceLabel(Number(item.convictionScore) || 50),
     targetValidationStatus: ["plausible", "stretched", "aggressive", "unavailable"].includes(item.targetValidationStatus)
       ? item.targetValidationStatus
       : "unavailable",
     targetValidationSummary: String(item.targetValidationSummary || "Target validation unavailable."),
     impliedUpsidePct: item.impliedUpsidePct === null ? null : Number(item.impliedUpsidePct),
+    decisionStyle: ["core", "starter", "hold", "trim", "watchlist"].includes(item.decisionStyle) ? item.decisionStyle : "hold",
+    headline: String(item.headline || item.summary || "No headline provided."),
+    thesis: String(item.thesis || item.summary || "No thesis provided."),
+    whyNow: String(item.whyNow || "No timing view provided."),
+    valuationView: String(item.valuationView || "Valuation view unavailable."),
+    businessQualityView: String(item.businessQualityView || "Business quality view unavailable."),
+    goodBuyBecause: String(item.goodBuyBecause || "No upside rationale provided."),
+    hesitationBecause: String(item.hesitationBecause || "No caution provided."),
+    mainRisk: String(item.mainRisk || item.risks || "No main risk provided."),
+    riskMonitor: String(item.riskMonitor || "Risk monitor unavailable."),
+    supportingFactors: Array.isArray(item.supportingFactors) ? item.supportingFactors : [],
+    riskFactors: Array.isArray(item.riskFactors) ? item.riskFactors : [],
   }));
 }
 
@@ -785,8 +1094,8 @@ export async function runRecommendationSynthesis(ownerId: string) {
         target_weight: item.targetWeight,
         target_price: item.targetPrice,
         conviction_score: item.convictionScore,
-        summary: item.summary,
-        risks: item.risks,
+        summary: item.headline,
+        risks: item.mainRisk,
         confidence: item.confidence,
       };
     });

@@ -95,6 +95,25 @@ export default async function RecommendationsPage() {
                     const consensusPositionLabel =
                       consensusGapPct === null ? null : Math.abs(consensusGapPct) <= 7 ? "In line with consensus" : consensusGapPct > 0 ? "Above consensus" : "Below consensus";
 
+                    const headline = recommendation.summary || "No recommendation provided.";
+                    const riskLine = recommendation.risks || "No risk summary provided.";
+                    const whyAttractive =
+                      recommendation.action === "buy"
+                        ? "The current evidence still supports owning more here, with enough business strength to justify fresh capital."
+                        : recommendation.action === "hold"
+                          ? "The core case remains intact enough to keep the position, even if the upside is less forceful."
+                          : recommendation.action === "trim"
+                            ? "The remaining upside no longer looks strong enough relative to the risks."
+                            : "There is something interesting here, but not enough yet to justify taking risk now.";
+                    const cautionLine =
+                      recommendation.action === "buy"
+                        ? riskLine
+                        : recommendation.action === "hold"
+                          ? riskLine
+                          : recommendation.action === "trim"
+                            ? "The stock needs a better balance of reward versus risk before it becomes more attractive again."
+                            : riskLine;
+
                     return (
                     <div key={recommendation.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                       <div className="flex items-start justify-between gap-4">
@@ -120,7 +139,22 @@ export default async function RecommendationsPage() {
                         </div>
                       </div>
 
-                      <p className="mt-3 text-base text-zinc-200">{recommendation.summary || "No recommendation provided."}</p>
+                      <p className="mt-3 text-base font-medium text-zinc-100">{headline}</p>
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-3">
+                        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
+                          <p className="text-xs uppercase tracking-wide text-zinc-500">Why it&apos;s attractive</p>
+                          <p className="mt-2 text-sm text-zinc-300">{whyAttractive}</p>
+                        </div>
+                        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
+                          <p className="text-xs uppercase tracking-wide text-zinc-500">What keeps us cautious</p>
+                          <p className="mt-2 text-sm text-zinc-300">{cautionLine}</p>
+                        </div>
+                        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
+                          <p className="text-xs uppercase tracking-wide text-zinc-500">Main risk</p>
+                          <p className="mt-2 text-sm text-zinc-300">{riskLine}</p>
+                        </div>
+                      </div>
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
                         {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">{targetWeightLabel} {recommendation.target_weight}%</span> : null}
@@ -155,8 +189,6 @@ export default async function RecommendationsPage() {
                         ) : null}
                         {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
                       </div>
-
-                      <div className="mt-3 text-sm text-zinc-500">Risk: {recommendation.risks || "No risk summary provided."}</div>
 
                       <RecommendationStatusForm recommendationId={recommendation.id} currentStatus={recommendation.status} />
                     </div>
