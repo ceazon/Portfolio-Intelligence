@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
 
 type AgentOutputRow = {
   id: string;
@@ -136,6 +137,14 @@ type TargetValidationResult = {
   status: TargetValidationStatus;
   summary: string;
   impliedUpsidePct: number | null;
+};
+
+type ExternalTargetReference = {
+  meanTarget: number | null;
+  medianTarget: number | null;
+  highTarget: number | null;
+  lowTarget: number | null;
+  source: "finnhub" | "unavailable";
 };
 
 type RecommendationReason = {
@@ -316,7 +325,7 @@ function buildScenarioSet(candidate: SynthesisCandidate, macro: AgentOutputRow |
   };
 }
 
-function validateTarget(candidate: SynthesisCandidate, scenarios: ScenarioSet): TargetValidationResult {
+function validateTarget(candidate: SynthesisCandidate, scenarios: ScenarioSet, externalTarget?: ExternalTargetReference | null): TargetValidationResult {
   const currentPrice = candidate.currentPrice;
   const targetPrice = scenarios.weightedTarget;
   if (typeof currentPrice !== "number" || typeof targetPrice !== "number" || currentPrice <= 0) {
@@ -330,6 +339,39 @@ function validateTarget(candidate: SynthesisCandidate, scenarios: ScenarioSet): 
   const impliedUpsidePct = Number((((targetPrice - currentPrice) / currentPrice) * 100).toFixed(1));
   const f = candidate.fundamentalsSnapshot;
   const archetype = scenarios.archetype;
+  const consensusMean = externalTarget?.meanTarget ?? null;
+  const consensusHigh = externalTarget?.highTarget ?? null;
+  const consensusLow = externalTarget?.lowTarget ?? null;
+
+  if (typeof consensusMean === "number" && consensusMean > 0) {
+    const gapVsConsensusPct = Number((((targetPrice - consensusMean) / consensusMean) * 100).toFixed(1));
+    const aboveHigh = typeof consensusHigh === "number" && targetPrice > consensusHigh * 1.08;
+    const belowLow = typeof consensusLow === "number" && targetPrice < consensusLow * 0.92;
+
+    if (Math.abs(gapVsConsensusPct) <= 8 && !aboveHigh && !belowLow) {
+      return {
+        status: "plausible",
+        summary: `${candidate.ticker}: the target is broadly in line with outside analyst expectations, which supports its credibility.`,
+        impliedUpsidePct,
+      };
+    }
+
+    if (Math.abs(gapVsConsensusPct) <= 18 && !aboveHigh && !belowLow) {
+      return {
+        status: "stretched",
+        summary: `${candidate.ticker}: the target is somewhat ${gapVsConsensusPct > 0 ? "above" : "below"} outside consensus, so it needs cleaner execution than the Street base case.`,
+        impliedUpsidePct,
+      };
+    }
+
+    if (aboveHigh || belowLow || Math.abs(gapVsConsensusPct) > 18) {
+      return {
+        status: "aggressive",
+        summary: `${candidate.ticker}: the target sits well ${gapVsConsensusPct > 0 ? "above" : "below"} outside consensus expectations, so it should be treated as a differentiated call rather than a standard base case.`,
+        impliedUpsidePct,
+      };
+    }
+  }
 
   if (archetype === "financial") {
     if (impliedUpsidePct > 35) {
@@ -688,7 +730,7 @@ function buildNarrative(candidate: SynthesisCandidate, action: SynthesizedRecomm
   };
 }
 
-function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: AgentOutputRow | null): SynthesizedRecommendation[] {
+function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: AgentOutputRow | null, externalTargetsBySymbol: Map<string, ExternalTargetReference>): SynthesizedRecommendation[] {
   return candidates.map((candidate) => {
     const scenarios = buildScenarioSet(candidate, macro);
     const newsScore = candidate.news?.normalizedScore ?? 0;
@@ -724,8 +766,10 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
         ? clamp(Number((2 + Math.max(0.4, rawWeightTilt) + Math.max(0, blendedSignal) * 2.2).toFixed(2)), 1, 7)
         : null;
 
-    const finalConviction = Math.max(conviction, scenarios.valuationConfidence);
-    const validation = validateTarget(candidate, scenarios);
+    const externalTarget = externalTargetsBySymbol.get(candidate.symbolId) || null;
+    const validation = validateTarget(candidate, scenarios, externalTarget);
+    const externalGapPenalty = validation.status === "aggressive" ? 10 : validation.status === "stretched" ? 4 : 0;
+    const finalConviction = clamp(Math.max(conviction, scenarios.valuationConfidence) - externalGapPenalty, 18, 92);
     const narrative = buildNarrative(candidate, action, finalConviction, scenarios, macro);
 
     return {
@@ -756,7 +800,7 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
   });
 }
 
-async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: AgentOutputRow | null): Promise<SynthesizedRecommendation[]> {
+async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: AgentOutputRow | null, externalTargetsBySymbol: Map<string, ExternalTargetReference>): Promise<SynthesizedRecommendation[]> {
   const client = getOpenAIClient();
   if (!client) throw new Error("OPENAI_API_KEY is not configured.");
 
@@ -774,6 +818,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
     candidates: candidates.map((candidate) => ({
       ...candidate,
       valuationScenarios: buildScenarioSet(candidate, macro),
+      externalConsensusTarget: externalTargetsBySymbol.get(candidate.symbolId) || null,
     })),
   };
 
@@ -786,7 +831,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
           {
             type: "input_text",
             text:
-              "You are a senior equity recommendation synthesizer. Convert structured company evidence into clear investment recommendations for an end investor. You will receive portfolio/watchlist context, current sizing, macro, news, bear-case and fundamentals assessments, plus valuation scenario outputs with bull/base/bear targets and a weighted target. Decide whether each stock is a buy, hold, trim, or watch. Set a sensible conviction score from 0-100. Suggest a realistic target weight and 12-month target price when appropriate. Explain the recommendation in plain investor language. Speak about the company and stock directly. Use concepts like growth, margins, valuation, demand, execution, cyclicality, competitive position, balance sheet, business quality, and catalysts. Never mention agents, models, signals, normalized scores, anchors, synthesis mechanics, or chain-of-thought. Never say agent mix, valuation anchor, signal stack, or similar internal terms. Give both the positive case and the limiting factor. If valuation is rich, say so clearly even when the business is strong. If evidence is mixed, prefer hold or watch over forced conviction. Respect current weight and avoid absurd portfolio weights. Return strict JSON only matching the required schema.",
+              "You are a senior equity recommendation synthesizer. Convert structured company evidence into clear investment recommendations for an end investor. You will receive portfolio/watchlist context, current sizing, macro, news, bear-case and fundamentals assessments, valuation scenario outputs with bull/base/bear targets and a weighted target, and outside analyst consensus targets when available. Decide whether each stock is a buy, hold, trim, or watch. Set a sensible conviction score from 0-100. Suggest a realistic target weight and 12-month target price when appropriate. Explain the recommendation in plain investor language. Speak about the company and stock directly. Use concepts like growth, margins, valuation, demand, execution, cyclicality, competitive position, balance sheet, business quality, and catalysts. Never mention agents, models, signals, normalized scores, anchors, synthesis mechanics, or chain-of-thought. Never say agent mix, valuation anchor, signal stack, or similar internal terms. Use outside consensus targets as a validation check, not as the sole source of truth. If your target is materially above or below consensus, explicitly justify why. If outside consensus strongly disagrees and the internal case is not strong enough, lower conviction rather than forcing a bold target. If valuation is rich, say so clearly even when the business is strong. If evidence is mixed, prefer hold or watch over forced conviction. Respect current weight and avoid absurd portfolio weights. Return strict JSON only matching the required schema.",
           },
         ],
       },
@@ -1123,13 +1168,21 @@ export async function runRecommendationSynthesis(ownerId: string) {
 
     if (!candidates.length) throw new Error("No symbols available for synthesis.");
 
+    const externalTargetsBySymbol = new Map<string, ExternalTargetReference>();
+    await Promise.all(
+      candidates.map(async (candidate) => {
+        const consensus = await getConsensusTargetForSymbol(candidate.ticker);
+        externalTargetsBySymbol.set(candidate.symbolId, consensus);
+      }),
+    );
+
     let synthesized: SynthesizedRecommendation[];
     let usedModel = "gpt-4.1-mini";
 
     try {
-      synthesized = await synthesizeWithOpenAI(candidates, macro);
+      synthesized = await synthesizeWithOpenAI(candidates, macro, externalTargetsBySymbol);
     } catch {
-      synthesized = buildDeterministicFallback(candidates, macro);
+      synthesized = buildDeterministicFallback(candidates, macro, externalTargetsBySymbol);
       usedModel = "synthesis-v1-fallback";
     }
 
