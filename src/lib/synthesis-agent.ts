@@ -1097,6 +1097,18 @@ export async function runRecommendationSynthesis(ownerId: string) {
         summary: item.headline,
         risks: item.mainRisk,
         confidence: item.confidence,
+        headline: item.headline,
+        thesis: item.thesis,
+        why_now: item.whyNow,
+        valuation_view: item.valuationView,
+        business_quality_view: item.businessQualityView,
+        good_buy_because: item.goodBuyBecause,
+        hesitation_because: item.hesitationBecause,
+        main_risk: item.mainRisk,
+        risk_monitor: item.riskMonitor,
+        decision_style: item.decisionStyle,
+        supporting_factors_json: item.supportingFactors,
+        risk_factors_json: item.riskFactors,
       };
     });
 

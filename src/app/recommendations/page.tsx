@@ -6,6 +6,18 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
 
+type RecommendationReason = {
+  label: string;
+  detail: string;
+  strength?: "primary" | "secondary";
+};
+
+type RecommendationRisk = {
+  label: string;
+  detail: string;
+  severity?: "high" | "medium" | "low";
+};
+
 type RecommendationRow = {
   id: string;
   synthesis_run_id: string | null;
@@ -18,6 +30,18 @@ type RecommendationRow = {
   summary: string | null;
   risks: string | null;
   confidence: string | null;
+  headline: string | null;
+  thesis: string | null;
+  why_now: string | null;
+  valuation_view: string | null;
+  business_quality_view: string | null;
+  good_buy_because: string | null;
+  hesitation_because: string | null;
+  main_risk: string | null;
+  risk_monitor: string | null;
+  decision_style: string | null;
+  supporting_factors_json: RecommendationReason[] | null;
+  risk_factors_json: RecommendationRisk[] | null;
   created_at: string;
   portfolios: { name: string } | { name: string }[] | null;
   symbols:
@@ -55,7 +79,7 @@ export default async function RecommendationsPage() {
     ? await supabase
         .from("recommendations")
         .select(
-          "id, synthesis_run_id, recommendation_engine, action, status, target_weight, target_price, conviction_score, summary, risks, confidence, created_at, portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
+          "id, synthesis_run_id, recommendation_engine, action, status, target_weight, target_price, conviction_score, summary, risks, confidence, headline, thesis, why_now, valuation_view, business_quality_view, good_buy_because, hesitation_because, main_risk, risk_monitor, decision_style, supporting_factors_json, risk_factors_json, created_at, portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
         )
         .eq("owner_id", user.id)
         .eq("recommendation_engine", "synthesis-v1")
@@ -95,24 +119,17 @@ export default async function RecommendationsPage() {
                     const consensusPositionLabel =
                       consensusGapPct === null ? null : Math.abs(consensusGapPct) <= 7 ? "In line with consensus" : consensusGapPct > 0 ? "Above consensus" : "Below consensus";
 
-                    const headline = recommendation.summary || "No recommendation provided.";
-                    const riskLine = recommendation.risks || "No risk summary provided.";
-                    const whyAttractive =
-                      recommendation.action === "buy"
-                        ? "The current evidence still supports owning more here, with enough business strength to justify fresh capital."
-                        : recommendation.action === "hold"
-                          ? "The core case remains intact enough to keep the position, even if the upside is less forceful."
-                          : recommendation.action === "trim"
-                            ? "The remaining upside no longer looks strong enough relative to the risks."
-                            : "There is something interesting here, but not enough yet to justify taking risk now.";
-                    const cautionLine =
-                      recommendation.action === "buy"
-                        ? riskLine
-                        : recommendation.action === "hold"
-                          ? riskLine
-                          : recommendation.action === "trim"
-                            ? "The stock needs a better balance of reward versus risk before it becomes more attractive again."
-                            : riskLine;
+                    const headline = recommendation.headline || recommendation.summary || "No recommendation provided.";
+                    const thesis = recommendation.thesis || recommendation.summary || "No thesis provided.";
+                    const whyAttractive = recommendation.good_buy_because || "No upside rationale provided.";
+                    const cautionLine = recommendation.hesitation_because || recommendation.risks || "No caution provided.";
+                    const riskLine = recommendation.main_risk || recommendation.risks || "No risk summary provided.";
+                    const whyNow = recommendation.why_now || null;
+                    const valuationView = recommendation.valuation_view || null;
+                    const businessQualityView = recommendation.business_quality_view || null;
+                    const riskMonitor = recommendation.risk_monitor || null;
+                    const supportingFactors = Array.isArray(recommendation.supporting_factors_json) ? recommendation.supporting_factors_json.slice(0, 2) : [];
+                    const riskFactors = Array.isArray(recommendation.risk_factors_json) ? recommendation.risk_factors_json.slice(0, 2) : [];
 
                     return (
                     <div key={recommendation.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -140,6 +157,7 @@ export default async function RecommendationsPage() {
                       </div>
 
                       <p className="mt-3 text-base font-medium text-zinc-100">{headline}</p>
+                      <p className="mt-2 text-sm text-zinc-300">{thesis}</p>
 
                       <div className="mt-4 grid gap-3 md:grid-cols-3">
                         <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
@@ -155,6 +173,64 @@ export default async function RecommendationsPage() {
                           <p className="mt-2 text-sm text-zinc-300">{riskLine}</p>
                         </div>
                       </div>
+
+                      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                        {whyNow ? (
+                          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                            <p className="text-xs uppercase tracking-wide text-zinc-500">Why now</p>
+                            <p className="mt-2 text-sm text-zinc-300">{whyNow}</p>
+                          </div>
+                        ) : null}
+                        {valuationView ? (
+                          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                            <p className="text-xs uppercase tracking-wide text-zinc-500">Valuation view</p>
+                            <p className="mt-2 text-sm text-zinc-300">{valuationView}</p>
+                          </div>
+                        ) : null}
+                        {businessQualityView ? (
+                          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                            <p className="text-xs uppercase tracking-wide text-zinc-500">Business quality</p>
+                            <p className="mt-2 text-sm text-zinc-300">{businessQualityView}</p>
+                          </div>
+                        ) : null}
+                        {riskMonitor ? (
+                          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                            <p className="text-xs uppercase tracking-wide text-zinc-500">Risk monitor</p>
+                            <p className="mt-2 text-sm text-zinc-300">{riskMonitor}</p>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {(supportingFactors.length || riskFactors.length) ? (
+                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                          {supportingFactors.length ? (
+                            <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/10 p-3">
+                              <p className="text-xs uppercase tracking-wide text-emerald-300">Top supports</p>
+                              <div className="mt-2 space-y-2">
+                                {supportingFactors.map((factor, index) => (
+                                  <div key={`${recommendation.id}-support-${index}`}>
+                                    <p className="text-sm font-medium text-zinc-100">{factor.label}</p>
+                                    <p className="text-sm text-zinc-400">{factor.detail}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                          {riskFactors.length ? (
+                            <div className="rounded-xl border border-rose-800/40 bg-rose-950/10 p-3">
+                              <p className="text-xs uppercase tracking-wide text-rose-300">Top risks</p>
+                              <div className="mt-2 space-y-2">
+                                {riskFactors.map((factor, index) => (
+                                  <div key={`${recommendation.id}-risk-${index}`}>
+                                    <p className="text-sm font-medium text-zinc-100">{factor.label}</p>
+                                    <p className="text-sm text-zinc-400">{factor.detail}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
                         {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">{targetWeightLabel} {recommendation.target_weight}%</span> : null}
