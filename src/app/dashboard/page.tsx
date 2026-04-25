@@ -81,7 +81,7 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Mission control"
-            description="This dashboard tracks the live state of the portfolio intelligence system, including recommendation coverage, research depth, and agent freshness."
+            description="This dashboard should now read like a product checkpoint: what exists, what is solid, and where the most valuable expansion paths are from here."
           >
             <div className="mb-4 space-y-3">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
@@ -104,10 +104,10 @@ export default async function DashboardPage() {
           </SectionCard>
 
           <SectionCard
-            title="Project status and roadmap"
-            description="The shell phase is behind us. This now reflects the real state of the synthesis-first portfolio intelligence system and what should be built next."
+            title="Project status and expansion paths"
+            description="The shell phase is behind us. This section captures the real state of the product today, the constraint still holding it back, and the most promising directions to expand next."
           >
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-2">
               {roadmapCards.map((card) => (
                 <div key={card.title} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                   <h3 className="text-base font-semibold text-zinc-100">{card.title}</h3>
@@ -120,8 +120,8 @@ export default async function DashboardPage() {
 
         <div className="space-y-6">
           <SectionCard
-            title="Next build targets"
-            description="The most valuable next improvements from here, based on the system that now actually exists."
+            title="Best next bets"
+            description="The highest-leverage improvements from here, based on where the product genuinely stands right now."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
               {nextBuildTargets.map((item) => (
@@ -137,8 +137,8 @@ export default async function DashboardPage() {
           <RunNewsResearchForm />
 
           <SectionCard
-            title="Agent status"
-            description="Latest operating signal from research, fundamentals, quote refresh, and the broader agent system."
+            title="Latest operating signal"
+            description="Recent evidence from research, fundamentals, quote refresh, and the broader intelligence stack."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
               {latestResearchRunSummary || latestCentralQuoteRunSummary || latestRunSummary || "No refresh runs yet. Use the refresh and research actions above to start building signal history."}
