@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
+import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 type SupportedCurrency = "USD" | "CAD";
 
@@ -248,4 +249,65 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
     summary: `Built a deterministic rebalance plan for ${perPortfolio.size} portfolio${perPortfolio.size === 1 ? "" : "s"} using current holdings and analyst consensus targets.`,
     items,
   };
+}
+
+export async function persistRebalancePlan(ownerId: string, plan: RebalancePlan) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase || !plan.items.length) {
+    return null;
+  }
+
+  const portfolioIds = [...new Set(plan.items.map((item) => item.portfolioId).filter(Boolean))] as string[];
+  const runsByPortfolioId = new Map<string, string>();
+
+  for (const portfolioId of portfolioIds) {
+    const portfolioItems = plan.items.filter((item) => item.portfolioId === portfolioId);
+    const { data: run, error: runError } = await supabase
+      .from("rebalancing_runs")
+      .insert({
+        owner_id: ownerId,
+        portfolio_id: portfolioId,
+        engine_name: plan.engine,
+        status: "completed",
+        summary: plan.summary,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (runError) {
+      throw new Error(runError.message);
+    }
+
+    runsByPortfolioId.set(portfolioId, run.id);
+
+    await supabase.from("rebalance_recommendations").delete().eq("owner_id", ownerId).eq("portfolio_id", portfolioId);
+
+    const rows = portfolioItems.map((item, index) => ({
+      owner_id: ownerId,
+      portfolio_id: portfolioId,
+      symbol_id: item.symbolId,
+      rebalancing_run_id: run.id,
+      action: item.action,
+      rank: index + 1,
+      current_weight: item.currentWeight,
+      target_weight: item.targetWeight,
+      weight_delta: item.weightDelta,
+      current_price: item.currentPrice,
+      consensus_target: item.consensusTarget,
+      implied_upside_pct: item.impliedUpsidePct,
+      rationale: item.rationale,
+      confidence: item.confidence,
+    }));
+
+    if (rows.length) {
+      const { error: insertError } = await supabase.from("rebalance_recommendations").insert(rows);
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+    }
+  }
+
+  return { runCount: runsByPortfolioId.size };
 }
