@@ -234,31 +234,29 @@ export default async function PortfolioPage() {
         {(portfolios || []).length > 0 ? (
           overviewCards.map(({ portfolio, positions, displayCurrency, cashPosition, cashCurrency, currentSlices, compareSlices }) => (
             <div key={portfolio.id} className="space-y-6">
-              <div className="grid gap-6 xl:grid-cols-[1.2fr_1.8fr]">
-                <PortfolioAllocationOverview
-                  title={`${portfolio.name} current allocation`}
-                  description="Current holdings mix based on live market value weightings."
-                  slices={currentSlices}
+              <SectionCard
+                title={portfolio.name}
+                description="Manage the current state of each holding inline. Calculated metrics update from quantity, average cost, live prices, and recommendation context."
+              >
+                <PortfolioCard
+                  id={portfolio.id}
+                  name={portfolio.name}
+                  description={portfolio.description}
+                  benchmark={portfolio.benchmark}
+                  displayCurrency={displayCurrency}
+                  cashPosition={cashPosition}
+                  cashCurrency={cashCurrency}
+                  positions={positions}
+                  recommendationBySymbol={recommendationBySymbol}
+                  usdCadRate={usdCadRate}
                 />
+              </SectionCard>
 
-                <SectionCard
-                  title={portfolio.name}
-                  description="Manage the current state of each holding inline. Calculated metrics update from quantity, average cost, live prices, and recommendation context."
-                >
-                  <PortfolioCard
-                    id={portfolio.id}
-                    name={portfolio.name}
-                    description={portfolio.description}
-                    benchmark={portfolio.benchmark}
-                    displayCurrency={displayCurrency}
-                    cashPosition={cashPosition}
-                    cashCurrency={cashCurrency}
-                    positions={positions}
-                    recommendationBySymbol={recommendationBySymbol}
-                    usdCadRate={usdCadRate}
-                  />
-                </SectionCard>
-              </div>
+              <PortfolioAllocationOverview
+                title={`${portfolio.name} current allocation`}
+                description="Current holdings mix based on live market value weightings."
+                slices={currentSlices}
+              />
 
               <PortfolioExpandablePanel
                 title="See proposed rebalance"
