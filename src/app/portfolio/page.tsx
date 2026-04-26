@@ -3,6 +3,7 @@ import { SectionCard } from "@/components/section-card";
 import { PortfolioActionBar } from "@/components/portfolio-action-bar";
 import { PortfolioAllocationOverview } from "@/components/portfolio-allocation-overview";
 import { PortfolioRebalanceSummary } from "@/components/portfolio-rebalance-summary";
+import { PortfolioExpandablePanel } from "@/components/portfolio-expandable-panel";
 import { PortfolioCard } from "@/components/portfolio-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
@@ -232,46 +233,56 @@ export default async function PortfolioPage() {
 
         {(portfolios || []).length > 0 ? (
           overviewCards.map(({ portfolio, positions, displayCurrency, cashPosition, cashCurrency, currentSlices, compareSlices }) => (
-            <div key={portfolio.id} className="grid gap-6 xl:grid-cols-[1.1fr_1.1fr_1.2fr_1.6fr]">
-              <PortfolioAllocationOverview
-                title={`${portfolio.name} current allocation`}
-                description="Current holdings mix based on live market value weightings."
-                slices={currentSlices}
-              />
-
-              <PortfolioAllocationOverview
-                title={`${portfolio.name} compare to target`}
-                description="If you took the active recommendations, this is what the target weighting mix would look like."
-                slices={compareSlices}
-                compareMode
-              />
-
-              <PortfolioRebalanceSummary
-                rows={currentSlices.map((slice) => ({
-                  label: slice.label,
-                  currentWeight: slice.weight,
-                  targetWeight:
-                    compareSlices.find((targetSlice) => targetSlice.label === slice.label)?.weight ?? slice.weight,
-                }))}
-              />
-
-              <SectionCard
-                title={portfolio.name}
-                description="Manage the current state of each holding inline. Calculated metrics update from quantity, average cost, live prices, and recommendation context."
-              >
-                <PortfolioCard
-                  id={portfolio.id}
-                  name={portfolio.name}
-                  description={portfolio.description}
-                  benchmark={portfolio.benchmark}
-                  displayCurrency={displayCurrency}
-                  cashPosition={cashPosition}
-                  cashCurrency={cashCurrency}
-                  positions={positions}
-                  recommendationBySymbol={recommendationBySymbol}
-                  usdCadRate={usdCadRate}
+            <div key={portfolio.id} className="space-y-6">
+              <div className="grid gap-6 xl:grid-cols-[1.2fr_1.8fr]">
+                <PortfolioAllocationOverview
+                  title={`${portfolio.name} current allocation`}
+                  description="Current holdings mix based on live market value weightings."
+                  slices={currentSlices}
                 />
-              </SectionCard>
+
+                <SectionCard
+                  title={portfolio.name}
+                  description="Manage the current state of each holding inline. Calculated metrics update from quantity, average cost, live prices, and recommendation context."
+                >
+                  <PortfolioCard
+                    id={portfolio.id}
+                    name={portfolio.name}
+                    description={portfolio.description}
+                    benchmark={portfolio.benchmark}
+                    displayCurrency={displayCurrency}
+                    cashPosition={cashPosition}
+                    cashCurrency={cashCurrency}
+                    positions={positions}
+                    recommendationBySymbol={recommendationBySymbol}
+                    usdCadRate={usdCadRate}
+                  />
+                </SectionCard>
+              </div>
+
+              <PortfolioExpandablePanel
+                title="Compare against target portfolio"
+                description="Open this to see what the current recommendation set would imply for target weights and rebalance moves."
+                buttonLabel="Compare"
+              >
+                <div className="space-y-4">
+                  <PortfolioAllocationOverview
+                    title={`${portfolio.name} target allocation`}
+                    description="A normalized target mix based on the active recommendation set."
+                    slices={compareSlices}
+                    compareMode
+                  />
+
+                  <PortfolioRebalanceSummary
+                    rows={currentSlices.map((slice) => ({
+                      label: slice.label,
+                      currentWeight: slice.weight,
+                      targetWeight:
+                        compareSlices.find((targetSlice) => targetSlice.label === slice.label)?.weight ?? slice.weight,
+                    }))}
+                  />
+                </div>
+              </PortfolioExpandablePanel>
             </div>
           ))
         ) : (
