@@ -35,7 +35,10 @@ type PositionRow = {
   portfolio_id: string;
   quantity: number | null;
   average_cost: number | null;
-  portfolios: { id: string; name: string } | { id: string; name: string }[] | null;
+  portfolios:
+    | { id: string; name: string; cash_position?: number | null; cash_currency?: string | null; display_currency?: string | null }
+    | { id: string; name: string; cash_position?: number | null; cash_currency?: string | null; display_currency?: string | null }[]
+    | null;
   symbols:
     | {
         id: string;
@@ -97,6 +100,7 @@ type SynthesisCandidate = {
   ticker: string;
   name: string | null;
   currentWeight: number | null;
+  portfolioCashPct: number | null;
   gainLossPct: number | null;
   priceChangePct: number | null;
   currentPrice: number | null;
@@ -743,6 +747,7 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
     const bearConfidence = candidate.bearCase?.confidenceScore ?? 0.35;
     const hasPosition = (candidate.currentWeight ?? 0) > 0;
     const currentWeight = candidate.currentWeight ?? 0;
+    const portfolioCashPct = candidate.portfolioCashPct ?? 0;
 
     const weightedSignal = newsScore * 0.34 + fundamentalsScore * 0.33 + macroScore * 0.13 + bearScore * 0.2;
     const evidenceQuality = newsConfidence * 0.34 + fundamentalsConfidence * 0.3 + macroConfidence * 0.14 + bearConfidence * 0.22;
@@ -758,12 +763,15 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
     const action = blendedSignal >= 0.22 ? "buy" : blendedSignal <= -0.24 ? (hasPosition ? "trim" : "watch") : "hold";
 
     const rawWeightTilt = (candidate.news?.targetWeightDelta ?? 0) * 0.45 + (candidate.fundamentals?.targetWeightDelta ?? 0) * 0.4 + (macroScore > 0.2 ? 0.6 : macroScore < -0.2 ? -0.75 : 0);
+    const cashSupport = clamp(portfolioCashPct / 12, 0, 1.5);
     const targetWeight = hasPosition
       ? action === "trim"
         ? clamp(Number(Math.max(0, currentWeight + Math.min(rawWeightTilt, -0.75) - Math.max(0.5, conviction / 120)).toFixed(2)), 0, 15)
-        : clamp(Number((currentWeight + (action === "buy" ? Math.max(0.5, rawWeightTilt) : rawWeightTilt * 0.35)).toFixed(2)), 0.5, 15)
+        : clamp(Number((currentWeight + (action === "buy" ? Math.max(0.5, rawWeightTilt + cashSupport * 0.6) : rawWeightTilt * 0.35)).toFixed(2)), 0.5, 15)
       : action === "buy"
-        ? clamp(Number((2 + Math.max(0.4, rawWeightTilt) + Math.max(0, blendedSignal) * 2.2).toFixed(2)), 1, 7)
+        ? portfolioCashPct >= 2
+          ? clamp(Number((1.5 + Math.max(0.35, rawWeightTilt) + Math.max(0, blendedSignal) * 2 + cashSupport * 0.9).toFixed(2)), 0.75, Math.min(7, portfolioCashPct))
+          : null
         : null;
 
     const externalTarget = externalTargetsBySymbol.get(candidate.symbolId) || null;
@@ -981,7 +989,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         .order("created_at", { ascending: false }),
       supabase
         .from("portfolio_positions")
-        .select("portfolio_id, quantity, average_cost, portfolios(id, name), symbols(id, ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))"),
+        .select("portfolio_id, quantity, average_cost, portfolios(id, name, cash_position, cash_currency, display_currency), symbols(id, ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))"),
       supabase
         .from("watchlist_items")
         .select("symbols(id, ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))"),
@@ -1014,11 +1022,20 @@ export async function runRecommendationSynthesis(ownerId: string) {
     const fundamentalsSnapshotsBySymbol = new Map(fundamentalsRows.map((row) => [row.symbol_id, row]));
 
     const portfolioTotals = new Map<string, number>();
+    const portfolioCashById = new Map<string, number>();
     positionRows.forEach((position) => {
+      const portfolio = firstRelation(position.portfolios);
       const symbol = firstRelation(position.symbols);
       const quote = firstRelation(symbol?.symbol_price_snapshots || null);
       const marketValue = (position.quantity ?? 0) * (quote?.price ?? 0);
       portfolioTotals.set(position.portfolio_id, (portfolioTotals.get(position.portfolio_id) || 0) + marketValue);
+
+      if (portfolio?.id && !portfolioCashById.has(portfolio.id)) {
+        const rawCash = portfolio.cash_position ?? 0;
+        const cashCurrency = (portfolio.cash_currency || portfolio.display_currency || "USD").toUpperCase();
+        const cashUsd = cashCurrency === "CAD" ? rawCash / 1.39 : rawCash;
+        portfolioCashById.set(portfolio.id, cashUsd);
+      }
     });
 
     const candidates: SynthesisCandidate[] = [];
@@ -1032,8 +1049,11 @@ export async function runRecommendationSynthesis(ownerId: string) {
 
       seenSymbolIds.add(symbol.id);
       const marketValue = (position.quantity ?? 0) * (quote?.price ?? 0);
-      const portfolioTotal = portfolioTotals.get(position.portfolio_id) || 0;
+      const investedTotal = portfolioTotals.get(position.portfolio_id) || 0;
+      const cashUsd = portfolio?.id ? portfolioCashById.get(portfolio.id) || 0 : 0;
+      const portfolioTotal = investedTotal + cashUsd;
       const currentWeight = portfolioTotal > 0 ? (marketValue / portfolioTotal) * 100 : 0;
+      const portfolioCashPct = portfolioTotal > 0 ? (cashUsd / portfolioTotal) * 100 : 0;
       const averageCost = position.average_cost ?? 0;
       const gainLossPct = quote?.price !== null && quote?.price !== undefined && averageCost > 0 ? ((quote.price - averageCost) / averageCost) * 100 : null;
       const news = newsBySymbol.get(symbol.id);
@@ -1048,6 +1068,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         name: symbol.name,
         currentWeight,
         gainLossPct,
+        portfolioCashPct,
         priceChangePct: quote?.percent_change ?? null,
         currentPrice: quote?.price ?? null,
         fundamentalsSnapshot: fundamentalsSnapshot
@@ -1114,6 +1135,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         ticker: symbol.ticker,
         name: symbol.name,
         currentWeight: null,
+        portfolioCashPct: null,
         gainLossPct: null,
         priceChangePct: quote?.percent_change ?? null,
         currentPrice: quote?.price ?? null,

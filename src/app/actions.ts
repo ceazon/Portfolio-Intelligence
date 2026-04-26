@@ -95,9 +95,16 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
     const description = String(formData.get("description") || "").trim();
     const benchmark = String(formData.get("benchmark") || "SPY").trim() || "SPY";
     const displayCurrency = String(formData.get("displayCurrency") || "USD").trim() === "CAD" ? "CAD" : "USD";
+    const cashPositionRaw = String(formData.get("cashPosition") || "").trim();
+    const cashCurrency = String(formData.get("cashCurrency") || displayCurrency).trim() === "CAD" ? "CAD" : "USD";
 
     if (!name) {
       return { ok: false, error: "Portfolio name is required." };
+    }
+
+    const cashPosition = cashPositionRaw ? Number(cashPositionRaw) : 0;
+    if (Number.isNaN(cashPosition) || cashPosition < 0) {
+      return { ok: false, error: "Cash position must be a valid non-negative number." };
     }
 
     const { error } = await supabase.from("portfolios").insert({
@@ -105,6 +112,8 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
       description: description || null,
       benchmark,
       display_currency: displayCurrency,
+      cash_position: cashPosition,
+      cash_currency: cashCurrency,
       owner_id: auth.user.id,
     });
 
@@ -137,14 +146,21 @@ export async function updatePortfolio(_prevState: FormState, formData: FormData)
     const description = String(formData.get("description") || "").trim();
     const benchmark = String(formData.get("benchmark") || "SPY").trim() || "SPY";
     const displayCurrency = String(formData.get("displayCurrency") || "USD").trim() === "CAD" ? "CAD" : "USD";
+    const cashPositionRaw = String(formData.get("cashPosition") || "").trim();
+    const cashCurrency = String(formData.get("cashCurrency") || displayCurrency).trim() === "CAD" ? "CAD" : "USD";
 
     if (!id || !name) {
       return { ok: false, error: "Portfolio id and name are required." };
     }
 
+    const cashPosition = cashPositionRaw ? Number(cashPositionRaw) : 0;
+    if (Number.isNaN(cashPosition) || cashPosition < 0) {
+      return { ok: false, error: "Cash position must be a valid non-negative number." };
+    }
+
     const { error } = await supabase
       .from("portfolios")
-      .update({ name, description: description || null, benchmark, display_currency: displayCurrency })
+      .update({ name, description: description || null, benchmark, display_currency: displayCurrency, cash_position: cashPosition, cash_currency: cashCurrency })
       .eq("id", id)
       .eq("owner_id", auth.user.id);
     if (error) {

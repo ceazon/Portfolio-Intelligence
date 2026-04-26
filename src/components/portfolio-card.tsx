@@ -79,6 +79,8 @@ type PortfolioCardProps = {
   description: string | null;
   benchmark: string | null;
   displayCurrency: SupportedCurrency;
+  cashPosition: number | null;
+  cashCurrency: SupportedCurrency;
   positions: PositionRow[];
   recommendationBySymbol: Map<string, RecommendationRow>;
   usdCadRate: number;
@@ -92,7 +94,7 @@ function firstRelation<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 
-export function PortfolioCard({ id, name, description, benchmark, displayCurrency, positions, recommendationBySymbol, usdCadRate }: PortfolioCardProps) {
+export function PortfolioCard({ id, name, description, benchmark, displayCurrency, cashPosition, cashCurrency, positions, recommendationBySymbol, usdCadRate }: PortfolioCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const summary = useMemo(() => {
@@ -114,6 +116,8 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
     );
   }, [positions, displayCurrency, usdCadRate]);
 
+  const cashInDisplay = convertMoney(cashPosition ?? 0, cashCurrency, displayCurrency, usdCadRate) ?? 0;
+
   const gainLoss = summary.marketValue - summary.bookValue;
   const gainLossPct = summary.bookValue > 0 ? (gainLoss / summary.bookValue) * 100 : null;
   const gainPositive = gainLoss >= 0;
@@ -126,7 +130,9 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
             <h3 className="text-base font-semibold text-zinc-100">{name}</h3>
             <p className="mt-1 text-sm text-zinc-400">{description || "No description yet."}</p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
-              <span className="rounded-full border border-zinc-700 px-2 py-1">Total value {formatMoney(summary.marketValue, displayCurrency)}</span>
+              <span className="rounded-full border border-zinc-700 px-2 py-1">Invested {formatMoney(summary.marketValue, displayCurrency)}</span>
+              <span className="rounded-full border border-zinc-700 px-2 py-1">Cash {formatMoney(cashInDisplay, displayCurrency)}</span>
+              <span className="rounded-full border border-zinc-700 px-2 py-1">Total portfolio {formatMoney(summary.marketValue + cashInDisplay, displayCurrency)}</span>
               <span className={`rounded-full border px-2 py-1 ${gainPositive ? "border-emerald-500/30 text-emerald-300" : "border-rose-500/30 text-rose-300"}`}>
                 {gainPositive ? "+" : ""}
                 {formatMoney(gainLoss, displayCurrency)}
@@ -147,7 +153,15 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
 
       {expanded ? (
         <div className="mt-4 space-y-4 border-t border-zinc-800 pt-4">
-          <PortfolioSettingsPanel id={id} name={name} description={description} benchmark={benchmark} displayCurrency={displayCurrency} />
+          <PortfolioSettingsPanel
+            id={id}
+            name={name}
+            description={description}
+            benchmark={benchmark}
+            displayCurrency={displayCurrency}
+            cashPosition={cashPosition}
+            cashCurrency={cashCurrency}
+          />
 
           {positions.length > 0 ? (
             <div className="space-y-3">

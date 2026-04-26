@@ -10,12 +10,16 @@ export function PortfolioSettingsPanel({
   description,
   benchmark,
   displayCurrency,
+  cashPosition,
+  cashCurrency,
 }: {
   id: string;
   name: string;
   description: string | null;
   benchmark: string | null;
   displayCurrency: SupportedCurrency;
+  cashPosition: number | null;
+  cashCurrency: SupportedCurrency;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -24,14 +28,24 @@ export function PortfolioSettingsPanel({
       <button type="button" onClick={() => setExpanded((value) => !value)} className="flex w-full items-center justify-between gap-3 text-left">
         <div>
           <p className="text-sm font-medium text-zinc-100">Portfolio settings</p>
-          <p className="mt-1 text-xs text-zinc-500">Name, benchmark, currency, and description</p>
+          <p className="mt-1 text-xs text-zinc-500">Name, benchmark, display currency, cash position, and description</p>
         </div>
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-lg font-semibold text-zinc-300">
           {expanded ? "−" : "+"}
         </span>
       </button>
 
-      {expanded ? <EditPortfolioForm id={id} name={name} description={description} benchmark={benchmark} displayCurrency={displayCurrency} /> : null}
+      {expanded ? (
+        <EditPortfolioForm
+          id={id}
+          name={name}
+          description={description}
+          benchmark={benchmark}
+          displayCurrency={displayCurrency}
+          cashPosition={cashPosition}
+          cashCurrency={cashCurrency}
+        />
+      ) : null}
     </div>
   );
 }

@@ -36,6 +36,24 @@ export function CreatePortfolioForm() {
         <option value="USD">Display portfolio in USD</option>
         <option value="CAD">Display portfolio in CAD</option>
       </select>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <input
+          name="cashPosition"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Cash position"
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+        />
+        <select
+          name="cashCurrency"
+          defaultValue="USD"
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+        >
+          <option value="USD">Cash in USD</option>
+          <option value="CAD">Cash in CAD</option>
+        </select>
+      </div>
       <textarea
         name="description"
         placeholder="Core 4-5 positions with a long-term aggressive growth bias and monthly decision cadence"

@@ -15,6 +15,8 @@ type PortfolioRow = {
   description: string | null;
   benchmark: string | null;
   display_currency: SupportedCurrency | null;
+  cash_position: number | null;
+  cash_currency: SupportedCurrency | null;
   created_at: string;
 };
 
@@ -108,7 +110,7 @@ export default async function PortfolioPage() {
   const supabase = await createSupabaseServerClient();
 
   const { data: portfolios } = supabase
-    ? await supabase.from("portfolios").select("id, name, description, benchmark, display_currency, created_at").eq("owner_id", user.id).order("created_at", { ascending: false })
+    ? await supabase.from("portfolios").select("id, name, description, benchmark, display_currency, cash_position, cash_currency, created_at").eq("owner_id", user.id).order("created_at", { ascending: false })
     : { data: [] as PortfolioRow[] };
 
   const { data: positions } = supabase
@@ -158,6 +160,12 @@ export default async function PortfolioPage() {
   const overviewCards = (portfolios || []).map((portfolio) => {
     const portfolioPositions = positionsByPortfolio.get(portfolio.id) || [];
     const displayCurrency = normalizeCurrency(portfolio.display_currency);
+    const cashCurrency = normalizeCurrency(portfolio.cash_currency ?? portfolio.display_currency);
+    const cashValue = convertUsdToDisplay(
+      cashCurrency === "USD" ? portfolio.cash_position ?? 0 : ((portfolio.cash_position ?? 0) / usdCadRate),
+      displayCurrency,
+      usdCadRate,
+    );
 
     const baseSlices = portfolioPositions
       .map((position) => {
@@ -174,17 +182,25 @@ export default async function PortfolioPage() {
       })
       .filter((slice) => slice.marketValue > 0);
 
-    const totalValue = baseSlices.reduce((sum, slice) => sum + slice.marketValue, 0);
+    const totalValue = baseSlices.reduce((sum, slice) => sum + slice.marketValue, 0) + cashValue;
 
-    const currentSlices = baseSlices.map((slice) => {
-      const recommendation = recommendationBySymbol.get(slice.symbolId);
-      return {
-        label: slice.label,
-        value: slice.marketValue,
-        weight: totalValue > 0 ? (slice.marketValue / totalValue) * 100 : 0,
-        targetWeight: recommendation?.target_weight ?? null,
-      };
-    });
+    const currentSlices = [
+      ...baseSlices.map((slice) => {
+        const recommendation = recommendationBySymbol.get(slice.symbolId);
+        return {
+          label: slice.label,
+          value: slice.marketValue,
+          weight: totalValue > 0 ? (slice.marketValue / totalValue) * 100 : 0,
+          targetWeight: recommendation?.target_weight ?? null,
+        };
+      }),
+      {
+        label: "Cash",
+        value: cashValue,
+        weight: totalValue > 0 ? (cashValue / totalValue) * 100 : 0,
+        targetWeight: null,
+      },
+    ];
 
     const targetWeightSum = currentSlices.reduce((sum, slice) => sum + Math.max(slice.targetWeight ?? slice.weight, 0), 0);
 
@@ -202,6 +218,8 @@ export default async function PortfolioPage() {
       portfolio,
       positions: portfolioPositions,
       displayCurrency,
+      cashPosition: portfolio.cash_position ?? 0,
+      cashCurrency,
       currentSlices,
       compareSlices,
     };
@@ -213,7 +231,7 @@ export default async function PortfolioPage() {
         <PortfolioActionBar portfolios={portfolioOptions} symbols={symbolOptions} />
 
         {(portfolios || []).length > 0 ? (
-          overviewCards.map(({ portfolio, positions, displayCurrency, currentSlices, compareSlices }) => (
+          overviewCards.map(({ portfolio, positions, displayCurrency, cashPosition, cashCurrency, currentSlices, compareSlices }) => (
             <div key={portfolio.id} className="grid gap-6 xl:grid-cols-[1.1fr_1.1fr_1.2fr_1.6fr]">
               <PortfolioAllocationOverview
                 title={`${portfolio.name} current allocation`}
@@ -247,6 +265,8 @@ export default async function PortfolioPage() {
                   description={portfolio.description}
                   benchmark={portfolio.benchmark}
                   displayCurrency={displayCurrency}
+                  cashPosition={cashPosition}
+                  cashCurrency={cashCurrency}
                   positions={positions}
                   recommendationBySymbol={recommendationBySymbol}
                   usdCadRate={usdCadRate}
