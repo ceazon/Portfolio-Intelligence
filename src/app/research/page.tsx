@@ -151,12 +151,12 @@ export default async function ResearchPage() {
         <div className="space-y-6">
           <RunNewsResearchForm />
 
-          <SectionCard title="Research status" description="What the current research layer is doing for tracked symbols.">
+          <SectionCard title="Research status" description="Legacy support layer for tracked-symbol research while the product shifts toward rebalance-first workflows.">
             <ul className="space-y-3 text-sm text-zinc-300">
               <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Latest symbol snapshots: {latestInsights.length}</li>
               <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Corroborated by multiple feeds: {corroboratedCount}</li>
               <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Primary sources: Finnhub company news + Google News RSS</li>
-              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Goal: reusable shared memory for recommendations, not one-off headline dumps</li>
+              <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Goal: optional supporting context for rebalance decisions, not the core product engine</li>
             </ul>
           </SectionCard>
         </div>
