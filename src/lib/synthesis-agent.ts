@@ -101,6 +101,7 @@ type SynthesisCandidate = {
   name: string | null;
   currentWeight: number | null;
   portfolioCashPct: number | null;
+  portfolioHasCashCapacity: boolean;
   gainLossPct: number | null;
   priceChangePct: number | null;
   currentPrice: number | null;
@@ -839,7 +840,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
           {
             type: "input_text",
             text:
-              "You are a senior equity recommendation synthesizer. Convert structured company evidence into clear investment recommendations for an end investor. You will receive portfolio/watchlist context, current sizing, macro, news, bear-case and fundamentals assessments, valuation scenario outputs with bull/base/bear targets and a weighted target, and outside analyst consensus targets when available. Decide whether each stock is a buy, hold, trim, or watch. Set a sensible conviction score from 0-100. Suggest a realistic target weight and 12-month target price when appropriate. Explain the recommendation in plain investor language. Speak about the company and stock directly. Use concepts like growth, margins, valuation, demand, execution, cyclicality, competitive position, balance sheet, business quality, and catalysts. Never mention agents, models, signals, normalized scores, anchors, synthesis mechanics, or chain-of-thought. Never say agent mix, valuation anchor, signal stack, or similar internal terms. Use outside consensus targets as a validation check, not as the sole source of truth. If your target is materially above or below consensus, explicitly justify why. If outside consensus strongly disagrees and the internal case is not strong enough, lower conviction rather than forcing a bold target. If valuation is rich, say so clearly even when the business is strong. If evidence is mixed, prefer hold or watch over forced conviction. Respect current weight and avoid absurd portfolio weights. Return strict JSON only matching the required schema.",
+              "You are a senior equity recommendation synthesizer. Convert structured company evidence into clear investment recommendations for an end investor. You will receive portfolio/watchlist context, current sizing, available portfolio cash context, macro, news, bear-case and fundamentals assessments, valuation scenario outputs with bull/base/bear targets and a weighted target, and outside analyst consensus targets when available. Decide whether each stock is a buy, hold, trim, or watch. Set a sensible conviction score from 0-100. Suggest a realistic target weight and 12-month target price when appropriate. Explain the recommendation in plain investor language. Speak about the company and stock directly. Use concepts like growth, margins, valuation, demand, execution, cyclicality, competitive position, balance sheet, business quality, and catalysts. Never mention agents, models, signals, normalized scores, anchors, synthesis mechanics, or chain-of-thought. Never say agent mix, valuation anchor, signal stack, or similar internal terms. Use outside consensus targets as a validation check, not as the sole source of truth. If your target is materially above or below consensus, explicitly justify why. If outside consensus strongly disagrees and the internal case is not strong enough, lower conviction rather than forcing a bold target. If valuation is rich, say so clearly even when the business is strong. If evidence is mixed, prefer hold or watch over forced conviction. Respect current weight, available cash, and realistic portfolio constraints. If a portfolio has meaningful cash available, you may propose new buy allocations or adds more confidently. If cash is limited, be more conservative about recommending aggressive adds or fresh positions unless trims elsewhere make the move realistic. Avoid absurd portfolio weights. Return strict JSON only matching the required schema.",
           },
         ],
       },
@@ -929,33 +930,40 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
   const parsed = JSON.parse(raw || "{}");
   const recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
 
-  return recommendations.map((item: SynthesizedRecommendation) => ({
-    symbolId: item.symbolId,
-    action: item.action,
-    targetWeight: item.targetWeight === null ? null : clamp(Number(item.targetWeight), 0, 20),
-    targetPrice: item.targetPrice === null ? null : Math.max(0, Number(item.targetPrice)),
-    convictionScore: clamp(Math.round(Number(item.convictionScore)), 0, 100),
-    summary: String(item.summary || item.thesis || "No summary provided."),
-    risks: String(item.risks || item.mainRisk || "No risk summary provided."),
-    confidence: ["low", "medium", "high"].includes(item.confidence) ? item.confidence : confidenceLabel(Number(item.convictionScore) || 50),
-    targetValidationStatus: ["plausible", "stretched", "aggressive", "unavailable"].includes(item.targetValidationStatus)
-      ? item.targetValidationStatus
-      : "unavailable",
-    targetValidationSummary: String(item.targetValidationSummary || "Target validation unavailable."),
-    impliedUpsidePct: item.impliedUpsidePct === null ? null : Number(item.impliedUpsidePct),
-    decisionStyle: ["core", "starter", "hold", "trim", "watchlist"].includes(item.decisionStyle) ? item.decisionStyle : "hold",
-    headline: String(item.headline || item.summary || "No headline provided."),
-    thesis: String(item.thesis || item.summary || "No thesis provided."),
-    whyNow: String(item.whyNow || "No timing view provided."),
-    valuationView: String(item.valuationView || "Valuation view unavailable."),
-    businessQualityView: String(item.businessQualityView || "Business quality view unavailable."),
-    goodBuyBecause: String(item.goodBuyBecause || "No upside rationale provided."),
-    hesitationBecause: String(item.hesitationBecause || "No caution provided."),
-    mainRisk: String(item.mainRisk || item.risks || "No main risk provided."),
-    riskMonitor: String(item.riskMonitor || "Risk monitor unavailable."),
-    supportingFactors: Array.isArray(item.supportingFactors) ? item.supportingFactors : [],
-    riskFactors: Array.isArray(item.riskFactors) ? item.riskFactors : [],
-  }));
+  return recommendations.map((item: SynthesizedRecommendation) => {
+    const candidate = candidates.find((entry) => entry.symbolId === item.symbolId);
+    const maxWeight = candidate && (candidate.currentWeight ?? 0) === 0 && typeof candidate.portfolioCashPct === "number"
+      ? Math.min(20, Math.max(1, candidate.portfolioCashPct))
+      : 20;
+
+    return {
+      symbolId: item.symbolId,
+      action: item.action,
+      targetWeight: item.targetWeight === null ? null : clamp(Number(item.targetWeight), 0, maxWeight),
+      targetPrice: item.targetPrice === null ? null : Math.max(0, Number(item.targetPrice)),
+      convictionScore: clamp(Math.round(Number(item.convictionScore)), 0, 100),
+      summary: String(item.summary || item.thesis || "No summary provided."),
+      risks: String(item.risks || item.mainRisk || "No risk summary provided."),
+      confidence: ["low", "medium", "high"].includes(item.confidence) ? item.confidence : confidenceLabel(Number(item.convictionScore) || 50),
+      targetValidationStatus: ["plausible", "stretched", "aggressive", "unavailable"].includes(item.targetValidationStatus)
+        ? item.targetValidationStatus
+        : "unavailable",
+      targetValidationSummary: String(item.targetValidationSummary || "Target validation unavailable."),
+      impliedUpsidePct: item.impliedUpsidePct === null ? null : Number(item.impliedUpsidePct),
+      decisionStyle: ["core", "starter", "hold", "trim", "watchlist"].includes(item.decisionStyle) ? item.decisionStyle : "hold",
+      headline: String(item.headline || item.summary || "No headline provided."),
+      thesis: String(item.thesis || item.summary || "No thesis provided."),
+      whyNow: String(item.whyNow || "No timing view provided."),
+      valuationView: String(item.valuationView || "Valuation view unavailable."),
+      businessQualityView: String(item.businessQualityView || "Business quality view unavailable."),
+      goodBuyBecause: String(item.goodBuyBecause || "No upside rationale provided."),
+      hesitationBecause: String(item.hesitationBecause || "No caution provided."),
+      mainRisk: String(item.mainRisk || item.risks || "No main risk provided."),
+      riskMonitor: String(item.riskMonitor || "Risk monitor unavailable."),
+      supportingFactors: Array.isArray(item.supportingFactors) ? item.supportingFactors : [],
+      riskFactors: Array.isArray(item.riskFactors) ? item.riskFactors : [],
+    };
+  });
 }
 
 export async function runRecommendationSynthesis(ownerId: string) {
@@ -1054,6 +1062,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
       const portfolioTotal = investedTotal + cashUsd;
       const currentWeight = portfolioTotal > 0 ? (marketValue / portfolioTotal) * 100 : 0;
       const portfolioCashPct = portfolioTotal > 0 ? (cashUsd / portfolioTotal) * 100 : 0;
+      const portfolioHasCashCapacity = cashUsd > 0;
       const averageCost = position.average_cost ?? 0;
       const gainLossPct = quote?.price !== null && quote?.price !== undefined && averageCost > 0 ? ((quote.price - averageCost) / averageCost) * 100 : null;
       const news = newsBySymbol.get(symbol.id);
@@ -1069,6 +1078,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         currentWeight,
         gainLossPct,
         portfolioCashPct,
+        portfolioHasCashCapacity,
         priceChangePct: quote?.percent_change ?? null,
         currentPrice: quote?.price ?? null,
         fundamentalsSnapshot: fundamentalsSnapshot
@@ -1136,6 +1146,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         name: symbol.name,
         currentWeight: null,
         portfolioCashPct: null,
+        portfolioHasCashCapacity: false,
         gainLossPct: null,
         priceChangePct: quote?.percent_change ?? null,
         currentPrice: quote?.price ?? null,
