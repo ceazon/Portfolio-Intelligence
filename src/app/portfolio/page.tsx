@@ -212,6 +212,7 @@ export default async function PortfolioPage() {
         ...slice,
         weight: normalizedTarget,
         targetWeight: normalizedTarget,
+        comparisonBaselineWeight: slice.weight,
       };
     });
 

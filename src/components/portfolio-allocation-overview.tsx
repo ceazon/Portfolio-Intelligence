@@ -3,6 +3,7 @@ type Slice = {
   weight: number;
   value: number;
   targetWeight: number | null;
+  comparisonBaselineWeight?: number | null;
 };
 
 function polarToCartesian(cx: number, cy: number, radius: number, angleInDegrees: number) {
@@ -69,7 +70,8 @@ export function PortfolioAllocationOverview({
               .slice()
               .sort((a, b) => b.weight - a.weight)
               .map((slice, index) => {
-                const delta = slice.targetWeight !== null ? slice.targetWeight - slice.weight : null;
+                const baseline = slice.comparisonBaselineWeight ?? (compareMode ? slice.targetWeight : slice.weight);
+                const delta = slice.targetWeight !== null && baseline !== null ? slice.targetWeight - baseline : null;
                 return (
                   <div key={slice.label} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm">
                     <div className="flex min-w-0 items-center gap-3">
