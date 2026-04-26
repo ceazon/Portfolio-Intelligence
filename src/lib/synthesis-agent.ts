@@ -735,8 +735,94 @@ function buildNarrative(candidate: SynthesisCandidate, action: SynthesizedRecomm
   };
 }
 
+function targetCashWeightForGrowthPortfolio(macro: AgentOutputRow | null) {
+  const macroScore = macro?.normalized_score ?? 0;
+  if (macroScore <= -0.45) return 20;
+  if (macroScore <= -0.25) return 12;
+  if (macroScore <= -0.1) return 8;
+  if (macroScore >= 0.25) return 2;
+  return 5;
+}
+
+function normalizePortfolioTargetWeights(recommendations: SynthesizedRecommendation[], candidates: SynthesisCandidate[], macro: AgentOutputRow | null) {
+  const candidateBySymbol = new Map(candidates.map((candidate) => [candidate.symbolId, candidate]));
+  const targetCashWeight = targetCashWeightForGrowthPortfolio(macro);
+  const investableTarget = 100 - targetCashWeight;
+
+  const investable = recommendations
+    .map((recommendation) => ({
+      recommendation,
+      candidate: candidateBySymbol.get(recommendation.symbolId) || null,
+    }))
+    .filter(({ candidate, recommendation }) => candidate?.portfolioId && recommendation.action !== "watch");
+
+  if (!investable.length) {
+    return recommendations;
+  }
+
+  const scored = investable.map(({ recommendation, candidate }) => {
+    const currentWeight = candidate?.currentWeight ?? 0;
+    const conviction = recommendation.convictionScore;
+    const actionMultiplier = recommendation.action === "buy" ? 1.15 : recommendation.action === "hold" ? 1 : 0.55;
+    const qualityBonus = recommendation.decisionStyle === "core" ? 1.15 : recommendation.decisionStyle === "starter" ? 1.05 : 1;
+    const currentWeightFloor = recommendation.action === "trim" ? Math.min(currentWeight, 6) : Math.min(currentWeight, 8);
+    const score = Math.max(0.25, conviction / 100) * actionMultiplier * qualityBonus + currentWeightFloor / 12;
+    return {
+      recommendation,
+      candidate,
+      currentWeight,
+      score,
+    };
+  });
+
+  const totalScore = scored.reduce((sum, item) => sum + item.score, 0);
+  if (totalScore <= 0) {
+    return recommendations;
+  }
+
+  const normalizedWeights = new Map<string, number>();
+  scored.forEach((item) => {
+    const rawTarget = (item.score / totalScore) * investableTarget;
+    const cappedTarget = item.recommendation.action === "trim"
+      ? Math.min(rawTarget, Math.max(2, item.currentWeight * 0.75))
+      : item.recommendation.action === "hold"
+        ? Math.min(rawTarget, Math.max(6, item.currentWeight + 2))
+        : Math.min(rawTarget, 25);
+    const flooredTarget = item.recommendation.action === "buy"
+      ? Math.max(cappedTarget, Math.min(8, item.currentWeight > 0 ? item.currentWeight : 4))
+      : item.recommendation.action === "hold"
+        ? Math.max(cappedTarget, Math.min(5, item.currentWeight || 0))
+        : Math.max(cappedTarget, 0);
+
+    normalizedWeights.set(item.recommendation.symbolId, Number(flooredTarget.toFixed(2)));
+  });
+
+  const normalizedTotal = Array.from(normalizedWeights.values()).reduce((sum, value) => sum + value, 0);
+  if (normalizedTotal > 0) {
+    const scale = investableTarget / normalizedTotal;
+    normalizedWeights.forEach((value, symbolId) => {
+      normalizedWeights.set(symbolId, Number((value * scale).toFixed(2)));
+    });
+  }
+
+  return recommendations.map((recommendation) => {
+    const normalizedWeight = normalizedWeights.get(recommendation.symbolId);
+    if (typeof normalizedWeight !== "number") {
+      return {
+        ...recommendation,
+        targetWeight: recommendation.action === "watch" ? 0 : recommendation.targetWeight,
+      };
+    }
+
+    return {
+      ...recommendation,
+      targetWeight: normalizedWeight,
+    };
+  });
+}
+
 function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: AgentOutputRow | null, externalTargetsBySymbol: Map<string, ExternalTargetReference>): SynthesizedRecommendation[] {
-  return candidates.map((candidate) => {
+  const baseRecommendations: SynthesizedRecommendation[] = candidates.map((candidate) => {
     const scenarios = buildScenarioSet(candidate, macro);
     const newsScore = candidate.news?.normalizedScore ?? 0;
     const fundamentalsScore = candidate.fundamentals?.normalizedScore ?? 0;
@@ -765,15 +851,15 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
 
     const rawWeightTilt = (candidate.news?.targetWeightDelta ?? 0) * 0.45 + (candidate.fundamentals?.targetWeightDelta ?? 0) * 0.4 + (macroScore > 0.2 ? 0.6 : macroScore < -0.2 ? -0.75 : 0);
     const cashSupport = clamp(portfolioCashPct / 12, 0, 1.5);
-    const targetWeight = hasPosition
+    const provisionalTargetWeight = hasPosition
       ? action === "trim"
         ? clamp(Number(Math.max(0, currentWeight + Math.min(rawWeightTilt, -0.75) - Math.max(0.5, conviction / 120)).toFixed(2)), 0, 15)
         : clamp(Number((currentWeight + (action === "buy" ? Math.max(0.5, rawWeightTilt + cashSupport * 0.6) : rawWeightTilt * 0.35)).toFixed(2)), 0.5, 15)
       : action === "buy"
         ? portfolioCashPct >= 2
           ? clamp(Number((1.5 + Math.max(0.35, rawWeightTilt) + Math.max(0, blendedSignal) * 2 + cashSupport * 0.9).toFixed(2)), 0.75, Math.min(7, portfolioCashPct))
-          : null
-        : null;
+          : 4
+        : 0;
 
     const externalTarget = externalTargetsBySymbol.get(candidate.symbolId) || null;
     const validation = validateTarget(candidate, scenarios, externalTarget);
@@ -784,7 +870,7 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
     return {
       symbolId: candidate.symbolId,
       action,
-      targetWeight,
+      targetWeight: provisionalTargetWeight,
       targetPrice: scenarios.weightedTarget,
       convictionScore: finalConviction,
       summary: narrative.summary,
@@ -807,6 +893,8 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
       riskFactors: narrative.riskFactors,
     };
   });
+
+  return normalizePortfolioTargetWeights(baseRecommendations, candidates, macro);
 }
 
 async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: AgentOutputRow | null, externalTargetsBySymbol: Map<string, ExternalTargetReference>): Promise<SynthesizedRecommendation[]> {
@@ -840,7 +928,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
           {
             type: "input_text",
             text:
-              "You are a senior equity recommendation synthesizer. Convert structured company evidence into clear investment recommendations for an end investor. You will receive portfolio/watchlist context, current sizing, available portfolio cash context, macro, news, bear-case and fundamentals assessments, valuation scenario outputs with bull/base/bear targets and a weighted target, and outside analyst consensus targets when available. Decide whether each stock is a buy, hold, trim, or watch. Set a sensible conviction score from 0-100. Suggest a realistic target weight and 12-month target price when appropriate. Explain the recommendation in plain investor language. Speak about the company and stock directly. Use concepts like growth, margins, valuation, demand, execution, cyclicality, competitive position, balance sheet, business quality, and catalysts. Never mention agents, models, signals, normalized scores, anchors, synthesis mechanics, or chain-of-thought. Never say agent mix, valuation anchor, signal stack, or similar internal terms. Use outside consensus targets as a validation check, not as the sole source of truth. If your target is materially above or below consensus, explicitly justify why. If outside consensus strongly disagrees and the internal case is not strong enough, lower conviction rather than forcing a bold target. If valuation is rich, say so clearly even when the business is strong. If evidence is mixed, prefer hold or watch over forced conviction. Respect current weight, available cash, and realistic portfolio constraints. If a portfolio has meaningful cash available, you may propose new buy allocations or adds more confidently. If cash is limited, be more conservative about recommending aggressive adds or fresh positions unless trims elsewhere make the move realistic. Avoid absurd portfolio weights. Return strict JSON only matching the required schema.",
+              "You are a senior equity recommendation synthesizer. Convert structured company evidence into clear investment recommendations for an end investor. You will receive portfolio/watchlist context, current sizing, available portfolio cash context, macro, news, bear-case and fundamentals assessments, valuation scenario outputs with bull/base/bear targets and a weighted target, and outside analyst consensus targets when available. Decide whether each stock is a buy, hold, trim, or watch. Set a sensible conviction score from 0-100. Suggest a realistic target weight and 12-month target price when appropriate. Explain the recommendation in plain investor language. Speak about the company and stock directly. Use concepts like growth, margins, valuation, demand, execution, cyclicality, competitive position, balance sheet, business quality, and catalysts. Never mention agents, models, signals, normalized scores, anchors, synthesis mechanics, or chain-of-thought. Never say agent mix, valuation anchor, signal stack, or similar internal terms. Use outside consensus targets as a validation check, not as the sole source of truth. If your target is materially above or below consensus, explicitly justify why. If outside consensus strongly disagrees and the internal case is not strong enough, lower conviction rather than forcing a bold target. If valuation is rich, say so clearly even when the business is strong. If evidence is mixed, prefer hold or watch over forced conviction. Respect current weight, available cash, and realistic portfolio constraints. For portfolio holdings, think like a portfolio constructor, not a sparse screener: a growth portfolio should usually remain mostly invested unless macro/risk is clearly defensive. Do not leave large unallocated gaps by default. If one holding is trimmed, usually reassign that weight to stronger holdings instead of implicitly sending it to cash. Keep cash target small unless the macro case is clearly bearish. Avoid absurd portfolio weights. Return strict JSON only matching the required schema.",
           },
         ],
       },
@@ -930,7 +1018,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
   const parsed = JSON.parse(raw || "{}");
   const recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
 
-  return recommendations.map((item: SynthesizedRecommendation) => {
+  const normalizedRecommendations = recommendations.map((item: SynthesizedRecommendation) => {
     const candidate = candidates.find((entry) => entry.symbolId === item.symbolId);
     const maxWeight = candidate && (candidate.currentWeight ?? 0) === 0 && typeof candidate.portfolioCashPct === "number"
       ? Math.min(20, Math.max(1, candidate.portfolioCashPct))
@@ -964,6 +1052,8 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
       riskFactors: Array.isArray(item.riskFactors) ? item.riskFactors : [],
     };
   });
+
+  return normalizePortfolioTargetWeights(normalizedRecommendations, candidates, macro);
 }
 
 export async function runRecommendationSynthesis(ownerId: string) {

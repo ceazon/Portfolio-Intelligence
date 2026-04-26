@@ -1,4 +1,7 @@
-node_modules
-.next
+.env*
 .env.local
+.next
 .vercel
+node_modules
+supabase/.temp/
+tsconfig.tsbuildinfo
