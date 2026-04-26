@@ -36,8 +36,8 @@ type PositionRow = {
   quantity: number | null;
   average_cost: number | null;
   portfolios:
-    | { id: string; name: string; cash_position?: number | null; cash_currency?: string | null; display_currency?: string | null }
-    | { id: string; name: string; cash_position?: number | null; cash_currency?: string | null; display_currency?: string | null }[]
+    | { id: string; name: string; cash_position?: number | null; cash_currency?: string | null; display_currency?: string | null; recommendation_cash_mode?: string | null }
+    | { id: string; name: string; cash_position?: number | null; cash_currency?: string | null; display_currency?: string | null; recommendation_cash_mode?: string | null }[]
     | null;
   symbols:
     | {
@@ -102,6 +102,7 @@ type SynthesisCandidate = {
   currentWeight: number | null;
   portfolioCashPct: number | null;
   portfolioHasCashCapacity: boolean;
+  recommendationCashMode: "managed-cash" | "fully-invested";
   gainLossPct: number | null;
   priceChangePct: number | null;
   currentPrice: number | null;
@@ -746,8 +747,6 @@ function targetCashWeightForGrowthPortfolio(macro: AgentOutputRow | null) {
 
 function normalizePortfolioTargetWeights(recommendations: SynthesizedRecommendation[], candidates: SynthesisCandidate[], macro: AgentOutputRow | null) {
   const candidateBySymbol = new Map(candidates.map((candidate) => [candidate.symbolId, candidate]));
-  const targetCashWeight = targetCashWeightForGrowthPortfolio(macro);
-  const investableTarget = 100 - targetCashWeight;
 
   const investable = recommendations
     .map((recommendation) => ({
@@ -759,6 +758,19 @@ function normalizePortfolioTargetWeights(recommendations: SynthesizedRecommendat
   if (!investable.length) {
     return recommendations;
   }
+
+  const portfolioCashModeById = new Map<string, "managed-cash" | "fully-invested">();
+  investable.forEach(({ candidate }) => {
+    if (candidate?.portfolioId && !portfolioCashModeById.has(candidate.portfolioId)) {
+      portfolioCashModeById.set(candidate.portfolioId, candidate.recommendationCashMode);
+    }
+  });
+
+  const investableTargetByPortfolioId = new Map<string, number>();
+  portfolioCashModeById.forEach((cashMode, portfolioId) => {
+    const targetCashWeight = cashMode === "fully-invested" ? 0 : targetCashWeightForGrowthPortfolio(macro);
+    investableTargetByPortfolioId.set(portfolioId, 100 - targetCashWeight);
+  });
 
   const scored = investable.map(({ recommendation, candidate }) => {
     const currentWeight = candidate?.currentWeight ?? 0;
@@ -781,8 +793,21 @@ function normalizePortfolioTargetWeights(recommendations: SynthesizedRecommendat
   }
 
   const normalizedWeights = new Map<string, number>();
+  const totalScoreByPortfolioId = new Map<string, number>();
   scored.forEach((item) => {
-    const rawTarget = (item.score / totalScore) * investableTarget;
+    const portfolioId = item.candidate?.portfolioId;
+    if (!portfolioId) return;
+    totalScoreByPortfolioId.set(portfolioId, (totalScoreByPortfolioId.get(portfolioId) || 0) + item.score);
+  });
+
+  scored.forEach((item) => {
+    const portfolioId = item.candidate?.portfolioId;
+    if (!portfolioId) return;
+    const portfolioTarget = investableTargetByPortfolioId.get(portfolioId) ?? 100;
+    const portfolioTotalScore = totalScoreByPortfolioId.get(portfolioId) ?? 0;
+    if (portfolioTotalScore <= 0) return;
+
+    const rawTarget = (item.score / portfolioTotalScore) * portfolioTarget;
     const cappedTarget = item.recommendation.action === "trim"
       ? Math.min(rawTarget, Math.max(2, item.currentWeight * 0.75))
       : item.recommendation.action === "hold"
@@ -797,13 +822,21 @@ function normalizePortfolioTargetWeights(recommendations: SynthesizedRecommendat
     normalizedWeights.set(item.recommendation.symbolId, Number(flooredTarget.toFixed(2)));
   });
 
-  const normalizedTotal = Array.from(normalizedWeights.values()).reduce((sum, value) => sum + value, 0);
-  if (normalizedTotal > 0) {
-    const scale = investableTarget / normalizedTotal;
-    normalizedWeights.forEach((value, symbolId) => {
-      normalizedWeights.set(symbolId, Number((value * scale).toFixed(2)));
-    });
-  }
+  const normalizedWeightTotalsByPortfolioId = new Map<string, number>();
+  normalizedWeights.forEach((value, symbolId) => {
+    const portfolioId = candidateBySymbol.get(symbolId)?.portfolioId;
+    if (!portfolioId) return;
+    normalizedWeightTotalsByPortfolioId.set(portfolioId, (normalizedWeightTotalsByPortfolioId.get(portfolioId) || 0) + value);
+  });
+
+  normalizedWeights.forEach((value, symbolId) => {
+    const portfolioId = candidateBySymbol.get(symbolId)?.portfolioId;
+    if (!portfolioId) return;
+    const portfolioTarget = investableTargetByPortfolioId.get(portfolioId) ?? 100;
+    const normalizedTotal = normalizedWeightTotalsByPortfolioId.get(portfolioId) ?? 0;
+    if (normalizedTotal <= 0) return;
+    normalizedWeights.set(symbolId, Number(((value * portfolioTarget) / normalizedTotal).toFixed(2)));
+  });
 
   return recommendations.map((recommendation) => {
     const normalizedWeight = normalizedWeights.get(recommendation.symbolId);
@@ -835,6 +868,7 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
     const hasPosition = (candidate.currentWeight ?? 0) > 0;
     const currentWeight = candidate.currentWeight ?? 0;
     const portfolioCashPct = candidate.portfolioCashPct ?? 0;
+    const targetCashWeight = candidate.recommendationCashMode === "fully-invested" ? 0 : targetCashWeightForGrowthPortfolio(macro);
 
     const weightedSignal = newsScore * 0.34 + fundamentalsScore * 0.33 + macroScore * 0.13 + bearScore * 0.2;
     const evidenceQuality = newsConfidence * 0.34 + fundamentalsConfidence * 0.3 + macroConfidence * 0.14 + bearConfidence * 0.22;
@@ -850,14 +884,15 @@ function buildDeterministicFallback(candidates: SynthesisCandidate[], macro: Age
     const action = blendedSignal >= 0.22 ? "buy" : blendedSignal <= -0.24 ? (hasPosition ? "trim" : "watch") : "hold";
 
     const rawWeightTilt = (candidate.news?.targetWeightDelta ?? 0) * 0.45 + (candidate.fundamentals?.targetWeightDelta ?? 0) * 0.4 + (macroScore > 0.2 ? 0.6 : macroScore < -0.2 ? -0.75 : 0);
-    const cashSupport = clamp(portfolioCashPct / 12, 0, 1.5);
+    const effectiveCashPct = Math.max(0, portfolioCashPct - targetCashWeight);
+    const cashSupport = clamp((candidate.recommendationCashMode === "fully-invested" ? portfolioCashPct : effectiveCashPct) / 12, 0, 1.5);
     const provisionalTargetWeight = hasPosition
       ? action === "trim"
         ? clamp(Number(Math.max(0, currentWeight + Math.min(rawWeightTilt, -0.75) - Math.max(0.5, conviction / 120)).toFixed(2)), 0, 15)
         : clamp(Number((currentWeight + (action === "buy" ? Math.max(0.5, rawWeightTilt + cashSupport * 0.6) : rawWeightTilt * 0.35)).toFixed(2)), 0.5, 15)
       : action === "buy"
-        ? portfolioCashPct >= 2
-          ? clamp(Number((1.5 + Math.max(0.35, rawWeightTilt) + Math.max(0, blendedSignal) * 2 + cashSupport * 0.9).toFixed(2)), 0.75, Math.min(7, portfolioCashPct))
+        ? (candidate.recommendationCashMode === "fully-invested" ? portfolioCashPct > 0 : effectiveCashPct >= 2)
+          ? clamp(Number((1.5 + Math.max(0.35, rawWeightTilt) + Math.max(0, blendedSignal) * 2 + cashSupport * 0.9).toFixed(2)), 0.75, Math.min(7, Math.max(candidate.recommendationCashMode === "fully-invested" ? portfolioCashPct : effectiveCashPct, 0.75)))
           : 4
         : 0;
 
@@ -928,7 +963,7 @@ async function synthesizeWithOpenAI(candidates: SynthesisCandidate[], macro: Age
           {
             type: "input_text",
             text:
-              "You are a senior equity recommendation synthesizer. Convert structured company evidence into clear investment recommendations for an end investor. You will receive portfolio/watchlist context, current sizing, available portfolio cash context, macro, news, bear-case and fundamentals assessments, valuation scenario outputs with bull/base/bear targets and a weighted target, and outside analyst consensus targets when available. Decide whether each stock is a buy, hold, trim, or watch. Set a sensible conviction score from 0-100. Suggest a realistic target weight and 12-month target price when appropriate. Explain the recommendation in plain investor language. Speak about the company and stock directly. Use concepts like growth, margins, valuation, demand, execution, cyclicality, competitive position, balance sheet, business quality, and catalysts. Never mention agents, models, signals, normalized scores, anchors, synthesis mechanics, or chain-of-thought. Never say agent mix, valuation anchor, signal stack, or similar internal terms. Use outside consensus targets as a validation check, not as the sole source of truth. If your target is materially above or below consensus, explicitly justify why. If outside consensus strongly disagrees and the internal case is not strong enough, lower conviction rather than forcing a bold target. If valuation is rich, say so clearly even when the business is strong. If evidence is mixed, prefer hold or watch over forced conviction. Respect current weight, available cash, and realistic portfolio constraints. For portfolio holdings, think like a portfolio constructor, not a sparse screener: a growth portfolio should usually remain mostly invested unless macro/risk is clearly defensive. Do not leave large unallocated gaps by default. If one holding is trimmed, usually reassign that weight to stronger holdings instead of implicitly sending it to cash. Keep cash target small unless the macro case is clearly bearish. Avoid absurd portfolio weights. Return strict JSON only matching the required schema.",
+              "You are a senior equity recommendation synthesizer. Convert structured company evidence into clear investment recommendations for an end investor. You will receive portfolio/watchlist context, current sizing, available portfolio cash context, each portfolio's recommendation cash mode, macro, news, bear-case and fundamentals assessments, valuation scenario outputs with bull/base/bear targets and a weighted target, and outside analyst consensus targets when available. Decide whether each stock is a buy, hold, trim, or watch. Set a sensible conviction score from 0-100. Suggest a realistic target weight and 12-month target price when appropriate. Explain the recommendation in plain investor language. Speak about the company and stock directly. Use concepts like growth, margins, valuation, demand, execution, cyclicality, competitive position, balance sheet, business quality, and catalysts. Never mention agents, models, signals, normalized scores, anchors, synthesis mechanics, or chain-of-thought. Never say agent mix, valuation anchor, signal stack, or similar internal terms. Use outside consensus targets as a validation check, not as the sole source of truth. If your target is materially above or below consensus, explicitly justify why. If outside consensus strongly disagrees and the internal case is not strong enough, lower conviction rather than forcing a bold target. If valuation is rich, say so clearly even when the business is strong. If evidence is mixed, prefer hold or watch over forced conviction. Respect current weight, available cash, and realistic portfolio constraints. For portfolio holdings, think like a portfolio constructor, not a sparse screener. If recommendation cash mode is fully-invested, assume portfolio cash should be deployed into investments unless a name should truly be watched at 0 weight. If recommendation cash mode is managed-cash, a growth portfolio should usually remain mostly invested unless macro/risk is clearly defensive. Do not leave large unallocated gaps by default. If one holding is trimmed, usually reassign that weight to stronger holdings instead of implicitly sending it to cash. Keep cash target small unless the macro case is clearly bearish or the portfolio cash mode explicitly allows managed cash. Avoid absurd portfolio weights. Return strict JSON only matching the required schema.",
           },
         ],
       },
@@ -1087,7 +1122,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         .order("created_at", { ascending: false }),
       supabase
         .from("portfolio_positions")
-        .select("portfolio_id, quantity, average_cost, portfolios(id, name, cash_position, cash_currency, display_currency), symbols(id, ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))"),
+        .select("portfolio_id, quantity, average_cost, portfolios(id, name, cash_position, cash_currency, display_currency, recommendation_cash_mode), symbols(id, ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))"),
       supabase
         .from("watchlist_items")
         .select("symbols(id, ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))"),
@@ -1153,6 +1188,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
       const currentWeight = portfolioTotal > 0 ? (marketValue / portfolioTotal) * 100 : 0;
       const portfolioCashPct = portfolioTotal > 0 ? (cashUsd / portfolioTotal) * 100 : 0;
       const portfolioHasCashCapacity = cashUsd > 0;
+      const recommendationCashMode = portfolio?.recommendation_cash_mode === "fully-invested" ? "fully-invested" : "managed-cash";
       const averageCost = position.average_cost ?? 0;
       const gainLossPct = quote?.price !== null && quote?.price !== undefined && averageCost > 0 ? ((quote.price - averageCost) / averageCost) * 100 : null;
       const news = newsBySymbol.get(symbol.id);
@@ -1169,6 +1205,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         gainLossPct,
         portfolioCashPct,
         portfolioHasCashCapacity,
+        recommendationCashMode,
         priceChangePct: quote?.percent_change ?? null,
         currentPrice: quote?.price ?? null,
         fundamentalsSnapshot: fundamentalsSnapshot
@@ -1237,6 +1274,7 @@ export async function runRecommendationSynthesis(ownerId: string) {
         currentWeight: null,
         portfolioCashPct: null,
         portfolioHasCashCapacity: false,
+        recommendationCashMode: "managed-cash",
         gainLossPct: null,
         priceChangePct: quote?.percent_change ?? null,
         currentPrice: quote?.price ?? null,

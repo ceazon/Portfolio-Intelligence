@@ -97,6 +97,7 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
     const displayCurrency = String(formData.get("displayCurrency") || "USD").trim() === "CAD" ? "CAD" : "USD";
     const cashPositionRaw = String(formData.get("cashPosition") || "").trim();
     const cashCurrency = String(formData.get("cashCurrency") || displayCurrency).trim() === "CAD" ? "CAD" : "USD";
+    const recommendationCashMode = String(formData.get("recommendationCashMode") || "managed-cash").trim() === "fully-invested" ? "fully-invested" : "managed-cash";
 
     if (!name) {
       return { ok: false, error: "Portfolio name is required." };
@@ -114,6 +115,7 @@ export async function createPortfolio(_prevState: FormState, formData: FormData)
       display_currency: displayCurrency,
       cash_position: cashPosition,
       cash_currency: cashCurrency,
+      recommendation_cash_mode: recommendationCashMode,
       owner_id: auth.user.id,
     });
 
@@ -148,6 +150,7 @@ export async function updatePortfolio(_prevState: FormState, formData: FormData)
     const displayCurrency = String(formData.get("displayCurrency") || "USD").trim() === "CAD" ? "CAD" : "USD";
     const cashPositionRaw = String(formData.get("cashPosition") || "").trim();
     const cashCurrency = String(formData.get("cashCurrency") || displayCurrency).trim() === "CAD" ? "CAD" : "USD";
+    const recommendationCashMode = String(formData.get("recommendationCashMode") || "managed-cash").trim() === "fully-invested" ? "fully-invested" : "managed-cash";
 
     if (!id || !name) {
       return { ok: false, error: "Portfolio id and name are required." };
@@ -160,7 +163,7 @@ export async function updatePortfolio(_prevState: FormState, formData: FormData)
 
     const { error } = await supabase
       .from("portfolios")
-      .update({ name, description: description || null, benchmark, display_currency: displayCurrency, cash_position: cashPosition, cash_currency: cashCurrency })
+      .update({ name, description: description || null, benchmark, display_currency: displayCurrency, cash_position: cashPosition, cash_currency: cashCurrency, recommendation_cash_mode: recommendationCashMode })
       .eq("id", id)
       .eq("owner_id", auth.user.id);
     if (error) {

@@ -18,6 +18,7 @@ type PortfolioRow = {
   display_currency: SupportedCurrency | null;
   cash_position: number | null;
   cash_currency: SupportedCurrency | null;
+  recommendation_cash_mode: "managed-cash" | "fully-invested" | null;
   created_at: string;
 };
 
@@ -111,7 +112,7 @@ export default async function PortfolioPage() {
   const supabase = await createSupabaseServerClient();
 
   const { data: portfolios } = supabase
-    ? await supabase.from("portfolios").select("id, name, description, benchmark, display_currency, cash_position, cash_currency, created_at").eq("owner_id", user.id).order("created_at", { ascending: false })
+    ? await supabase.from("portfolios").select("id, name, description, benchmark, display_currency, cash_position, cash_currency, recommendation_cash_mode, created_at").eq("owner_id", user.id).order("created_at", { ascending: false })
     : { data: [] as PortfolioRow[] };
 
   const { data: positions } = supabase
@@ -209,6 +210,7 @@ export default async function PortfolioPage() {
 
     const explicitTargetWeightSum = explicitTargetEntries.reduce((sum, slice) => sum + slice.rawTargetWeight, 0);
     const currentCashWeight = totalValue > 0 ? (cashValue / totalValue) * 100 : 0;
+    const recommendationCashMode = portfolio.recommendation_cash_mode === "fully-invested" ? "fully-invested" : "managed-cash";
     const residualCashWeight = Math.max(0, 100 - explicitTargetWeightSum);
 
     const compareSlices = [
@@ -232,8 +234,16 @@ export default async function PortfolioPage() {
       {
         label: "Cash",
         value: cashValue,
-        weight: explicitTargetWeightSum > 100 ? Math.max(0, (residualCashWeight / explicitTargetWeightSum) * 100) : residualCashWeight,
-        targetWeight: explicitTargetWeightSum > 100 ? Math.max(0, (residualCashWeight / explicitTargetWeightSum) * 100) : residualCashWeight,
+        weight: recommendationCashMode === "fully-invested"
+          ? 0
+          : explicitTargetWeightSum > 100
+            ? Math.max(0, (residualCashWeight / explicitTargetWeightSum) * 100)
+            : residualCashWeight,
+        targetWeight: recommendationCashMode === "fully-invested"
+          ? 0
+          : explicitTargetWeightSum > 100
+            ? Math.max(0, (residualCashWeight / explicitTargetWeightSum) * 100)
+            : residualCashWeight,
         comparisonBaselineWeight: currentCashWeight,
       },
     ];
@@ -244,6 +254,7 @@ export default async function PortfolioPage() {
       displayCurrency,
       cashPosition: portfolio.cash_position ?? 0,
       cashCurrency,
+      recommendationCashMode,
       currentSlices,
       compareSlices,
     };
@@ -255,7 +266,7 @@ export default async function PortfolioPage() {
         <PortfolioActionBar portfolios={portfolioOptions} symbols={symbolOptions} />
 
         {(portfolios || []).length > 0 ? (
-          overviewCards.map(({ portfolio, positions, displayCurrency, cashPosition, cashCurrency, currentSlices, compareSlices }) => (
+          overviewCards.map(({ portfolio, positions, displayCurrency, cashPosition, cashCurrency, recommendationCashMode, currentSlices, compareSlices }) => (
             <div key={portfolio.id} className="space-y-6">
               <SectionCard
                 title={portfolio.name}
@@ -269,6 +280,7 @@ export default async function PortfolioPage() {
                   displayCurrency={displayCurrency}
                   cashPosition={cashPosition}
                   cashCurrency={cashCurrency}
+                  recommendationCashMode={recommendationCashMode}
                   positions={positions}
                   recommendationBySymbol={recommendationBySymbol}
                   usdCadRate={usdCadRate}
@@ -290,7 +302,9 @@ export default async function PortfolioPage() {
                 <div className="space-y-4">
                   <PortfolioAllocationOverview
                     title={`${portfolio.name} target allocation`}
-                    description="A target mix based on explicit recommendation weights, with residual cash shown separately when the set is not fully invested."
+                    description={recommendationCashMode === "fully-invested"
+                      ? "A target mix based on explicit recommendation weights, aiming to deploy tracked cash into investments."
+                      : "A target mix based on explicit recommendation weights, with residual cash shown separately when the set is not fully invested."}
                     slices={compareSlices}
                     compareMode
                     showDelta

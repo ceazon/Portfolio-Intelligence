@@ -54,6 +54,14 @@ export function CreatePortfolioForm() {
           <option value="CAD">Cash in CAD</option>
         </select>
       </div>
+      <select
+        name="recommendationCashMode"
+        defaultValue="managed-cash"
+        className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+      >
+        <option value="managed-cash">Recommendations can keep a cash buffer</option>
+        <option value="fully-invested">Recommendations should target fully invested</option>
+      </select>
       <textarea
         name="description"
         placeholder="Core 4-5 positions with a long-term aggressive growth bias and monthly decision cadence"

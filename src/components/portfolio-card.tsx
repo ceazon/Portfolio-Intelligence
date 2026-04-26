@@ -81,6 +81,7 @@ type PortfolioCardProps = {
   displayCurrency: SupportedCurrency;
   cashPosition: number | null;
   cashCurrency: SupportedCurrency;
+  recommendationCashMode: "managed-cash" | "fully-invested";
   positions: PositionRow[];
   recommendationBySymbol: Map<string, RecommendationRow>;
   usdCadRate: number;
@@ -94,7 +95,7 @@ function firstRelation<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 
-export function PortfolioCard({ id, name, description, benchmark, displayCurrency, cashPosition, cashCurrency, positions, recommendationBySymbol, usdCadRate }: PortfolioCardProps) {
+export function PortfolioCard({ id, name, description, benchmark, displayCurrency, cashPosition, cashCurrency, recommendationCashMode, positions, recommendationBySymbol, usdCadRate }: PortfolioCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const summary = useMemo(() => {
@@ -179,6 +180,7 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
             displayCurrency={displayCurrency}
             cashPosition={cashPosition}
             cashCurrency={cashCurrency}
+            recommendationCashMode={recommendationCashMode}
           />
 
           {positions.length > 0 ? (

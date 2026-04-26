@@ -16,6 +16,7 @@ export function EditPortfolioForm({
   displayCurrency,
   cashPosition,
   cashCurrency,
+  recommendationCashMode,
 }: {
   id: string;
   name: string;
@@ -24,6 +25,7 @@ export function EditPortfolioForm({
   displayCurrency: "USD" | "CAD";
   cashPosition: number | null;
   cashCurrency: "USD" | "CAD";
+  recommendationCashMode: "managed-cash" | "fully-invested";
 }) {
   const [state, formAction, pending] = useActionState(updatePortfolio, initialFormState);
 
@@ -68,6 +70,14 @@ export function EditPortfolioForm({
           <option value="CAD">Cash in CAD</option>
         </select>
       </div>
+      <select
+        name="recommendationCashMode"
+        defaultValue={recommendationCashMode}
+        className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+      >
+        <option value="managed-cash">Recommendations can keep a cash buffer</option>
+        <option value="fully-invested">Recommendations should target fully invested</option>
+      </select>
       <textarea
         name="description"
         rows={2}
