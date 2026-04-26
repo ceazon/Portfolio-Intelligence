@@ -15,11 +15,9 @@ export default async function DashboardPage() {
 
   let symbolCount = "0";
   let positionCount = "0";
-  let openRecommendationCount = "0";
-  let acceptedRecommendationCount = "0";
-  let dismissedRecommendationCount = "0";
-  let agentRunCount = "0";
-  let latestRunSummary: string | null = null;
+  let rebalanceRecommendationCount = "0";
+  let rebalanceRunCount = "0";
+  let latestRebalanceRunSummary: string | null = null;
   let latestQuoteSync: string | null = null;
   let latestCentralQuoteRunSummary: string | null = null;
   let researchInsightCount = "0";
@@ -29,11 +27,9 @@ export default async function DashboardPage() {
     const [
       symbolsCountResult,
       positionsCountResult,
-      openRecommendationsCountResult,
-      acceptedRecommendationsCountResult,
-      dismissedRecommendationsCountResult,
-      agentRunsCountResult,
-      latestAgentRunResult,
+      rebalanceRecommendationsCountResult,
+      rebalanceRunsCountResult,
+      latestRebalanceRunResult,
       latestQuoteSyncResult,
       latestCentralQuoteRunResult,
       researchInsightCountResult,
@@ -41,11 +37,9 @@ export default async function DashboardPage() {
     ] = await Promise.all([
       supabase.from("symbols").select("id", { count: "exact", head: true }),
       supabase.from("portfolio_positions").select("id, portfolios!inner(owner_id)", { count: "exact", head: true }).eq("portfolios.owner_id", user.id),
-      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("owner_id", user.id).eq("status", "open"),
-      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("owner_id", user.id).eq("status", "accepted"),
-      supabase.from("recommendations").select("id", { count: "exact", head: true }).eq("owner_id", user.id).eq("status", "dismissed"),
-      supabase.from("agent_runs").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
-      supabase.from("agent_runs").select("summary, completed_at").eq("owner_id", user.id).order("completed_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("rebalance_recommendations").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
+      supabase.from("rebalancing_runs").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
+      supabase.from("rebalancing_runs").select("summary, completed_at").eq("owner_id", user.id).order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("symbols").select("last_quote_sync_at").order("last_quote_sync_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("quote_refresh_runs").select("summary, completed_at").order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("research_insights").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
@@ -54,11 +48,9 @@ export default async function DashboardPage() {
 
     symbolCount = String(symbolsCountResult.count ?? 0);
     positionCount = String(positionsCountResult.count ?? 0);
-    openRecommendationCount = String(openRecommendationsCountResult.count ?? 0);
-    acceptedRecommendationCount = String(acceptedRecommendationsCountResult.count ?? 0);
-    dismissedRecommendationCount = String(dismissedRecommendationsCountResult.count ?? 0);
-    agentRunCount = String(agentRunsCountResult.count ?? 0);
-    latestRunSummary = latestAgentRunResult.data?.summary || null;
+    rebalanceRecommendationCount = String(rebalanceRecommendationsCountResult.count ?? 0);
+    rebalanceRunCount = String(rebalanceRunsCountResult.count ?? 0);
+    latestRebalanceRunSummary = latestRebalanceRunResult.data?.summary || null;
     latestQuoteSync = latestQuoteSyncResult.data?.last_quote_sync_at || null;
     latestCentralQuoteRunSummary = latestCentralQuoteRunResult.data?.summary || null;
     researchInsightCount = String(researchInsightCountResult.count ?? 0);
@@ -70,9 +62,9 @@ export default async function DashboardPage() {
   const stats = [
     { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${formatAppDateTime(latestQuoteSync)}` : "Quote sync ready" },
     { label: "Core Positions", value: positionCount, detail: "Live portfolio positions tracked" },
-    { label: "Active Recommendations", value: openRecommendationCount, detail: `Accepted ${acceptedRecommendationCount} · Dismissed ${dismissedRecommendationCount}` },
-    { label: "Agent Runs", value: agentRunCount, detail: latestRunSummary || "Manual market refreshes log here" },
-    { label: "Research Insights", value: researchInsightCount, detail: latestResearchRunSummary || "Shared research layer is ready" },
+    { label: "Rebalance Items", value: rebalanceRecommendationCount, detail: latestRebalanceRunSummary || "Latest rebalance recommendations are ready" },
+    { label: "Rebalance Runs", value: rebalanceRunCount, detail: latestRebalanceRunSummary || "Generate a rebalance plan to start run history" },
+    { label: "Research Insights", value: researchInsightCount, detail: latestResearchRunSummary || "Legacy research layer is still available" },
   ];
 
   return (
@@ -81,7 +73,7 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Mission control"
-            description="This dashboard should now read like a product checkpoint: what exists, what is solid, and where the most valuable expansion paths are from here."
+            description="This dashboard should read like a rebalance operating view: what holdings exist, what plans have been generated, and what data is current."
           >
             <div className="mb-4 space-y-3">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
@@ -138,10 +130,10 @@ export default async function DashboardPage() {
 
           <SectionCard
             title="Latest operating signal"
-            description="Recent evidence from research, fundamentals, quote refresh, and the broader intelligence stack."
+            description="Recent evidence from rebalance runs, quote refresh, and the remaining research support stack."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
-              {latestResearchRunSummary || latestCentralQuoteRunSummary || latestRunSummary || "No refresh runs yet. Use the refresh and research actions above to start building signal history."}
+              {latestRebalanceRunSummary || latestResearchRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet. Generate a plan to start building operating history."}
             </div>
           </SectionCard>
         </div>

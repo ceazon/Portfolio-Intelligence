@@ -1,27 +1,27 @@
 export const roadmapCards = [
   {
     title: "Where we are now",
-    body: "The product has moved beyond a rough agent demo into a usable portfolio intelligence system. Recommendations are now more investor-facing, less repetitive, and backed by structured explanation fields stored end-to-end in the database and UI.",
+    body: "The product is moving from an AI-heavy recommendation engine into a practical rebalancing workspace. Deterministic rebalance plans now sit at the center, using current holdings and analyst targets as the main decision inputs.",
   },
   {
     title: "What is working",
-    body: "The current core loop is in place: tracked symbols, research capture, fundamentals, macro context, recommendation synthesis, and compact recommendation cards with expandable rationale. The app now does a much better job explaining why a stock looks attractive or risky in plain investment language.",
+    body: "The core loop is getting cleaner: tracked positions, live quotes, analyst consensus targets, portfolio cash modes, rebalance plans, and target-allocation views. The app can now show where to add, trim, or hold with much less black-box behavior.",
   },
   {
     title: "Current constraint",
-    body: "Consensus analyst targets now run through FMP first and are live in production, which resolves the original Finnhub blocker. The remaining data challenge is no longer provider selection, but robustness: validating coverage breadth, adding fallback paths if needed, and making sure consensus stays dependable across the full symbol universe.",
+    body: "The main job now is consistency across the product. Some legacy recommendation, research, and agent surfaces still exist beside the new rebalance model, so the next work is consolidating the dashboard, history, and workflows around one coherent system.",
   },
   {
     title: "What could come next",
-    body: "From here, the biggest upside is deeper intelligence rather than more surface area: richer company understanding, stronger valuation context, recommendation history over time, more durable monitoring, and a dashboard that feels like a true portfolio operating system instead of just a tool launcher.",
+    body: "From here, the biggest upside is turning rebalance planning into a durable operating system: run history, what-changed tracking, clearer capital-allocation summaries, and optional AI explanation layered on top of deterministic portfolio math.",
   },
 ];
 
 export const nextBuildTargets = [
-  "Validate FMP coverage across the tracked universe and add fallback provider support only where gaps actually appear",
-  "Add recommendation history and change tracking so each idea shows how conviction, target, and thesis evolve over time",
-  "Create deeper company drill-down pages for quality, valuation, risks, and catalyst monitoring",
-  "Expand the dashboard into a true portfolio overview with best ideas, weakest holdings, watchlist upgrades, and capital allocation suggestions",
-  "Add more specialized intelligence layers such as earnings quality, estimate revision pressure, capital allocation quality, and management execution",
-  "Increase automation so refresh, research, and synthesis stay current with less manual intervention",
+  "Add rebalance history and change tracking so each portfolio shows how target allocations evolve over time",
+  "Build dashboard modules for biggest adds, biggest trims, and highest implied-upside holdings",
+  "Validate FMP coverage across held portfolios and add fallback target support only where gaps actually appear",
+  "Create deeper symbol drill-down pages for valuation context, target history, and risk notes",
+  "Reduce or hide legacy agent-first surfaces once rebalance workflows fully replace them",
+  "Increase automation so quotes, analyst targets, and rebalance plans stay current with less manual intervention",
 ];
