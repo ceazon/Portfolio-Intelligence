@@ -98,7 +98,7 @@ export default async function RecommendationsPage() {
     <AppShell viewer={user}>
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="space-y-6">
-          <SectionCard title="Recommendations" description="Focused synthesized recommendations ranked by strongest conviction.">
+          <SectionCard title="Rebalance plan" description="Current target-allocation guidance ranked from the strongest adds and trims.">
             {recommendations && recommendations.length > 0 ? (
               <div className="space-y-3">
                 {await Promise.all(
@@ -300,7 +300,7 @@ export default async function RecommendationsPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                No synthesized recommendations yet. Run synthesis to populate this view.
+                No rebalance plan yet. Generate a plan to populate this view.
               </div>
             )}
           </SectionCard>

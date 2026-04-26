@@ -14,9 +14,9 @@ export function AppShell({ children, viewer }: { children: ReactNode; viewer?: V
         <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-zinc-800 bg-zinc-900/60 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)] lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-sky-300">Portfolio Intelligence</p>
-            <h1 className="mt-2 text-2xl font-bold text-zinc-50">Agent-guided long-term investing workspace</h1>
+            <h1 className="mt-2 text-2xl font-bold text-zinc-50">AI-assisted portfolio rebalancing workspace</h1>
             <p className="mt-2 max-w-2xl text-sm text-zinc-400">
-              Track your portfolio, rank your watchlist, inspect agent reasoning, and turn daily signals into slower, higher-conviction monthly decisions.
+              Track your portfolio, compare current allocations against analyst targets, and turn market context into clearer rebalance decisions.
             </p>
           </div>
           <div className="flex flex-col items-start gap-3 lg:items-end">

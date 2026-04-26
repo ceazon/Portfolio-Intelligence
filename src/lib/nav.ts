@@ -6,6 +6,6 @@ export const primaryNav = [
   { href: "/research", label: "Research" },
   { href: "/fundamentals", label: "Fundamentals" },
   { href: "/agents", label: "Agents" },
-  { href: "/recommendations", label: "Recommendations" },
+  { href: "/recommendations", label: "Rebalancing" },
   { href: "/agent-activity", label: "Agent Activity" },
 ];

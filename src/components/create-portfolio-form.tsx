@@ -15,7 +15,7 @@ export function CreatePortfolioForm() {
     <form action={formAction} className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
       <div>
         <h3 className="text-base font-semibold text-zinc-100">Create portfolio</h3>
-        <p className="mt-1 text-sm text-zinc-400">Set up the core paper portfolio that recommendations will manage over time.</p>
+        <p className="mt-1 text-sm text-zinc-400">Set up the core paper portfolio that rebalance plans will manage over time.</p>
       </div>
       <input
         name="name"
@@ -59,8 +59,8 @@ export function CreatePortfolioForm() {
         defaultValue="managed-cash"
         className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
       >
-        <option value="managed-cash">Recommendations can keep a cash buffer</option>
-        <option value="fully-invested">Recommendations should target fully invested</option>
+        <option value="managed-cash">Rebalance plans can keep a cash buffer</option>
+        <option value="fully-invested">Rebalance plans should target fully invested</option>
       </select>
       <textarea
         name="description"

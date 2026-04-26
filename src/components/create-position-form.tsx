@@ -26,7 +26,7 @@ export function CreatePositionForm({ portfolios, symbols }: { portfolios: Portfo
     <form action={formAction} className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
       <div>
         <h3 className="text-base font-semibold text-zinc-100">Add or update position</h3>
-        <p className="mt-1 text-sm text-zinc-400">Enter the current holding state. Portfolio analytics and recommendations will derive from these inputs.</p>
+        <p className="mt-1 text-sm text-zinc-400">Enter the current holding state. Portfolio analytics and rebalance planning will derive from these inputs.</p>
       </div>
 
       <select

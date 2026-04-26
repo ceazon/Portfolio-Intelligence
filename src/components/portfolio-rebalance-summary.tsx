@@ -17,7 +17,7 @@ export function PortfolioRebalanceSummary({ rows }: { rows: AllocationRow[] }) {
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
       <div className="mb-4">
         <h3 className="text-base font-semibold text-zinc-100">Rebalance summary</h3>
-        <p className="mt-1 text-sm text-zinc-400">A clearer view of what the recommendation set implies for current holdings.</p>
+        <p className="mt-1 text-sm text-zinc-400">A clearer view of what the current rebalance plan implies for holdings.</p>
       </div>
 
       {actionable.length > 0 ? (
@@ -38,7 +38,7 @@ export function PortfolioRebalanceSummary({ rows }: { rows: AllocationRow[] }) {
         </div>
       ) : (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 text-sm text-zinc-400">
-          Current holdings are already close to the recommendation targets.
+          Current holdings are already close to the target rebalance weights.
         </div>
       )}
     </div>

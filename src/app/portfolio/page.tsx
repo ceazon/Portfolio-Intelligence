@@ -298,7 +298,7 @@ export default async function PortfolioPage() {
 
               <PortfolioExpandablePanel
                 title="See proposed rebalance"
-                description="Open this to see what the current recommendation set would imply for target weights and rebalance moves."
+                description="Open this to see what the current rebalance plan implies for target weights and allocation moves."
                 buttonLabel="See proposed rebalance"
               >
                 <div className="space-y-4">
