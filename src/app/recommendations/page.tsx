@@ -1,302 +1,94 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { SynthesizeRecommendationsForm } from "@/components/synthesize-recommendations-form";
-import { RecommendationStatusForm } from "@/components/recommendation-status-form";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
-import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
-
-function compactText(value: string | null | undefined, fallback: string) {
-  const text = (value || "").trim();
-  if (!text) return fallback;
-  return text;
-}
-
-type RecommendationReason = {
-  label: string;
-  detail: string;
-  strength?: "primary" | "secondary";
-};
-
-type RecommendationRisk = {
-  label: string;
-  detail: string;
-  severity?: "high" | "medium" | "low";
-};
-
-type RecommendationRow = {
-  id: string;
-  synthesis_run_id: string | null;
-  recommendation_engine: string | null;
-  action: string;
-  status: string;
-  target_weight: number | null;
-  target_price: number | null;
-  conviction_score: number | null;
-  summary: string | null;
-  risks: string | null;
-  confidence: string | null;
-  headline: string | null;
-  thesis: string | null;
-  why_now: string | null;
-  valuation_view: string | null;
-  business_quality_view: string | null;
-  good_buy_because: string | null;
-  hesitation_because: string | null;
-  main_risk: string | null;
-  risk_monitor: string | null;
-  decision_style: string | null;
-  supporting_factors_json: RecommendationReason[] | null;
-  risk_factors_json: RecommendationRisk[] | null;
-  created_at: string;
-  portfolios: { name: string } | { name: string }[] | null;
-  symbols:
-    | {
-        ticker: string;
-        name: string | null;
-        symbol_price_snapshots:
-          | { price: number | null; percent_change: number | null; fetched_at: string }
-          | { price: number | null; percent_change: number | null; fetched_at: string }[]
-          | null;
-      }
-    | {
-        ticker: string;
-        name: string | null;
-        symbol_price_snapshots:
-          | { price: number | null; percent_change: number | null; fetched_at: string }
-          | { price: number | null; percent_change: number | null; fetched_at: string }[]
-          | null;
-      }[]
-    | null;
-};
-
-function firstRelation<T>(value: T | T[] | null): T | null {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
-  }
-
-  return value;
-}
+import { buildRebalancePlan } from "@/lib/rebalancing-engine";
 
 export default async function RecommendationsPage() {
   const user = await requireUser();
-  const supabase = await createSupabaseServerClient();
-  const { data: recommendations } = supabase
-    ? await supabase
-        .from("recommendations")
-        .select(
-          "id, synthesis_run_id, recommendation_engine, action, status, target_weight, target_price, conviction_score, summary, risks, confidence, headline, thesis, why_now, valuation_view, business_quality_view, good_buy_because, hesitation_because, main_risk, risk_monitor, decision_style, supporting_factors_json, risk_factors_json, created_at, portfolios(name), symbols(ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
-        )
-        .eq("owner_id", user.id)
-        .eq("recommendation_engine", "synthesis-v1")
-        .neq("status", "archived")
-        .order("conviction_score", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-    : { data: [] as RecommendationRow[] };
+  const plan = await buildRebalancePlan(user.id);
 
   return (
     <AppShell viewer={user}>
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="space-y-6">
-          <SectionCard title="Rebalance plan" description="Current target-allocation guidance ranked from the strongest adds and trims.">
-            {recommendations && recommendations.length > 0 ? (
+          <SectionCard title="Rebalance plan" description={plan.summary}>
+            {plan.items.length > 0 ? (
               <div className="space-y-3">
-                {await Promise.all(
-                  recommendations.map(async (recommendation) => {
-                    const symbol = firstRelation(recommendation.symbols);
-                    const portfolio = firstRelation(recommendation.portfolios);
-                    const quote = firstRelation(symbol?.symbol_price_snapshots || null);
-                    const consensus = symbol?.ticker ? await getConsensusTargetForSymbol(symbol.ticker) : null;
-                    const quotePositive = typeof quote?.percent_change === "number" ? quote.percent_change >= 0 : null;
-                    const actionLabel = recommendation.action.toUpperCase();
-                    const targetWeightLabel = portfolio?.name ? "Target portfolio weight" : "Suggested starter weight";
-                    const targetPriceUpsidePct =
-                      typeof recommendation.target_price === "number" && typeof quote?.price === "number" && quote.price > 0
-                        ? ((recommendation.target_price - quote.price) / quote.price) * 100
-                        : null;
-                    const consensusUpsidePct =
-                      typeof consensus?.meanTarget === "number" && typeof quote?.price === "number" && quote.price > 0
-                        ? ((consensus.meanTarget - quote.price) / quote.price) * 100
-                        : null;
-                    const consensusGapPct =
-                      typeof consensus?.meanTarget === "number" && typeof recommendation.target_price === "number" && consensus.meanTarget > 0
-                        ? ((recommendation.target_price - consensus.meanTarget) / consensus.meanTarget) * 100
-                        : null;
-                    const consensusPositionLabel =
-                      consensusGapPct === null ? null : Math.abs(consensusGapPct) <= 7 ? "In line with market" : consensusGapPct > 0 ? "Above market" : "Below market";
+                {plan.items.map((item) => {
+                  const quotePositive = typeof item.impliedUpsidePct === "number" ? item.impliedUpsidePct >= 0 : null;
+                  const actionLabel = item.action.toUpperCase();
+                  const actionTone =
+                    item.action === "increase" || item.action === "initiate"
+                      ? "text-emerald-300"
+                      : item.action === "reduce" || item.action === "exit"
+                        ? "text-rose-300"
+                        : "text-zinc-300";
 
-                    const headline = compactText(recommendation.headline || recommendation.summary, "No recommendation provided.");
-                    const thesis = compactText(recommendation.thesis, headline);
-                    const whyAttractive = compactText(recommendation.good_buy_because, "No upside rationale provided.");
-                    const cautionLine = compactText(recommendation.hesitation_because || recommendation.risks, "No caution provided.");
-                    const riskLine = compactText(recommendation.main_risk || recommendation.risks, "No risk summary provided.");
-                    const whyNow = recommendation.why_now || null;
-                    const valuationView = recommendation.valuation_view || null;
-                    const businessQualityView = recommendation.business_quality_view || null;
-                    const riskMonitor = recommendation.risk_monitor || null;
-                    const supportingFactors = Array.isArray(recommendation.supporting_factors_json) ? recommendation.supporting_factors_json.slice(0, 2) : [];
-                    const riskFactors = Array.isArray(recommendation.risk_factors_json) ? recommendation.risk_factors_json.slice(0, 2) : [];
-
-                    return (
-                    <details key={recommendation.id} className="group rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 open:border-zinc-700 open:bg-zinc-950">
+                  return (
+                    <details key={`${item.portfolioId || "none"}-${item.symbolId}`} className="group rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 open:border-zinc-700 open:bg-zinc-950">
                       <summary className="cursor-pointer list-none">
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <p className="text-sm font-semibold text-zinc-100">
-                              {symbol?.ticker || "Unknown ticker"}
-                              <span className="ml-2 text-zinc-400">{symbol?.name || "Unnamed symbol"}</span>
+                              {item.ticker}
+                              <span className="ml-2 text-zinc-400">{item.name || "Unnamed symbol"}</span>
                             </p>
                             <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
-                              {actionLabel} · {recommendation.confidence || "medium"} confidence
-                              {portfolio?.name ? ` · ${portfolio.name}` : " · Watchlist candidate"}
+                              <span className={actionTone}>{actionLabel}</span>
+                              {item.portfolioName ? ` · ${item.portfolioName}` : ""}
+                              {item.confidence ? ` · ${item.confidence} confidence` : ""}
                             </p>
                           </div>
 
                           <div className="text-right text-sm">
-                            {typeof quote?.price === "number" ? <p className="text-zinc-100">${quote.price.toFixed(2)}</p> : null}
-                            {typeof quote?.percent_change === "number" ? (
+                            {typeof item.currentPrice === "number" ? <p className="text-zinc-100">${item.currentPrice.toFixed(2)}</p> : null}
+                            {typeof item.impliedUpsidePct === "number" ? (
                               <p className={quotePositive ? "text-emerald-300" : "text-rose-300"}>
                                 {quotePositive ? "+" : ""}
-                                {quote.percent_change.toFixed(2)}%
+                                {item.impliedUpsidePct.toFixed(1)}%
                               </p>
                             ) : null}
                           </div>
                         </div>
 
                         <div className="mt-3 flex items-start justify-between gap-4">
-                          <p className="text-base font-medium text-zinc-100">{headline}</p>
+                          <p className="text-base font-medium text-zinc-100">{item.rationale}</p>
                           <span className="mt-0.5 text-xs text-zinc-500 group-open:hidden">Click to expand</span>
                           <span className="mt-0.5 hidden text-xs text-zinc-500 group-open:inline">Click to collapse</span>
                         </div>
 
                         <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
-                          {supportingFactors.length ? <span className="rounded-full border border-emerald-800/40 bg-emerald-950/10 px-2 py-1 text-emerald-300">Top supports {supportingFactors.length}</span> : null}
-                          {riskFactors.length ? <span className="rounded-full border border-rose-800/40 bg-rose-950/10 px-2 py-1 text-rose-300">Top risks {riskFactors.length}</span> : null}
-                          {recommendation.target_weight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">{targetWeightLabel} {recommendation.target_weight}%</span> : null}
-                          {recommendation.target_price !== null ? (
-                            <span className="rounded-full border border-zinc-700 px-2 py-1">
-                              Our target ${recommendation.target_price.toFixed(2)}
-                              {targetPriceUpsidePct !== null ? (
-                                <span className={targetPriceUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
-                                  ({targetPriceUpsidePct >= 0 ? "+" : ""}{targetPriceUpsidePct.toFixed(1)}%)
-                                </span>
-                              ) : null}
+                          {item.currentWeight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Current weight {item.currentWeight.toFixed(1)}%</span> : null}
+                          {item.targetWeight !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Target weight {item.targetWeight.toFixed(1)}%</span> : null}
+                          {item.weightDelta !== null ? (
+                            <span className={`rounded-full border px-2 py-1 ${item.weightDelta >= 1 ? "border-emerald-700/60 bg-emerald-950/20 text-emerald-200" : item.weightDelta <= -1 ? "border-rose-700/60 bg-rose-950/20 text-rose-200" : "border-zinc-700 text-zinc-300"}`}>
+                              Delta {item.weightDelta > 0 ? "+" : ""}{item.weightDelta.toFixed(1)} pts
                             </span>
                           ) : null}
-                          {typeof consensus?.meanTarget === "number" ? (
-                            <span className="rounded-full border border-indigo-700/60 bg-indigo-950/20 px-2 py-1 text-indigo-200">
-                              Market target ${consensus.meanTarget.toFixed(2)}
-                              {consensusUpsidePct !== null ? (
-                                <span className={consensusUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
-                                  ({consensusUpsidePct >= 0 ? "+" : ""}{consensusUpsidePct.toFixed(1)}%)
-                                </span>
-                              ) : null}
-                            </span>
-                          ) : null}
-                          {consensusPositionLabel ? (
-                            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-200">
-                              {consensusPositionLabel}
-                              {consensusGapPct !== null ? ` (${consensusGapPct > 0 ? "+" : ""}${consensusGapPct.toFixed(1)}%)` : ""}
-                            </span>
-                          ) : null}
-                          {recommendation.conviction_score !== null ? <span className="rounded-full border border-zinc-700 px-2 py-1">Conviction {recommendation.conviction_score}</span> : null}
+                          {typeof item.consensusTarget === "number" ? <span className="rounded-full border border-indigo-700/60 bg-indigo-950/20 px-2 py-1 text-indigo-200">Consensus target ${item.consensusTarget.toFixed(2)}</span> : null}
                         </div>
                       </summary>
 
-                      <div className="mt-4 border-t border-zinc-800 pt-4">
-                        <p className="text-sm text-zinc-300">{thesis}</p>
-
-                        {(supportingFactors.length || riskFactors.length) ? (
-                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                            {supportingFactors.length ? (
-                              <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/10 p-3">
-                                <p className="text-xs uppercase tracking-wide text-emerald-300">Top supports</p>
-                                <div className="mt-2 space-y-2">
-                                  {supportingFactors.map((factor, index) => (
-                                    <div key={`${recommendation.id}-support-${index}`}>
-                                      <p className="text-sm font-medium text-zinc-100">{factor.label}</p>
-                                      <p className="text-sm text-zinc-400">{factor.detail}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null}
-                            {riskFactors.length ? (
-                              <div className="rounded-xl border border-rose-800/40 bg-rose-950/10 p-3">
-                                <p className="text-xs uppercase tracking-wide text-rose-300">Top risks</p>
-                                <div className="mt-2 space-y-2">
-                                  {riskFactors.map((factor, index) => (
-                                    <div key={`${recommendation.id}-risk-${index}`}>
-                                      <p className="text-sm font-medium text-zinc-100">{factor.label}</p>
-                                      <p className="text-sm text-zinc-400">{factor.detail}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                          {whyNow ? (
-                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                              <p className="text-xs uppercase tracking-wide text-zinc-500">Why now</p>
-                              <p className="mt-2 text-sm text-zinc-300">{whyNow}</p>
-                            </div>
-                          ) : null}
-                          {valuationView ? (
-                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                              <p className="text-xs uppercase tracking-wide text-zinc-500">Valuation view</p>
-                              <p className="mt-2 text-sm text-zinc-300">{valuationView}</p>
-                            </div>
-                          ) : null}
-                          {businessQualityView ? (
-                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                              <p className="text-xs uppercase tracking-wide text-zinc-500">Business quality</p>
-                              <p className="mt-2 text-sm text-zinc-300">{businessQualityView}</p>
-                            </div>
-                          ) : null}
-                          {riskMonitor ? (
-                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                              <p className="text-xs uppercase tracking-wide text-zinc-500">Risk monitor</p>
-                              <p className="mt-2 text-sm text-zinc-300">{riskMonitor}</p>
-                            </div>
-                          ) : null}
-                          {!riskMonitor && riskLine ? (
-                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                              <p className="text-xs uppercase tracking-wide text-zinc-500">Main risk</p>
-                              <p className="mt-2 text-sm text-zinc-300">{riskLine}</p>
-                            </div>
-                          ) : null}
-                          {typeof consensus?.meanTarget === "number" ? (
-                            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
-                              <p className="text-xs uppercase tracking-wide text-zinc-500">Market consensus target</p>
-                              <p className="mt-2 text-sm text-zinc-300">
-                                ${consensus.meanTarget.toFixed(2)}
-                                {consensusUpsidePct !== null ? (
-                                  <span className={consensusUpsidePct >= 0 ? "ml-1 text-emerald-300" : "ml-1 text-rose-300"}>
-                                    ({consensusUpsidePct >= 0 ? "+" : ""}{consensusUpsidePct.toFixed(1)}%)
-                                  </span>
-                                ) : null}
-                              </p>
-                              {consensusPositionLabel ? (
-                                <p className="mt-1 text-xs text-amber-200">
-                                  {consensusPositionLabel}
-                                  {consensusGapPct !== null ? ` (${consensusGapPct > 0 ? "+" : ""}${consensusGapPct.toFixed(1)}%)` : ""}
-                                </p>
-                              ) : null}
-                            </div>
-                          ) : null}
+                      <div className="mt-4 border-t border-zinc-800 pt-4 grid gap-3 lg:grid-cols-2">
+                        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                          <p className="text-xs uppercase tracking-wide text-zinc-500">Current vs target</p>
+                          <p className="mt-2 text-sm text-zinc-300">
+                            {item.currentWeight !== null ? `${item.currentWeight.toFixed(1)}%` : "--"} → {item.targetWeight !== null ? `${item.targetWeight.toFixed(1)}%` : "--"}
+                          </p>
                         </div>
-
-                        <div className="mt-4">
-                          <RecommendationStatusForm recommendationId={recommendation.id} currentStatus={recommendation.status} />
+                        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3">
+                          <p className="text-xs uppercase tracking-wide text-zinc-500">Analyst target context</p>
+                          <p className="mt-2 text-sm text-zinc-300">
+                            {typeof item.consensusTarget === "number"
+                              ? `$${item.consensusTarget.toFixed(2)}${typeof item.impliedUpsidePct === "number" ? ` (${item.impliedUpsidePct >= 0 ? "+" : ""}${item.impliedUpsidePct.toFixed(1)}%)` : ""}`
+                              : "No analyst target available"}
+                          </p>
                         </div>
                       </div>
                     </details>
-                    );
-                  }),
-                )}
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
