@@ -279,6 +279,7 @@ export default async function PortfolioPage() {
                 title={`${portfolio.name} current allocation`}
                 description="Current holdings mix based on live market value weightings."
                 slices={currentSlices}
+                showDelta={false}
               />
 
               <PortfolioExpandablePanel
@@ -292,6 +293,7 @@ export default async function PortfolioPage() {
                     description="A target mix based on explicit recommendation weights, with residual cash shown separately when the set is not fully invested."
                     slices={compareSlices}
                     compareMode
+                    showDelta
                   />
 
                   <PortfolioRebalanceSummary

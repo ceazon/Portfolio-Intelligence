@@ -28,11 +28,13 @@ export function PortfolioAllocationOverview({
   description,
   slices,
   compareMode = false,
+  showDelta = false,
 }: {
   title: string;
   description: string;
   slices: Slice[];
   compareMode?: boolean;
+  showDelta?: boolean;
 }) {
   const normalized = slices.filter((slice) => slice.weight > 0.01);
   let currentAngle = 0;
@@ -67,26 +69,26 @@ export function PortfolioAllocationOverview({
 
           <div className="space-y-2">
             {normalized.map((slice, index) => {
-                const baseline = slice.comparisonBaselineWeight ?? (compareMode ? slice.targetWeight : slice.weight);
-                const delta = slice.targetWeight !== null && baseline !== null ? slice.targetWeight - baseline : null;
-                return (
-                  <div key={slice.label} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                      <span className="truncate text-zinc-200">{slice.label}</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-right">
-                      <span className="text-zinc-100">{slice.weight.toFixed(1)}%</span>
-                      {delta !== null ? (
-                        <span className={delta > 0.05 ? "text-emerald-300" : delta < -0.05 ? "text-rose-300" : "text-zinc-500"}>
-                          {delta > 0 ? "+" : ""}
-                          {delta.toFixed(1)} pts
-                        </span>
-                      ) : null}
-                    </div>
+              const baseline = slice.comparisonBaselineWeight ?? (compareMode ? slice.targetWeight : slice.weight);
+              const delta = slice.targetWeight !== null && baseline !== null ? slice.targetWeight - baseline : null;
+              return (
+                <div key={slice.label} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                    <span className="truncate text-zinc-200">{slice.label}</span>
                   </div>
-                );
-              })}
+                  <div className="flex items-center gap-3 text-right">
+                    <span className="text-zinc-100">{slice.weight.toFixed(1)}%</span>
+                    {showDelta && delta !== null ? (
+                      <span className={delta > 0.05 ? "text-emerald-300" : delta < -0.05 ? "text-rose-300" : "text-zinc-500"}>
+                        {delta > 0 ? "+" : ""}
+                        {delta.toFixed(1)} pts
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : (
