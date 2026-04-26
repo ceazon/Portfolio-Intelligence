@@ -66,10 +66,7 @@ export function PortfolioAllocationOverview({
           </div>
 
           <div className="space-y-2">
-            {normalized
-              .slice()
-              .sort((a, b) => b.weight - a.weight)
-              .map((slice, index) => {
+            {normalized.map((slice, index) => {
                 const baseline = slice.comparisonBaselineWeight ?? (compareMode ? slice.targetWeight : slice.weight);
                 const delta = slice.targetWeight !== null && baseline !== null ? slice.targetWeight - baseline : null;
                 return (
