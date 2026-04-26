@@ -37,7 +37,20 @@ export function PortfolioAllocationOverview({
   showDelta?: boolean;
 }) {
   const normalized = slices.filter((slice) => slice.weight > 0.01);
-  let currentAngle = 0;
+  const arcSlices = normalized.map((slice) => {
+    const sweep = (slice.weight / 100) * 360;
+    return { ...slice, sweep };
+  });
+
+  const arcPaths = arcSlices.map((slice, index) => {
+    const startAngle = arcSlices.slice(0, index).reduce((sum, entry) => sum + entry.sweep, 0);
+    const endAngle = startAngle + slice.sweep;
+    return {
+      label: slice.label,
+      path: describeArc(110, 110, 90, startAngle, endAngle),
+      color: COLORS[index % COLORS.length],
+    };
+  });
 
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -50,13 +63,9 @@ export function PortfolioAllocationOverview({
         <div className="grid gap-4 lg:grid-cols-[240px_1fr] lg:items-center">
           <div className="flex items-center justify-center">
             <svg viewBox="0 0 220 220" className="h-56 w-56">
-              {normalized.map((slice, index) => {
-                const sweep = (slice.weight / 100) * 360;
-                const path = describeArc(110, 110, 90, currentAngle, currentAngle + sweep);
-                const element = <path key={slice.label} d={path} fill={COLORS[index % COLORS.length]} stroke="#09090b" strokeWidth="2" />;
-                currentAngle += sweep;
-                return element;
-              })}
+              {arcPaths.map((arc) => (
+                <path key={arc.label} d={arc.path} fill={arc.color} stroke="#09090b" strokeWidth="2" />
+              ))}
               <circle cx="110" cy="110" r="42" fill="#09090b" />
               <text x="110" y="105" textAnchor="middle" className="fill-zinc-100 text-[12px] font-semibold">
                 {compareMode ? "Target" : "Current"}
