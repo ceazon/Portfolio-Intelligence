@@ -15,10 +15,10 @@ type RecommendationRow = {
   action: string;
   target_weight: number | null;
   target_price?: number | null;
-  conviction_score: number | null;
+  conviction_score?: number | null;
   summary?: string | null;
   risks?: string | null;
-  recommendation_evidence:
+  recommendation_evidence?:
     | { research_insights: ResearchInsight | ResearchInsight[] | null }
     | { research_insights: ResearchInsight | ResearchInsight[] | null }[]
     | null

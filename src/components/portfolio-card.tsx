@@ -5,24 +5,14 @@ import { PortfolioPositionListItem } from "@/components/portfolio-position-list-
 import { PortfolioSettingsPanel } from "@/components/portfolio-settings-panel";
 import { convertMoney, formatMoney, type SupportedCurrency } from "@/lib/currency";
 
-type ResearchInsight = {
-  direction: string | null;
-  title: string;
-};
-
 type RecommendationRow = {
-  symbol_id: string;
   action: string;
-  recommendation_engine?: string | null;
   target_weight: number | null;
   target_price: number | null;
-  conviction_score: number | null;
+  conviction_score?: number | null;
   summary: string | null;
   risks: string | null;
-  recommendation_evidence:
-    | { research_insights: { direction: string | null; title: string } | { direction: string | null; title: string }[] | null }
-    | { research_insights: { direction: string | null; title: string } | { direction: string | null; title: string }[] | null }[]
-    | null;
+  recommendation_evidence?: null;
 };
 
 type PositionRow = {

@@ -7,6 +7,7 @@ import { PortfolioExpandablePanel } from "@/components/portfolio-expandable-pane
 import { PortfolioCard } from "@/components/portfolio-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
+import { buildRebalancePlan } from "@/lib/rebalancing-engine";
 import { normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
 import { getLatestFxRate } from "@/lib/fx-sync";
 
@@ -22,21 +23,6 @@ type PortfolioRow = {
   cash_currency: SupportedCurrency | null;
   recommendation_cash_mode: "managed-cash" | "fully-invested" | null;
   created_at: string;
-};
-
-type RecommendationRow = {
-  symbol_id: string;
-  action: string;
-  recommendation_engine?: string | null;
-  target_weight: number | null;
-  target_price: number | null;
-  conviction_score: number | null;
-  summary: string | null;
-  risks: string | null;
-  recommendation_evidence:
-    | { research_insights: { direction: string | null; title: string } | { direction: string | null; title: string }[] | null }
-    | { research_insights: { direction: string | null; title: string } | { direction: string | null; title: string }[] | null }[]
-    | null;
 };
 
 type PortfolioPositionRow = {
@@ -96,6 +82,25 @@ type SymbolOption = {
   name: string | null;
 };
 
+type PortfolioRebalanceItem = {
+  symbolId: string;
+  portfolioId: string | null;
+  action: string;
+  targetWeight: number | null;
+  currentPrice: number | null;
+  consensusTarget: number | null;
+  impliedUpsidePct: number | null;
+  rationale: string;
+};
+
+type PositionRecommendationView = {
+  action: string;
+  target_weight: number | null;
+  target_price: number | null;
+  summary: string;
+  risks: string;
+};
+
 function firstRelation<T>(value: T | T[] | null): T | null {
   if (Array.isArray(value)) {
     return value[0] ?? null;
@@ -128,21 +133,14 @@ export default async function PortfolioPage() {
     ? await supabase.from("symbols").select("id, ticker, name").order("ticker", { ascending: true })
     : { data: [] as SymbolOption[] };
 
-  const { data: recommendations } = supabase
-    ? await supabase
-        .from("recommendations")
-        .select("symbol_id, action, recommendation_engine, target_weight, target_price, conviction_score, summary, risks, recommendation_evidence(research_insights(direction, title))")
-        .eq("owner_id", user.id)
-        .eq("status", "open")
-        .eq("recommendation_engine", "synthesis-v1")
-    : { data: [] as RecommendationRow[] };
-
   const latestFxRate = supabase ? await getLatestFxRate("USD/CAD") : null;
   const usdCadRate = latestFxRate?.rate ? Number(latestFxRate.rate) : 1.39;
-
-  const recommendationBySymbol = new Map<string, RecommendationRow>();
-  (recommendations || []).forEach((recommendation) => {
-    recommendationBySymbol.set(recommendation.symbol_id, recommendation);
+  const rebalancePlan = await buildRebalancePlan(user.id);
+  const rebalanceItemsByPortfolioSymbol = new Map<string, PortfolioRebalanceItem>();
+  rebalancePlan.items.forEach((item) => {
+    if (item.portfolioId) {
+      rebalanceItemsByPortfolioSymbol.set(`${item.portfolioId}:${item.symbolId}`, item);
+    }
   });
 
   const positionsByPortfolio = new Map<string, PortfolioPositionRow[]>();
@@ -190,12 +188,12 @@ export default async function PortfolioPage() {
 
     const currentSlices = [
       ...baseSlices.map((slice) => {
-        const recommendation = recommendationBySymbol.get(slice.symbolId);
+        const rebalanceItem = rebalanceItemsByPortfolioSymbol.get(`${portfolio.id}:${slice.symbolId}`);
         return {
           label: slice.label,
           value: slice.marketValue,
           weight: totalValue > 0 ? (slice.marketValue / totalValue) * 100 : 0,
-          targetWeight: recommendation?.target_weight ?? null,
+          targetWeight: rebalanceItem ? rebalanceItem.targetWeight ?? null : null,
         };
       }),
       {
@@ -272,8 +270,33 @@ export default async function PortfolioPage() {
             <div key={portfolio.id} className="space-y-6">
               <SectionCard
                 title={portfolio.name}
-                description="Manage the current state of each holding inline. Calculated metrics update from quantity, average cost, live prices, and recommendation context."
+                description="Manage the current state of each holding inline. Calculated metrics update from quantity, average cost, live prices, and current rebalance context."
               >
+                {(() => {
+                  const recommendationEntries: Array<[string, PositionRecommendationView]> = [];
+                  positions.forEach((position) => {
+                    const symbol = firstRelation(position.symbols);
+                    if (!symbol?.id) return;
+                    const rebalanceItem = rebalanceItemsByPortfolioSymbol.get(`${portfolio.id}:${symbol.id}`);
+                    if (!rebalanceItem) return;
+                    recommendationEntries.push([
+                      symbol.id,
+                      {
+                        action: rebalanceItem.action,
+                        target_weight: rebalanceItem.targetWeight,
+                        target_price: rebalanceItem.consensusTarget,
+                        summary: rebalanceItem.rationale,
+                        risks:
+                          rebalanceItem.impliedUpsidePct !== null && rebalanceItem.impliedUpsidePct < 0
+                            ? "Analyst consensus is below the current price, so downside risk needs respect."
+                            : "No major analyst downside signal is implied by the current target.",
+                      },
+                    ]);
+                  });
+
+                  const recommendationBySymbol = new Map(recommendationEntries);
+
+                  return (
                 <PortfolioCard
                   id={portfolio.id}
                   name={portfolio.name}
@@ -287,6 +310,8 @@ export default async function PortfolioPage() {
                   recommendationBySymbol={recommendationBySymbol}
                   usdCadRate={usdCadRate}
                 />
+                  );
+                })()}
               </SectionCard>
 
               <PortfolioAllocationOverview
@@ -305,8 +330,8 @@ export default async function PortfolioPage() {
                   <PortfolioAllocationOverview
                     title={`${portfolio.name} target allocation`}
                     description={recommendationCashMode === "fully-invested"
-                      ? "A target mix based on explicit recommendation weights, aiming to deploy tracked cash into investments."
-                      : "A target mix based on explicit recommendation weights, with residual cash shown separately when the set is not fully invested."}
+                      ? "A target mix based on analyst-driven rebalance weights, aiming to deploy tracked cash into investments."
+                      : "A target mix based on analyst-driven rebalance weights, with residual cash shown separately when the portfolio is not targeting full deployment."}
                     slices={compareSlices}
                     compareMode
                     showDelta
@@ -327,7 +352,7 @@ export default async function PortfolioPage() {
         ) : (
           <SectionCard
             title="Portfolios"
-            description="Create your first portfolio from the action bar, then we’ll replace empty space with live allocation views and recommendation comparison."
+            description="Create your first portfolio from the action bar, then we’ll replace empty space with live allocation views and rebalance comparisons."
           >
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
               No portfolios yet. Create your first paper portfolio to unlock allocation charts, holding comparisons, and target-weight analysis.
