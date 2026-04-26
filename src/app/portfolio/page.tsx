@@ -10,6 +10,8 @@ import { requireUser } from "@/lib/auth";
 import { normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
 import { getLatestFxRate } from "@/lib/fx-sync";
 
+type RecommendationCashMode = "managed-cash" | "fully-invested";
+
 type PortfolioRow = {
   id: string;
   name: string;
@@ -210,7 +212,7 @@ export default async function PortfolioPage() {
 
     const explicitTargetWeightSum = explicitTargetEntries.reduce((sum, slice) => sum + slice.rawTargetWeight, 0);
     const currentCashWeight = totalValue > 0 ? (cashValue / totalValue) * 100 : 0;
-    const recommendationCashMode = portfolio.recommendation_cash_mode === "fully-invested" ? "fully-invested" : "managed-cash";
+    const recommendationCashMode: RecommendationCashMode = portfolio.recommendation_cash_mode === "fully-invested" ? "fully-invested" : "managed-cash";
     const residualCashWeight = Math.max(0, 100 - explicitTargetWeightSum);
 
     const compareSlices = [
