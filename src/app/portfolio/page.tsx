@@ -261,9 +261,9 @@ export default async function PortfolioPage() {
               </div>
 
               <PortfolioExpandablePanel
-                title="Compare against target portfolio"
+                title="See proposed rebalance"
                 description="Open this to see what the current recommendation set would imply for target weights and rebalance moves."
-                buttonLabel="Compare"
+                buttonLabel="See proposed rebalance"
               >
                 <div className="space-y-4">
                   <PortfolioAllocationOverview

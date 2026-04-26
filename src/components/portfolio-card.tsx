@@ -129,21 +129,39 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
           <div className="min-w-0 flex-1">
             <h3 className="text-base font-semibold text-zinc-100">{name}</h3>
             <p className="mt-1 text-sm text-zinc-400">{description || "No description yet."}</p>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
-              <span className="rounded-full border border-zinc-700 px-2 py-1">Invested {formatMoney(summary.marketValue, displayCurrency)}</span>
-              <span className="rounded-full border border-zinc-700 px-2 py-1">Cash {formatMoney(cashInDisplay, displayCurrency)}</span>
-              <span className="rounded-full border border-zinc-700 px-2 py-1">Total portfolio {formatMoney(summary.marketValue + cashInDisplay, displayCurrency)}</span>
-              <span className={`rounded-full border px-2 py-1 ${gainPositive ? "border-emerald-500/30 text-emerald-300" : "border-rose-500/30 text-rose-300"}`}>
-                {gainPositive ? "+" : ""}
-                {formatMoney(gainLoss, displayCurrency)}
-                {gainLossPct !== null ? ` (${gainPositive ? "+" : ""}${gainLossPct.toFixed(2)}%)` : ""}
-              </span>
-              <span className="rounded-full border border-zinc-700 px-2 py-1">{positions.length} holding{positions.length === 1 ? "" : "s"}</span>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3 text-xs text-zinc-400">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">Invested</p>
+                <p className="mt-1 text-sm font-medium text-zinc-100">{formatMoney(summary.marketValue, displayCurrency)}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">Cash</p>
+                <p className="mt-1 text-sm font-medium text-zinc-100">{formatMoney(cashInDisplay, displayCurrency)}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">Total</p>
+                <p className="mt-1 text-sm font-medium text-zinc-100">{formatMoney(summary.marketValue + cashInDisplay, displayCurrency)}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">PnL</p>
+                <p className={`mt-1 text-sm font-medium ${gainPositive ? "text-emerald-300" : "text-rose-300"}`}>
+                  {gainPositive ? "+" : ""}
+                  {formatMoney(gainLoss, displayCurrency)}
+                  {gainLossPct !== null ? ` (${gainPositive ? "+" : ""}${gainLossPct.toFixed(2)}%)` : ""}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">Holdings</p>
+                <p className="mt-1 text-sm font-medium text-zinc-100">{positions.length}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">Benchmark</p>
+                <p className="mt-1 text-sm font-medium text-zinc-100">{benchmark || "SPY"}</p>
+              </div>
             </div>
           </div>
 
           <div className="flex flex-col items-end gap-3">
-            <span className="rounded-full border border-sky-500/40 px-3 py-1 text-xs text-sky-300">Benchmark {benchmark || "SPY"}</span>
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-lg font-semibold text-zinc-300">
               {expanded ? "−" : "+"}
             </span>
