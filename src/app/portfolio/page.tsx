@@ -203,18 +203,40 @@ export default async function PortfolioPage() {
       },
     ];
 
-    const targetWeightSum = currentSlices.reduce((sum, slice) => sum + Math.max(slice.targetWeight ?? slice.weight, 0), 0);
+    const explicitTargetEntries = currentSlices
+      .filter((slice) => slice.label !== "Cash" && slice.targetWeight !== null)
+      .map((slice) => ({ ...slice, rawTargetWeight: Math.max(slice.targetWeight ?? 0, 0) }));
 
-    const compareSlices = currentSlices.map((slice) => {
-      const rawTarget = Math.max(slice.targetWeight ?? slice.weight, 0);
-      const normalizedTarget = targetWeightSum > 0 ? (rawTarget / targetWeightSum) * 100 : slice.weight;
-      return {
-        ...slice,
-        weight: normalizedTarget,
-        targetWeight: normalizedTarget,
-        comparisonBaselineWeight: slice.weight,
-      };
-    });
+    const explicitTargetWeightSum = explicitTargetEntries.reduce((sum, slice) => sum + slice.rawTargetWeight, 0);
+    const currentCashWeight = totalValue > 0 ? (cashValue / totalValue) * 100 : 0;
+    const residualCashWeight = Math.max(0, 100 - explicitTargetWeightSum);
+
+    const compareSlices = [
+      ...currentSlices
+        .filter((slice) => slice.label !== "Cash")
+        .map((slice) => {
+          const explicitTarget = explicitTargetEntries.find((entry) => entry.label === slice.label)?.rawTargetWeight ?? null;
+          const normalizedTarget = explicitTargetWeightSum > 100
+            ? explicitTarget !== null
+              ? (explicitTarget / explicitTargetWeightSum) * 100
+              : 0
+            : explicitTarget ?? 0;
+
+          return {
+            ...slice,
+            weight: normalizedTarget,
+            targetWeight: normalizedTarget,
+            comparisonBaselineWeight: slice.weight,
+          };
+        }),
+      {
+        label: "Cash",
+        value: cashValue,
+        weight: explicitTargetWeightSum > 100 ? Math.max(0, (residualCashWeight / explicitTargetWeightSum) * 100) : residualCashWeight,
+        targetWeight: explicitTargetWeightSum > 100 ? Math.max(0, (residualCashWeight / explicitTargetWeightSum) * 100) : residualCashWeight,
+        comparisonBaselineWeight: currentCashWeight,
+      },
+    ];
 
     return {
       portfolio,
@@ -267,7 +289,7 @@ export default async function PortfolioPage() {
                 <div className="space-y-4">
                   <PortfolioAllocationOverview
                     title={`${portfolio.name} target allocation`}
-                    description="A normalized target mix based on the active recommendation set."
+                    description="A target mix based on explicit recommendation weights, with residual cash shown separately when the set is not fully invested."
                     slices={compareSlices}
                     compareMode
                   />
