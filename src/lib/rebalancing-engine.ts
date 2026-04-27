@@ -89,13 +89,32 @@ function confidenceLabel(score: number): "low" | "medium" | "high" {
 }
 
 function upsideBucketScore(impliedUpsidePct: number | null) {
-  if (impliedUpsidePct === null) return 0.75;
-  if (impliedUpsidePct >= 30) return 1.35;
-  if (impliedUpsidePct >= 20) return 1.2;
+  if (impliedUpsidePct === null) return 0.8;
+  if (impliedUpsidePct >= 40) return 1.75;
+  if (impliedUpsidePct >= 30) return 1.5;
+  if (impliedUpsidePct >= 20) return 1.25;
   if (impliedUpsidePct >= 10) return 1.0;
-  if (impliedUpsidePct >= 0) return 0.8;
-  if (impliedUpsidePct >= -10) return 0.55;
-  return 0.3;
+  if (impliedUpsidePct >= 0) return 0.75;
+  if (impliedUpsidePct >= -10) return 0.45;
+  return 0.2;
+}
+
+function growthTiltBonus(impliedUpsidePct: number | null) {
+  if (impliedUpsidePct === null) return 0;
+  if (impliedUpsidePct >= 30) return 0.45;
+  if (impliedUpsidePct >= 20) return 0.3;
+  if (impliedUpsidePct >= 10) return 0.15;
+  if (impliedUpsidePct <= -15) return -0.35;
+  if (impliedUpsidePct <= -5) return -0.15;
+  return 0;
+}
+
+function downsidePenalty(impliedUpsidePct: number | null) {
+  if (impliedUpsidePct === null) return 0;
+  if (impliedUpsidePct <= -25) return 0.45;
+  if (impliedUpsidePct <= -15) return 0.3;
+  if (impliedUpsidePct <= -5) return 0.15;
+  return 0;
 }
 
 function toUsd(amount: number, currency: SupportedCurrency | null) {
@@ -172,9 +191,11 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
         : null;
 
       const upsideScore = upsideBucketScore(impliedUpsidePct);
-      const continuityBoost = currentWeight !== null && currentWeight > 0 ? clamp(currentWeight / 18, 0.15, 0.85) : 0.15;
-      const growthScore = upsideScore + continuityBoost;
-      const score = currentPrice && consensusTarget ? growthScore : Math.max(0.35, continuityBoost);
+      const continuityBoost = currentWeight !== null && currentWeight > 0 ? clamp(currentWeight / 30, 0.08, 0.45) : 0.08;
+      const growthBonus = growthTiltBonus(impliedUpsidePct);
+      const penalty = downsidePenalty(impliedUpsidePct);
+      const growthScore = upsideScore + growthBonus + continuityBoost - penalty;
+      const score = currentPrice && consensusTarget ? Math.max(0.1, growthScore) : Math.max(0.25, continuityBoost);
 
       const action: RebalanceAction =
         impliedUpsidePct === null
@@ -187,12 +208,14 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
 
       const rationale =
         impliedUpsidePct === null
-          ? "No analyst consensus target was available, so this holding stays near its current weight for now."
-          : impliedUpsidePct >= 15
-            ? `Analyst consensus implies meaningful upside of ${impliedUpsidePct.toFixed(1)}%, which supports a larger growth allocation here.`
-            : impliedUpsidePct <= -10
-              ? `Analyst consensus sits ${Math.abs(impliedUpsidePct).toFixed(1)}% below the current price, which argues for a lighter allocation.`
-              : `Analyst consensus is fairly close to the current price, so this looks more like a hold than an aggressive growth rebalance move.`;
+          ? "No analyst consensus target was available, so this holding stays in the portfolio but does not earn an aggressive reallocation signal yet."
+          : impliedUpsidePct >= 20
+            ? `Analyst consensus implies strong upside of ${impliedUpsidePct.toFixed(1)}%, which supports adding weight here as part of a growth-oriented rebalance.`
+            : impliedUpsidePct >= 10
+              ? `Analyst consensus still points to healthy upside of ${impliedUpsidePct.toFixed(1)}%, so this name deserves at least a modest growth overweight.`
+              : impliedUpsidePct <= -10
+                ? `Analyst consensus sits ${Math.abs(impliedUpsidePct).toFixed(1)}% below the current price, which makes this a candidate to fund stronger holdings.`
+                : `Analyst consensus is close to the current price, so this is more of a support holding than a priority growth add right now.`;
 
       const item: RebalancePlanItem = {
         symbolId: symbol.id,
@@ -220,16 +243,16 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
   const items: RebalancePlanItem[] = [];
   perPortfolio.forEach((portfolioItems, portfolioId) => {
     const meta = portfolioMeta.get(portfolioId);
-    const targetInvestedPct = meta?.recommendationCashMode === "fully-invested" ? 100 : 95;
+    const targetInvestedPct = meta?.recommendationCashMode === "fully-invested" ? 100 : 97;
     const rawScoreTotal = portfolioItems.reduce((sum, item) => sum + (item.targetWeight ?? 0), 0);
-    const minWeight = 4;
-    const maxWeight = 35;
+    const minWeight = 3;
+    const maxWeight = 34;
 
     const preliminary = portfolioItems.map((item) => {
       const normalizedTarget = rawScoreTotal > 0 ? ((item.targetWeight ?? 0) / rawScoreTotal) * targetInvestedPct : item.currentWeight ?? 0;
       const boundedTarget = clamp(
         normalizedTarget,
-        item.impliedUpsidePct !== null && item.impliedUpsidePct <= -10 ? 2 : minWeight,
+        item.impliedUpsidePct !== null && item.impliedUpsidePct <= -10 ? 1 : minWeight,
         maxWeight,
       );
 
@@ -246,7 +269,7 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
       .map((item) => {
         const scaledTarget = clamp(
           (item.targetWeight ?? 0) * scale,
-          item.impliedUpsidePct !== null && item.impliedUpsidePct <= -10 ? 2 : minWeight,
+          item.impliedUpsidePct !== null && item.impliedUpsidePct <= -10 ? 1 : minWeight,
           maxWeight,
         );
         const weightDelta = item.currentWeight !== null ? scaledTarget - item.currentWeight : null;
@@ -255,9 +278,9 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
             ? scaledTarget >= minWeight
               ? "initiate"
               : "watch"
-            : weightDelta !== null && weightDelta >= 1.5
+            : weightDelta !== null && weightDelta >= 1
               ? "increase"
-              : weightDelta !== null && weightDelta <= -1.5
+              : weightDelta !== null && weightDelta <= -1
                 ? "reduce"
                 : "maintain";
 
@@ -279,7 +302,7 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
 
   return {
     engine: "analyst-rebalance-v1",
-    summary: `Built a deterministic rebalance plan for ${perPortfolio.size} portfolio${perPortfolio.size === 1 ? "" : "s"} using current holdings and analyst consensus targets.`,
+    summary: `Built a growth-oriented rebalance plan for ${perPortfolio.size} portfolio${perPortfolio.size === 1 ? "" : "s"} using current holdings, analyst consensus targets, and stronger relative-weight ranking.`,
     items,
   };
 }
