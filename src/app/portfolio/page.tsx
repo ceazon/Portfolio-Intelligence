@@ -211,18 +211,18 @@ export default async function PortfolioPage() {
     const explicitTargetWeightSum = explicitTargetEntries.reduce((sum, slice) => sum + slice.rawTargetWeight, 0);
     const currentCashWeight = totalValue > 0 ? (cashValue / totalValue) * 100 : 0;
     const recommendationCashMode: RecommendationCashMode = portfolio.recommendation_cash_mode === "fully-invested" ? "fully-invested" : "managed-cash";
-    const residualCashWeight = Math.max(0, 100 - explicitTargetWeightSum);
+    const targetInvestedWeight = recommendationCashMode === "fully-invested" ? 100 : 95;
+    const normalizedInvestedWeightSum = explicitTargetWeightSum > 0 ? explicitTargetEntries.reduce((sum, slice) => sum + slice.rawTargetWeight, 0) : 0;
+    const targetCashWeight = recommendationCashMode === "fully-invested" ? 0 : 100 - targetInvestedWeight;
 
     const compareSlices = [
       ...currentSlices
         .filter((slice) => slice.label !== "Cash")
         .map((slice) => {
           const explicitTarget = explicitTargetEntries.find((entry) => entry.label === slice.label)?.rawTargetWeight ?? null;
-          const normalizedTarget = explicitTargetWeightSum > 100
-            ? explicitTarget !== null
-              ? (explicitTarget / explicitTargetWeightSum) * 100
-              : 0
-            : explicitTarget ?? 0;
+          const normalizedTarget = normalizedInvestedWeightSum > 0 && explicitTarget !== null
+            ? (explicitTarget / normalizedInvestedWeightSum) * targetInvestedWeight
+            : 0;
 
           return {
             ...slice,
@@ -234,16 +234,8 @@ export default async function PortfolioPage() {
       {
         label: "Cash",
         value: cashValue,
-        weight: recommendationCashMode === "fully-invested"
-          ? 0
-          : explicitTargetWeightSum > 100
-            ? Math.max(0, (residualCashWeight / explicitTargetWeightSum) * 100)
-            : residualCashWeight,
-        targetWeight: recommendationCashMode === "fully-invested"
-          ? 0
-          : explicitTargetWeightSum > 100
-            ? Math.max(0, (residualCashWeight / explicitTargetWeightSum) * 100)
-            : residualCashWeight,
+        weight: targetCashWeight,
+        targetWeight: targetCashWeight,
         comparisonBaselineWeight: currentCashWeight,
       },
     ];
