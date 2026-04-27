@@ -1,27 +1,27 @@
 export const roadmapCards = [
   {
-    title: "Where we are now",
-    body: "The product is moving from an AI-heavy recommendation engine into a practical rebalancing workspace. Deterministic rebalance plans now sit at the center, using current holdings and analyst targets as the main decision inputs.",
+    title: "Current project state",
+    body: "Portfolio Intelligence is now meaningfully positioned as an analyst-driven rebalancing workspace. Cash-aware portfolio support is in place, deterministic rebalance runs are live, analyst consensus targets are flowing into the core logic, and the live database schema is caught up with the current cash fields.",
   },
   {
-    title: "What is working",
-    body: "The core loop is getting cleaner: tracked positions, live quotes, analyst consensus targets, portfolio cash modes, rebalance plans, and target-allocation views. The app can now show where to add, trim, or hold with much less black-box behavior.",
+    title: "What is already solid",
+    body: "The product can now track holdings, quote refreshes, analyst targets, portfolio cash, and rebalance outputs in one loop. Current versus target allocation views are working, and the product story is much stronger when it stays anchored on portfolio math instead of black-box recommendation theater.",
   },
   {
-    title: "Current constraint",
-    body: "The main job now is consistency across the product. Some legacy recommendation, research, and agent surfaces still exist beside the new rebalance model, so the next work is consolidating the dashboard, history, and workflows around one coherent system.",
+    title: "Immediate product gap",
+    body: "The biggest remaining gap is coherence. Legacy recommendation, research, and agent surfaces still sit beside the new rebalance model, and the dashboard needs to more clearly reflect what is real, what is legacy, and what the next operator actions should be.",
   },
   {
-    title: "What could come next",
-    body: "From here, the biggest upside is turning rebalance planning into a durable operating system: run history, what-changed tracking, clearer capital-allocation summaries, and optional AI explanation layered on top of deterministic portfolio math.",
+    title: "Next strategic step",
+    body: "The next phase should harden this into a practical operating tool: production sanity checks, rebalance-first dashboard modules, cleaner copy across the app, and run history that explains what changed without making AI the center of the product again.",
   },
 ];
 
 export const nextBuildTargets = [
-  "Add rebalance history and change tracking so each portfolio shows how target allocations evolve over time",
-  "Build dashboard modules for biggest adds, biggest trims, and highest implied-upside holdings",
-  "Validate FMP coverage across held portfolios and add fallback target support only where gaps actually appear",
-  "Create deeper symbol drill-down pages for valuation context, target history, and risk notes",
-  "Reduce or hide legacy agent-first surfaces once rebalance workflows fully replace them",
-  "Increase automation so quotes, analyst targets, and rebalance plans stay current with less manual intervention",
+  "Run a production sanity pass on portfolio cash persistence, fully-invested vs managed-cash behavior, and residual cash display",
+  "Add dashboard cards for biggest adds, biggest trims, residual cash, and highest implied-upside holdings",
+  "Reframe remaining recommendation-first copy so the main workflow consistently reads as rebalance planning",
+  "Add rebalance history and what-changed tracking so each portfolio becomes easier to operate over time",
+  "Validate analyst target coverage across real held portfolios and only add fallback logic where genuine gaps exist",
+  "Reduce or hide legacy research and agent-first surfaces once the rebalance workflow feels complete",
 ];

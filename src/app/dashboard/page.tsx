@@ -96,8 +96,8 @@ export default async function DashboardPage() {
           </SectionCard>
 
           <SectionCard
-            title="Project status and expansion paths"
-            description="The shell phase is behind us. This section captures the real state of the product today, the constraint still holding it back, and the most promising directions to expand next."
+            title="Current state and next steps"
+            description="This reflects the real product state right now, what has already landed, what still feels transitional, and the best next moves from here."
           >
             <div className="grid gap-4 lg:grid-cols-2">
               {roadmapCards.map((card) => (
@@ -112,8 +112,8 @@ export default async function DashboardPage() {
 
         <div className="space-y-6">
           <SectionCard
-            title="Best next bets"
-            description="The highest-leverage improvements from here, based on where the product genuinely stands right now."
+            title="Next build sequence"
+            description="The highest-leverage follow-ups now that cash-aware rebalancing support and live schema updates are in place."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
               {nextBuildTargets.map((item) => (
