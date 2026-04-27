@@ -205,7 +205,7 @@ export default async function PortfolioPage() {
     ];
 
     const explicitTargetEntries = currentSlices
-      .filter((slice) => slice.label !== "Cash" && slice.targetWeight !== null)
+      .filter((slice) => slice.label !== "Cash" && slice.targetWeight !== null && (slice.targetWeight ?? 0) > 0)
       .map((slice) => ({ ...slice, rawTargetWeight: Math.max(slice.targetWeight ?? 0, 0) }));
 
     const explicitTargetWeightSum = explicitTargetEntries.reduce((sum, slice) => sum + slice.rawTargetWeight, 0);

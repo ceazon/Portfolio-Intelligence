@@ -225,7 +225,7 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
         name: symbol.name,
         action,
         currentWeight,
-        targetWeight: score,
+        targetWeight: Number(score.toFixed(4)),
         weightDelta: null,
         currentPrice,
         consensusTarget,
@@ -258,7 +258,7 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
 
       return {
         ...item,
-        targetWeight: boundedTarget,
+        targetWeight: Number(boundedTarget.toFixed(4)),
       };
     });
 
