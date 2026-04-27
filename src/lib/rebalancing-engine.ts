@@ -88,6 +88,16 @@ function confidenceLabel(score: number): "low" | "medium" | "high" {
   return "low";
 }
 
+function upsideBucketScore(impliedUpsidePct: number | null) {
+  if (impliedUpsidePct === null) return 0.75;
+  if (impliedUpsidePct >= 30) return 1.35;
+  if (impliedUpsidePct >= 20) return 1.2;
+  if (impliedUpsidePct >= 10) return 1.0;
+  if (impliedUpsidePct >= 0) return 0.8;
+  if (impliedUpsidePct >= -10) return 0.55;
+  return 0.3;
+}
+
 function toUsd(amount: number, currency: SupportedCurrency | null) {
   if (!amount) return 0;
   return currency === "CAD" ? amount / 1.39 : amount;
@@ -161,9 +171,10 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
         ? ((consensusTarget - currentPrice) / currentPrice) * 100
         : null;
 
-      const provisional = clamp(((impliedUpsidePct ?? 0) + 15) / 30, 0.2, 2.2);
-      const continuityBoost = currentWeight !== null && currentWeight > 0 ? clamp(currentWeight / 10, 0.2, 1.5) : 0.2;
-      const score = currentPrice && consensusTarget ? provisional + continuityBoost : continuityBoost * 0.75;
+      const upsideScore = upsideBucketScore(impliedUpsidePct);
+      const continuityBoost = currentWeight !== null && currentWeight > 0 ? clamp(currentWeight / 18, 0.15, 0.85) : 0.15;
+      const growthScore = upsideScore + continuityBoost;
+      const score = currentPrice && consensusTarget ? growthScore : Math.max(0.35, continuityBoost);
 
       const action: RebalanceAction =
         impliedUpsidePct === null
@@ -178,10 +189,10 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
         impliedUpsidePct === null
           ? "No analyst consensus target was available, so this holding stays near its current weight for now."
           : impliedUpsidePct >= 15
-            ? `Analyst consensus implies meaningful upside of ${impliedUpsidePct.toFixed(1)}%, which supports allocating more weight here.`
+            ? `Analyst consensus implies meaningful upside of ${impliedUpsidePct.toFixed(1)}%, which supports a larger growth allocation here.`
             : impliedUpsidePct <= -10
               ? `Analyst consensus sits ${Math.abs(impliedUpsidePct).toFixed(1)}% below the current price, which argues for a lighter allocation.`
-              : `Analyst consensus is fairly close to the current price, so this looks more like a hold than an aggressive rebalance move.`;
+              : `Analyst consensus is fairly close to the current price, so this looks more like a hold than an aggressive growth rebalance move.`;
 
       const item: RebalancePlanItem = {
         symbolId: symbol.id,
@@ -211,27 +222,49 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
     const meta = portfolioMeta.get(portfolioId);
     const targetInvestedPct = meta?.recommendationCashMode === "fully-invested" ? 100 : 95;
     const rawScoreTotal = portfolioItems.reduce((sum, item) => sum + (item.targetWeight ?? 0), 0);
+    const minWeight = 4;
+    const maxWeight = 35;
 
-    portfolioItems
+    const preliminary = portfolioItems.map((item) => {
+      const normalizedTarget = rawScoreTotal > 0 ? ((item.targetWeight ?? 0) / rawScoreTotal) * targetInvestedPct : item.currentWeight ?? 0;
+      const boundedTarget = clamp(
+        normalizedTarget,
+        item.impliedUpsidePct !== null && item.impliedUpsidePct <= -10 ? 2 : minWeight,
+        maxWeight,
+      );
+
+      return {
+        ...item,
+        targetWeight: boundedTarget,
+      };
+    });
+
+    const boundedTotal = preliminary.reduce((sum, item) => sum + (item.targetWeight ?? 0), 0);
+    const scale = boundedTotal > 0 ? targetInvestedPct / boundedTotal : 1;
+
+    preliminary
       .map((item) => {
-        const normalizedTarget = rawScoreTotal > 0 ? ((item.targetWeight ?? 0) / rawScoreTotal) * targetInvestedPct : item.currentWeight ?? 0;
-        const boundedTarget = clamp(normalizedTarget, 2, 40);
-        const weightDelta = item.currentWeight !== null ? boundedTarget - item.currentWeight : null;
+        const scaledTarget = clamp(
+          (item.targetWeight ?? 0) * scale,
+          item.impliedUpsidePct !== null && item.impliedUpsidePct <= -10 ? 2 : minWeight,
+          maxWeight,
+        );
+        const weightDelta = item.currentWeight !== null ? scaledTarget - item.currentWeight : null;
         const action: RebalanceAction =
           item.currentWeight === null || item.currentWeight < 0.1
-            ? boundedTarget >= 2
+            ? scaledTarget >= minWeight
               ? "initiate"
               : "watch"
-            : weightDelta !== null && weightDelta >= 1
+            : weightDelta !== null && weightDelta >= 1.5
               ? "increase"
-              : weightDelta !== null && weightDelta <= -1
+              : weightDelta !== null && weightDelta <= -1.5
                 ? "reduce"
                 : "maintain";
 
         return {
           ...item,
           action,
-          targetWeight: Number(boundedTarget.toFixed(1)),
+          targetWeight: Number(scaledTarget.toFixed(1)),
           weightDelta: weightDelta !== null ? Number(weightDelta.toFixed(1)) : null,
         };
       })
