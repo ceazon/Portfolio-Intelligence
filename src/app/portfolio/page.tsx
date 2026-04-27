@@ -222,7 +222,7 @@ export default async function PortfolioPage() {
           const explicitTarget = explicitTargetEntries.find((entry) => entry.label === slice.label)?.rawTargetWeight ?? null;
           const normalizedTarget = normalizedInvestedWeightSum > 0 && explicitTarget !== null
             ? (explicitTarget / normalizedInvestedWeightSum) * targetInvestedWeight
-            : 0;
+            : slice.weight;
 
           return {
             ...slice,
@@ -234,8 +234,8 @@ export default async function PortfolioPage() {
       {
         label: "Cash",
         value: cashValue,
-        weight: targetCashWeight,
-        targetWeight: targetCashWeight,
+        weight: normalizedInvestedWeightSum > 0 ? targetCashWeight : currentCashWeight,
+        targetWeight: normalizedInvestedWeightSum > 0 ? targetCashWeight : currentCashWeight,
         comparisonBaselineWeight: currentCashWeight,
       },
     ];
