@@ -708,7 +708,7 @@ export async function runNewsResearch(_prevState: FormState): Promise<FormState>
       return {
         ok: true,
         error: "",
-        notice: `Shared news research and macro refresh completed. Fundamentals were refreshed with partial provider coverage. Details: ${fundamentalsResult.skipReasons.join(" | ")}`,
+        notice: `Shared news research and macro refresh completed. Some symbols have partial fundamentals coverage under the current provider plan. Details: ${fundamentalsResult.skipReasons.join(" | ")}`,
       };
     }
 

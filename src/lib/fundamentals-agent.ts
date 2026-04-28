@@ -30,6 +30,10 @@ type FmpKeyMetricsRow = {
   marketCap?: number;
 };
 
+type FmpProfileRow = {
+  marketCap?: number;
+};
+
 type FmpRatiosRow = {
   priceToSalesRatioTTM?: number;
   netProfitMarginTTM?: number;
@@ -43,16 +47,18 @@ type FmpGrowthRow = {
 };
 
 async function fetchFmpFundamentals(symbol: string) {
-  const [keyMetricsResult, ratiosResult, growthResult] = await Promise.allSettled([
+  const [keyMetricsResult, ratiosResult, growthResult, profileResult] = await Promise.allSettled([
     fetchFmpJson<FmpKeyMetricsRow[]>(`/stable/key-metrics-ttm?symbol=${encodeURIComponent(symbol)}`),
     fetchFmpJson<FmpRatiosRow[]>(`/stable/ratios-ttm?symbol=${encodeURIComponent(symbol)}`),
     fetchFmpJson<FmpGrowthRow[]>(`/stable/income-statement-growth?symbol=${encodeURIComponent(symbol)}`),
+    fetchFmpJson<FmpProfileRow[]>(`/stable/profile?symbol=${encodeURIComponent(symbol)}`),
   ]);
 
   const keyMetricsRows = keyMetricsResult.status === "fulfilled" ? keyMetricsResult.value : [];
   const ratiosRows = ratiosResult.status === "fulfilled" ? ratiosResult.value : [];
   const growthRows = growthResult.status === "fulfilled" ? growthResult.value : [];
-  const errors = [keyMetricsResult, ratiosResult, growthResult]
+  const profileRows = profileResult.status === "fulfilled" ? profileResult.value : [];
+  const errors = [keyMetricsResult, ratiosResult, growthResult, profileResult]
     .filter((result) => result.status === "rejected")
     .map((result) => (result as PromiseRejectedResult).reason)
     .map((reason) => (reason instanceof Error ? reason.message : String(reason)));
@@ -60,8 +66,9 @@ async function fetchFmpFundamentals(symbol: string) {
   const keyMetrics = Array.isArray(keyMetricsRows) ? (keyMetricsRows[0] ?? {}) : {};
   const ratios = Array.isArray(ratiosRows) ? (ratiosRows[0] ?? {}) : {};
   const growth = Array.isArray(growthRows) ? (growthRows[0] ?? {}) : {};
+  const profile = Array.isArray(profileRows) ? (profileRows[0] ?? {}) : {};
 
-  const hasAnyData = Object.keys(keyMetrics).length > 0 || Object.keys(ratios).length > 0 || Object.keys(growth).length > 0;
+  const hasAnyData = Object.keys(keyMetrics).length > 0 || Object.keys(ratios).length > 0 || Object.keys(growth).length > 0 || Object.keys(profile).length > 0;
   if (!hasAnyData) {
     throw new Error(errors[0] || `No FMP fundamentals data returned for ${symbol}.`);
   }
@@ -70,6 +77,7 @@ async function fetchFmpFundamentals(symbol: string) {
     keyMetrics,
     ratios,
     growth,
+    profile,
     errors,
   };
 }
@@ -220,7 +228,12 @@ export async function refreshFundamentalsAndAgent(ownerId: string) {
         operatingMarginTTM: typeof result.ratios.operatingProfitMarginTTM === "number" ? result.ratios.operatingProfitMarginTTM * 100 : null,
         roeTTM: typeof result.ratios.returnOnEquityTTM === "number" ? result.ratios.returnOnEquityTTM * 100 : null,
         currentRatioQuarterly: result.keyMetrics.currentRatioTTM,
-        marketCapitalization: typeof result.keyMetrics.marketCap === "number" ? result.keyMetrics.marketCap / 1_000_000 : null,
+        marketCapitalization:
+          typeof result.keyMetrics.marketCap === "number"
+            ? result.keyMetrics.marketCap / 1_000_000
+            : typeof result.profile.marketCap === "number"
+              ? result.profile.marketCap / 1_000_000
+              : null,
       };
 
       fundamentalsRows.push({
