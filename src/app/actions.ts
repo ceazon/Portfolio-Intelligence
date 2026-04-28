@@ -28,6 +28,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 export type FormState = {
   ok: boolean;
   error: string;
+  notice?: string;
 };
 
 async function requireActionUser() {
@@ -694,11 +695,12 @@ export async function runNewsResearch(_prevState: FormState): Promise<FormState>
     if (fundamentalsResult.skippedSymbols?.length) {
       return {
         ok: true,
-        error: `News research completed, but fundamentals were skipped for ${fundamentalsResult.skippedSymbols.join(", ")} because Finnhub access is unavailable.`,
+        error: "",
+        notice: `Shared news research and macro refresh completed. Fundamentals were skipped for ${fundamentalsResult.skippedSymbols.join(", ")} because Finnhub fundamentals access is unavailable.`,
       };
     }
 
-    return { ok: true, error: "" };
+    return { ok: true, error: "", notice: "" };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to run shared news research.") };
   }

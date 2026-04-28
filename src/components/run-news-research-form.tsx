@@ -19,7 +19,8 @@ export function RunNewsResearchForm() {
       </div>
 
       {state?.error ? <p className="text-sm text-amber-300">{state.error}</p> : null}
-      {state?.ok ? <p className="text-sm text-emerald-300">Shared news research and macro refresh completed.</p> : null}
+      {state?.notice ? <p className="text-sm text-amber-200">{state.notice}</p> : null}
+      {state?.ok && !state?.notice ? <p className="text-sm text-emerald-300">Shared news research and macro refresh completed.</p> : null}
 
       <button
         type="submit"
