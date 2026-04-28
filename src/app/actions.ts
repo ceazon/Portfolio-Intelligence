@@ -693,22 +693,24 @@ export async function runNewsResearch(_prevState: FormState): Promise<FormState>
     revalidatePath("/dashboard");
 
     if (fundamentalsResult.skippedSymbols?.length) {
-      const detail = fundamentalsResult.skipReasons?.length
-        ? ` Details: ${fundamentalsResult.skipReasons.join(" | ")}`
-        : "";
-
       return {
         ok: true,
         error: "",
-        notice: `Shared news research and macro refresh completed. Fundamentals were skipped for ${fundamentalsResult.skippedSymbols.join(", ")}.${detail}`,
+        notice: `Shared news research and macro refresh completed. Some symbols could not be refreshed for fundamentals under the current provider plan: ${fundamentalsResult.skippedSymbols.join(", ")}.`,
       };
     }
 
     if (fundamentalsResult.skipReasons?.length) {
+      const partialSymbols = [...new Set(
+        fundamentalsResult.skipReasons
+          .map((reason) => reason.split(":")[0]?.trim())
+          .filter(Boolean),
+      )];
+
       return {
         ok: true,
         error: "",
-        notice: `Shared news research and macro refresh completed. Some symbols have partial fundamentals coverage under the current provider plan. Details: ${fundamentalsResult.skipReasons.join(" | ")}`,
+        notice: `Shared news research and macro refresh completed. Some symbols have limited fundamentals coverage under the current provider plan: ${partialSymbols.join(", ")}. Core research still completed successfully.`,
       };
     }
 
