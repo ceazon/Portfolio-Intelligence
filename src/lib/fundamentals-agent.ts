@@ -43,16 +43,34 @@ type FmpGrowthRow = {
 };
 
 async function fetchFmpFundamentals(symbol: string) {
-  const [keyMetricsRows, ratiosRows, growthRows] = await Promise.all([
+  const [keyMetricsResult, ratiosResult, growthResult] = await Promise.allSettled([
     fetchFmpJson<FmpKeyMetricsRow[]>(`/stable/key-metrics-ttm?symbol=${encodeURIComponent(symbol)}`),
     fetchFmpJson<FmpRatiosRow[]>(`/stable/ratios-ttm?symbol=${encodeURIComponent(symbol)}`),
     fetchFmpJson<FmpGrowthRow[]>(`/stable/income-statement-growth?symbol=${encodeURIComponent(symbol)}`),
   ]);
 
+  const keyMetricsRows = keyMetricsResult.status === "fulfilled" ? keyMetricsResult.value : [];
+  const ratiosRows = ratiosResult.status === "fulfilled" ? ratiosResult.value : [];
+  const growthRows = growthResult.status === "fulfilled" ? growthResult.value : [];
+  const errors = [keyMetricsResult, ratiosResult, growthResult]
+    .filter((result) => result.status === "rejected")
+    .map((result) => (result as PromiseRejectedResult).reason)
+    .map((reason) => (reason instanceof Error ? reason.message : String(reason)));
+
+  const keyMetrics = Array.isArray(keyMetricsRows) ? (keyMetricsRows[0] ?? {}) : {};
+  const ratios = Array.isArray(ratiosRows) ? (ratiosRows[0] ?? {}) : {};
+  const growth = Array.isArray(growthRows) ? (growthRows[0] ?? {}) : {};
+
+  const hasAnyData = Object.keys(keyMetrics).length > 0 || Object.keys(ratios).length > 0 || Object.keys(growth).length > 0;
+  if (!hasAnyData) {
+    throw new Error(errors[0] || `No FMP fundamentals data returned for ${symbol}.`);
+  }
+
   return {
-    keyMetrics: Array.isArray(keyMetricsRows) ? (keyMetricsRows[0] ?? {}) : {},
-    ratios: Array.isArray(ratiosRows) ? (ratiosRows[0] ?? {}) : {},
-    growth: Array.isArray(growthRows) ? (growthRows[0] ?? {}) : {},
+    keyMetrics,
+    ratios,
+    growth,
+    errors,
   };
 }
 
@@ -223,6 +241,10 @@ export async function refreshFundamentalsAndAgent(ownerId: string) {
       });
 
       agentRows.push(buildFundamentalsAgentOutput(ownerId, symbol, metrics));
+
+      if (result.errors.length) {
+        skipReasons.push(`${symbol.ticker}: partial FMP coverage (${result.errors.join(" | ")})`);
+      }
     } catch (error) {
       skippedSymbols.push(symbol.ticker);
       skipReasons.push(`${symbol.ticker}: ${error instanceof Error ? error.message : "Unknown fundamentals refresh failure."}`);

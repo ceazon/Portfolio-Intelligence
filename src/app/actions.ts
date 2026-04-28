@@ -704,6 +704,14 @@ export async function runNewsResearch(_prevState: FormState): Promise<FormState>
       };
     }
 
+    if (fundamentalsResult.skipReasons?.length) {
+      return {
+        ok: true,
+        error: "",
+        notice: `Shared news research and macro refresh completed. Fundamentals were refreshed with partial provider coverage. Details: ${fundamentalsResult.skipReasons.join(" | ")}`,
+      };
+    }
+
     return { ok: true, error: "", notice: "" };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to run shared news research.") };
