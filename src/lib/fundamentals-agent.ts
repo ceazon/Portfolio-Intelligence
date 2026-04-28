@@ -19,8 +19,10 @@ async function fetchFinnhubMetric(symbol: string) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     const message = response.status === 401 || response.status === 403
-      ? "Finnhub fundamentals access is unavailable. Check FINNHUB_API_KEY or endpoint plan access."
-      : `Finnhub metric request failed with status ${response.status}`;
+      ? `Finnhub fundamentals access was denied for ${symbol}. Check FINNHUB_API_KEY or endpoint plan access.`
+      : response.status === 429
+        ? `Finnhub fundamentals rate limit was hit for ${symbol}.`
+        : `Finnhub metric request failed for ${symbol} with status ${response.status}.`;
     throw new FinnhubError(message, response.status);
   }
 
@@ -158,6 +160,7 @@ export async function refreshFundamentalsAndAgent(ownerId: string) {
   const fundamentalsRows: Array<Record<string, unknown>> = [];
   const agentRows: Array<Record<string, unknown>> = [];
   const skippedSymbols: string[] = [];
+  const skipReasons: string[] = [];
 
   for (const symbol of trackedSymbols) {
     try {
@@ -185,6 +188,7 @@ export async function refreshFundamentalsAndAgent(ownerId: string) {
     } catch (error) {
       if (error instanceof FinnhubError) {
         skippedSymbols.push(symbol.ticker);
+        skipReasons.push(`${symbol.ticker}: ${error.message}`);
         continue;
       }
       throw error;
@@ -206,5 +210,5 @@ export async function refreshFundamentalsAndAgent(ownerId: string) {
     if (error) throw new Error(error.message);
   }
 
-  return { refreshedCount: fundamentalsRows.length, consideredCount: trackedSymbols.length, skippedSymbols };
+  return { refreshedCount: fundamentalsRows.length, consideredCount: trackedSymbols.length, skippedSymbols, skipReasons };
 }

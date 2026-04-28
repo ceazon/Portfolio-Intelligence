@@ -693,10 +693,14 @@ export async function runNewsResearch(_prevState: FormState): Promise<FormState>
     revalidatePath("/dashboard");
 
     if (fundamentalsResult.skippedSymbols?.length) {
+      const detail = fundamentalsResult.skipReasons?.length
+        ? ` Details: ${fundamentalsResult.skipReasons.join(" | ")}`
+        : "";
+
       return {
         ok: true,
         error: "",
-        notice: `Shared news research and macro refresh completed. Fundamentals were skipped for ${fundamentalsResult.skippedSymbols.join(", ")} because Finnhub fundamentals access is unavailable.`,
+        notice: `Shared news research and macro refresh completed. Fundamentals were skipped for ${fundamentalsResult.skippedSymbols.join(", ")}.${detail}`,
       };
     }
 
