@@ -37,6 +37,7 @@ type PortfolioPositionRow = {
     | {
         id: string;
         name: string;
+        owner_id?: string;
         cash_position: number | null;
         cash_currency: SupportedCurrency | null;
         display_currency: SupportedCurrency | null;
@@ -45,6 +46,7 @@ type PortfolioPositionRow = {
     | {
         id: string;
         name: string;
+        owner_id?: string;
         cash_position: number | null;
         cash_currency: SupportedCurrency | null;
         display_currency: SupportedCurrency | null;
@@ -135,9 +137,9 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
   const { data: positions } = await supabase
     .from("portfolio_positions")
     .select(
-      "id, portfolio_id, quantity, portfolios(id, name, cash_position, cash_currency, display_currency, recommendation_cash_mode), symbols(id, ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
+      "id, portfolio_id, quantity, portfolios!inner(id, name, owner_id, cash_position, cash_currency, display_currency, recommendation_cash_mode), symbols(id, ticker, name, symbol_price_snapshots(price, percent_change, fetched_at))",
     )
-    .eq("owner_id", ownerId)
+    .eq("portfolios.owner_id", ownerId)
     .gt("quantity", 0);
 
   const rows = (positions || []) as PortfolioPositionRow[];
