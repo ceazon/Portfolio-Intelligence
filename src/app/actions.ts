@@ -712,7 +712,15 @@ export async function synthesizeRecommendations(_prevState: FormState): Promise<
     }
 
     const plan = await buildRebalancePlan(auth.user.id);
-    await persistRebalancePlan(auth.user.id, plan);
+    if (!plan.items.length) {
+      return { ok: false, error: plan.summary || "No rebalance recommendations could be generated for this portfolio yet." };
+    }
+
+    const persisted = await persistRebalancePlan(auth.user.id, plan);
+    if (!persisted?.runCount) {
+      return { ok: false, error: "Rebalance plan was built but could not be saved." };
+    }
+
     revalidatePath("/recommendations");
     revalidatePath("/portfolio");
     revalidatePath("/dashboard");
