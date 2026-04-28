@@ -33,7 +33,7 @@ type PortfolioPositionRow = {
   notes: string | null;
   portfolio_id?: string;
   symbol_id?: string;
-  portfolios: { id: string; name: string } | { id: string; name: string }[] | null;
+  portfolios: { id: string; name: string; owner_id?: string } | { id: string; name: string; owner_id?: string }[] | null;
   symbols:
     | {
         id: string;
@@ -125,7 +125,8 @@ export default async function PortfolioPage() {
   const { data: positions } = supabase
     ? await supabase
         .from("portfolio_positions")
-        .select("id, portfolio_id, symbol_id, quantity, average_cost, average_cost_currency, notes, portfolios(id, name), symbols(id, ticker, name, exchange, logo_url, symbol_price_snapshots(price, percent_change, fetched_at))")
+        .select("id, portfolio_id, symbol_id, quantity, average_cost, average_cost_currency, notes, portfolios!inner(id, name, owner_id), symbols(id, ticker, name, exchange, logo_url, symbol_price_snapshots(price, percent_change, fetched_at))")
+        .eq("portfolios.owner_id", user.id)
         .order("created_at", { ascending: false })
     : { data: [] as PortfolioPositionRow[] };
 
