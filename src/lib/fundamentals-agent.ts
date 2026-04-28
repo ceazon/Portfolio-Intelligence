@@ -1,32 +1,59 @@
 import { buildAgentOutputContract, confidenceFromPercent, scoreFromPercent } from "@/lib/agent-output-contract";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
-import { FinnhubError } from "@/lib/finnhub";
 
-const FINNHUB_BASE_URL = "https://finnhub.io/api/v1";
+const FMP_BASE_URL = "https://financialmodelingprep.com";
 const FUNDAMENTALS_AGENT_NAME = "fundamentals-agent";
 
-function getFinnhubKey() {
-  return process.env.FINNHUB_API_KEY || "";
+function getFmpKey() {
+  return process.env.FMP_API_KEY || "";
 }
 
-async function fetchFinnhubMetric(symbol: string) {
-  const apiKey = getFinnhubKey();
+async function fetchFmpJson<T>(path: string) {
+  const apiKey = getFmpKey();
   if (!apiKey) {
-    throw new FinnhubError("Finnhub API key is not configured.");
+    throw new Error("FMP API key is not configured.");
   }
 
-  const url = `${FINNHUB_BASE_URL}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${encodeURIComponent(apiKey)}`;
+  const url = `${FMP_BASE_URL}${path}${path.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(apiKey)}`;
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
-    const message = response.status === 401 || response.status === 403
-      ? `Finnhub fundamentals access was denied for ${symbol}. Check FINNHUB_API_KEY or endpoint plan access.`
-      : response.status === 429
-        ? `Finnhub fundamentals rate limit was hit for ${symbol}.`
-        : `Finnhub metric request failed for ${symbol} with status ${response.status}.`;
-    throw new FinnhubError(message, response.status);
+    throw new Error(`FMP request failed with status ${response.status} for ${path}.`);
   }
 
-  return (await response.json()) as { metric?: Record<string, unknown> };
+  return (await response.json()) as T;
+}
+
+type FmpKeyMetricsRow = {
+  peRatioTTM?: number;
+  pbRatioTTM?: number;
+  currentRatioTTM?: number;
+  marketCap?: number;
+};
+
+type FmpRatiosRow = {
+  priceToSalesRatioTTM?: number;
+  netProfitMarginTTM?: number;
+  operatingProfitMarginTTM?: number;
+  returnOnEquityTTM?: number;
+};
+
+type FmpGrowthRow = {
+  growthRevenue?: number;
+  growthNetIncome?: number;
+};
+
+async function fetchFmpFundamentals(symbol: string) {
+  const [keyMetricsRows, ratiosRows, growthRows] = await Promise.all([
+    fetchFmpJson<FmpKeyMetricsRow[]>(`/stable/key-metrics-ttm?symbol=${encodeURIComponent(symbol)}`),
+    fetchFmpJson<FmpRatiosRow[]>(`/stable/ratios-ttm?symbol=${encodeURIComponent(symbol)}`),
+    fetchFmpJson<FmpGrowthRow[]>(`/stable/income-statement-growth?symbol=${encodeURIComponent(symbol)}`),
+  ]);
+
+  return {
+    keyMetrics: Array.isArray(keyMetricsRows) ? (keyMetricsRows[0] ?? {}) : {},
+    ratios: Array.isArray(ratiosRows) ? (ratiosRows[0] ?? {}) : {},
+    growth: Array.isArray(growthRows) ? (growthRows[0] ?? {}) : {},
+  };
 }
 
 type TrackedSymbol = {
@@ -164,8 +191,19 @@ export async function refreshFundamentalsAndAgent(ownerId: string) {
 
   for (const symbol of trackedSymbols) {
     try {
-      const result = await fetchFinnhubMetric(symbol.ticker);
-      const metrics = result.metric || {};
+      const result = await fetchFmpFundamentals(symbol.ticker);
+      const metrics = {
+        peTTM: result.keyMetrics.peRatioTTM,
+        pbAnnual: result.keyMetrics.pbRatioTTM,
+        psTTM: result.ratios.priceToSalesRatioTTM,
+        revenueGrowthTTMYoy: typeof result.growth.growthRevenue === "number" ? result.growth.growthRevenue * 100 : null,
+        epsGrowth5Y: null,
+        netMarginTTM: typeof result.ratios.netProfitMarginTTM === "number" ? result.ratios.netProfitMarginTTM * 100 : null,
+        operatingMarginTTM: typeof result.ratios.operatingProfitMarginTTM === "number" ? result.ratios.operatingProfitMarginTTM * 100 : null,
+        roeTTM: typeof result.ratios.returnOnEquityTTM === "number" ? result.ratios.returnOnEquityTTM * 100 : null,
+        currentRatioQuarterly: result.keyMetrics.currentRatioTTM,
+        marketCapitalization: typeof result.keyMetrics.marketCap === "number" ? result.keyMetrics.marketCap / 1_000_000 : null,
+      };
 
       fundamentalsRows.push({
         symbol_id: symbol.id,
@@ -179,19 +217,16 @@ export async function refreshFundamentalsAndAgent(ownerId: string) {
         roe_ttm: numberOrNull(metrics.roeTTM),
         current_ratio_quarterly: numberOrNull(metrics.currentRatioQuarterly),
         market_cap_m: numberOrNull(metrics.marketCapitalization),
-        raw_metrics: metrics,
+        raw_metrics: result,
         fetched_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
 
       agentRows.push(buildFundamentalsAgentOutput(ownerId, symbol, metrics));
     } catch (error) {
-      if (error instanceof FinnhubError) {
-        skippedSymbols.push(symbol.ticker);
-        skipReasons.push(`${symbol.ticker}: ${error.message}`);
-        continue;
-      }
-      throw error;
+      skippedSymbols.push(symbol.ticker);
+      skipReasons.push(`${symbol.ticker}: ${error instanceof Error ? error.message : "Unknown fundamentals refresh failure."}`);
+      continue;
     }
   }
 
