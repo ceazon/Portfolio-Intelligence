@@ -73,11 +73,11 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Mission control"
-            description="This dashboard should read like a rebalance operating view: what holdings exist, what plans have been generated, and what data is current."
+            description="This dashboard is the operating view for the project right now: what data is live, what the rebalance engine has produced, and where the product is heading next."
           >
             <div className="mb-4 space-y-3">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                System status: {hasSupabaseEnv() ? "configured and running" : "not configured yet, add env vars before deployment"}
+                System status: {hasSupabaseEnv() ? "configured and running" : "not configured yet, add env vars before deployment"}. Core product state: rebalance-first workflow is live, cash-aware portfolio support is live, and research or agent layers are now supporting context instead of the main story.
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-zinc-300">
                 Central quote scheduler: <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours mode" : "off hours mode"}</span>
@@ -97,7 +97,7 @@ export default async function DashboardPage() {
 
           <SectionCard
             title="Current state and next steps"
-            description="This reflects the real product state right now, what has already landed, what still feels transitional, and the best next moves from here."
+            description="This reflects what is actually implemented today, what still feels transitional, and the best product moves from here."
           >
             <div className="grid gap-4 lg:grid-cols-2">
               {roadmapCards.map((card) => (
@@ -113,7 +113,7 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Next build sequence"
-            description="The highest-leverage follow-ups now that cash-aware rebalancing support and live schema updates are in place."
+            description="The highest-leverage follow-ups now that the rebalance engine, cash-aware portfolio logic, and owner-scoped holdings flow are all working in production."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
               {nextBuildTargets.map((item) => (
@@ -130,7 +130,7 @@ export default async function DashboardPage() {
 
           <SectionCard
             title="Latest operating signal"
-            description="Recent evidence from rebalance runs, quote refresh, and the remaining research support stack."
+            description="Recent evidence from rebalance runs, quote refreshes, and the remaining support layers around the core portfolio workflow."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
               {latestRebalanceRunSummary || latestResearchRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet. Generate a plan to start building operating history."}

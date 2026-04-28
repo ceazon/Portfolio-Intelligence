@@ -1,27 +1,27 @@
 export const roadmapCards = [
   {
     title: "Current project state",
-    body: "Portfolio Intelligence is now meaningfully positioned as an analyst-driven rebalancing workspace. Cash-aware portfolio support is in place, deterministic rebalance runs are live, analyst consensus targets are flowing into the core logic, and the live database schema is caught up with the current cash fields.",
+    body: "Portfolio Intelligence is now operating as a real rebalance-first workspace. Portfolios, holdings, cash settings, live quotes, analyst consensus targets, and deterministic rebalance outputs are all connected in the main workflow, and the latest owner-scoping issue in rebalancing has been fixed in production.",
   },
   {
-    title: "What is already solid",
-    body: "The product can now track holdings, quote refreshes, analyst targets, portfolio cash, and rebalance outputs in one loop. Current versus target allocation views are working, and the product story is much stronger when it stays anchored on portfolio math instead of black-box recommendation theater.",
+    title: "What is implemented",
+    body: "The app can create portfolios, import symbols, track positions, refresh market data, store cash in either managed-cash or fully-invested mode, generate target-weight rebalance plans, and compare current versus proposed allocation visually. Supporting layers for research, fundamentals, and agent outputs are also live as optional context.",
   },
   {
-    title: "Immediate product gap",
-    body: "The biggest remaining gap is coherence. Legacy recommendation, research, and agent surfaces still sit beside the new rebalance model, and the dashboard needs to more clearly reflect what is real, what is legacy, and what the next operator actions should be.",
+    title: "What still feels transitional",
+    body: "The product still carries some older recommendation, research, and agent framing beside the stronger rebalance workflow. That means parts of the app are useful but not yet fully aligned around one clean operating story, so the dashboard should help clarify what is core, what is supporting context, and what is legacy.",
   },
   {
-    title: "Next strategic step",
-    body: "The next phase should harden this into a practical operating tool: production sanity checks, rebalance-first dashboard modules, cleaner copy across the app, and run history that explains what changed without making AI the center of the product again.",
+    title: "Where this can go next",
+    body: "The strongest direction now is to deepen the operating layer rather than add more AI theater. That means better dashboard summaries, clearer rebalance run history, more practical portfolio oversight signals, and cleaner explanations of what changed and why on each plan refresh.",
   },
 ];
 
 export const nextBuildTargets = [
-  "Run a production sanity pass on portfolio cash persistence, fully-invested vs managed-cash behavior, and residual cash display",
-  "Add dashboard cards for biggest adds, biggest trims, residual cash, and highest implied-upside holdings",
-  "Reframe remaining recommendation-first copy so the main workflow consistently reads as rebalance planning",
-  "Add rebalance history and what-changed tracking so each portfolio becomes easier to operate over time",
-  "Validate analyst target coverage across real held portfolios and only add fallback logic where genuine gaps exist",
-  "Reduce or hide legacy research and agent-first surfaces once the rebalance workflow feels complete",
+  "Add a dashboard summary for biggest adds, biggest trims, residual cash, and top implied-upside names from the latest rebalance run",
+  "Show per-portfolio rebalance run history with what changed since the last plan",
+  "Tighten copy across recommendations, research, and agents so the core workflow consistently reads as rebalance planning",
+  "Add production sanity checks for portfolio ownership, position persistence, and cash-mode behavior",
+  "Validate analyst target coverage across real held portfolios and decide where fallback logic actually helps",
+  "Gradually reduce or hide legacy research-first surfaces if the rebalance operating view becomes the clear product center",
 ];
