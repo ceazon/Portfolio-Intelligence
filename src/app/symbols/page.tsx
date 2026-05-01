@@ -183,7 +183,7 @@ export default async function SymbolsPage() {
         <div className="space-y-6">
           <SectionCard
             title="Import from market data"
-            description="Search by ticker or company name and pull the best match from Finnhub into your symbol universe."
+            description="Search by ticker or company name and pull the best match from the market data provider into your symbol universe."
           >
             <SymbolImportPanel watchlists={watchlists} />
           </SectionCard>

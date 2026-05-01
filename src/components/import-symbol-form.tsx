@@ -21,7 +21,7 @@ export function ImportSymbolForm({ watchlists }: { watchlists: WatchlistOption[]
       <div>
         <h3 className="text-base font-semibold text-zinc-100">Import symbol from API</h3>
         <p className="mt-1 text-sm text-zinc-400">
-          Search by ticker or company name. We’ll pull the symbol from Finnhub and store it in Supabase.
+          Search by ticker or company name. We’ll pull the symbol from the market data provider and store it in Supabase.
         </p>
       </div>
 
