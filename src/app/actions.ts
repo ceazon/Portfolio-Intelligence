@@ -767,23 +767,21 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
     }
 
     const results = await searchImportSymbols(query);
-    if (!results.length) {
+    const directTicker = selectedSymbol || query;
+    const match = results.length ? findImportSymbolMatch(results, selectedSymbol) : null;
+    const importSymbol = match?.symbol || directTicker;
+    const seed = await getImportSymbolSeed(importSymbol);
+
+    if (!seed) {
       return { ok: false, error: "No symbols found from market data provider." };
     }
-
-    const match = findImportSymbolMatch(results, selectedSymbol);
-    if (!match) {
-      return { ok: false, error: "No symbols found from market data provider." };
-    }
-
-    const seed = await getImportSymbolSeed(match.symbol);
 
     const { data: symbolRow, error: symbolError } = await supabase
       .from("symbols")
       .upsert(
         {
-          ticker: match.symbol,
-          name: seed.name || match.description || match.displaySymbol || match.symbol,
+          ticker: seed.symbol,
+          name: seed.name || match?.description || match?.displaySymbol || seed.symbol,
           exchange: seed.exchange,
           country: seed.country,
           currency: seed.currency,
@@ -826,7 +824,7 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
 
       await supabase.from("symbols").update({ last_quote_sync_at: new Date().toISOString() }).eq("id", symbolRow.id);
     } else {
-      await enrichSymbolAndRefreshQuote(symbolRow.id, match.symbol, auth.user.id);
+      await enrichSymbolAndRefreshQuote(symbolRow.id, seed.symbol, auth.user.id);
     }
 
     if (watchlistId) {

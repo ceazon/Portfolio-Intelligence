@@ -44,15 +44,21 @@ export async function searchImportSymbols(query: string): Promise<ImportSymbolRe
 }
 
 export async function getImportSymbolSeed(symbol: string) {
-  const [profile, quote] = await Promise.allSettled([getFmpProfile(symbol), getFmpQuote(symbol)]);
+  const normalizedSymbol = normalizeImportSymbol(symbol);
+  const [profile, quote] = await Promise.allSettled([getFmpProfile(normalizedSymbol), getFmpQuote(normalizedSymbol)]);
 
   const profileValue = profile.status === "fulfilled" ? profile.value : null;
   const quoteValue = quote.status === "fulfilled" ? quote.value : null;
 
+  if (!profileValue && !quoteValue) {
+    return null;
+  }
+
   const asset = classifyAssetType(undefined, profileValue?.exchange || undefined);
 
   return {
-    name: profileValue?.companyName || symbol,
+    symbol: normalizedSymbol,
+    name: profileValue?.companyName || normalizedSymbol,
     exchange: profileValue?.exchangeFullName || profileValue?.exchange || null,
     country: profileValue?.country || null,
     currency: profileValue?.currency || null,
