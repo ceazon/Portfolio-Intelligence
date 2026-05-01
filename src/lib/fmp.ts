@@ -31,6 +31,9 @@ type FmpProfileResult = {
   country?: string;
   website?: string;
   mktCap?: number;
+  price?: number;
+  change?: number;
+  changePercentage?: number;
 };
 
 type FmpQuoteResult = {
@@ -100,21 +103,53 @@ export async function getFmpProfile(symbol: string): Promise<FmpProfileResult | 
   return profile && Object.keys(profile).length > 0 ? profile : null;
 }
 
+function hasFmpQuoteData(quote: FmpQuoteResult | null | undefined) {
+  return [quote?.price, quote?.change, quote?.changesPercentage, quote?.dayHigh, quote?.dayLow, quote?.open, quote?.previousClose].some(
+    (value) => typeof value === "number",
+  );
+}
+
+function getProfileDerivedQuote(profile: FmpProfileResult | null | undefined): FmpQuoteResult | null {
+  if (!profile || typeof profile.price !== "number") {
+    return null;
+  }
+
+  const derivedQuote: FmpQuoteResult = {
+    symbol: profile.symbol,
+    price: profile.price,
+    change: typeof profile.change === "number" ? profile.change : null,
+    changesPercentage: typeof profile.changePercentage === "number" ? profile.changePercentage : null,
+    dayHigh: null,
+    dayLow: null,
+    open: null,
+    previousClose:
+      typeof profile.price === "number" && typeof profile.change === "number"
+        ? profile.price - profile.change
+        : null,
+  };
+
+  return hasFmpQuoteData(derivedQuote) ? derivedQuote : null;
+}
+
 export async function getFmpQuote(symbol: string): Promise<FmpQuoteResult | null> {
   if (!symbol.trim()) {
     return null;
   }
 
-  const json = await fetchFmp<FmpQuoteResult[]>(`/stable/quote?symbol=${encodeURIComponent(symbol.trim())}`);
-  const quote = Array.isArray(json) ? (json[0] ?? null) : null;
-  if (!quote) {
-    return null;
-  }
+  const normalizedSymbol = symbol.trim();
 
-  const hasData = [quote.price, quote.change, quote.changesPercentage, quote.dayHigh, quote.dayLow, quote.open, quote.previousClose].some(
-    (value) => typeof value === "number",
-  );
-  return hasData ? quote : null;
+  try {
+    const json = await fetchFmp<FmpQuoteResult[]>(`/stable/quote?symbol=${encodeURIComponent(normalizedSymbol)}`);
+    const quote = Array.isArray(json) ? (json[0] ?? null) : null;
+    return hasFmpQuoteData(quote) ? quote : null;
+  } catch (error) {
+    if (!(error instanceof FmpError) || error.status !== 402) {
+      throw error;
+    }
+
+    const profile = await getFmpProfile(normalizedSymbol);
+    return getProfileDerivedQuote(profile);
+  }
 }
 
 export type { FmpProfileResult, FmpQuoteResult, FmpSymbolResult };
