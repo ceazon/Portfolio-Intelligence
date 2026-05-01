@@ -117,15 +117,15 @@ function getProfileDerivedQuote(profile: FmpProfileResult | null | undefined): F
   const derivedQuote: FmpQuoteResult = {
     symbol: profile.symbol,
     price: profile.price,
-    change: typeof profile.change === "number" ? profile.change : null,
-    changesPercentage: typeof profile.changePercentage === "number" ? profile.changePercentage : null,
-    dayHigh: null,
-    dayLow: null,
-    open: null,
+    change: typeof profile.change === "number" ? profile.change : undefined,
+    changesPercentage: typeof profile.changePercentage === "number" ? profile.changePercentage : undefined,
+    dayHigh: undefined,
+    dayLow: undefined,
+    open: undefined,
     previousClose:
       typeof profile.price === "number" && typeof profile.change === "number"
         ? profile.price - profile.change
-        : null,
+        : undefined,
   };
 
   return hasFmpQuoteData(derivedQuote) ? derivedQuote : null;
