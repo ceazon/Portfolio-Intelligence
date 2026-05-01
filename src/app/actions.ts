@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { searchFinnhubSymbols } from "@/lib/finnhub";
 import { refreshFxRate } from "@/lib/fx-sync";
 import { runSharedNewsResearch } from "@/lib/news-research";
 import { runGlobalMacroAgent } from "@/lib/macro-agent";
@@ -12,6 +11,7 @@ import { getResearchEvidenceContext } from "@/lib/recommendation-evidence";
 import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
 import { runRecommendationSynthesis } from "@/lib/synthesis-agent";
 import { buildRebalancePlan, persistRebalancePlan } from "@/lib/rebalancing-engine";
+import { findImportSymbolMatch, getImportSymbolSeed, searchImportSymbols } from "@/lib/symbol-import";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
@@ -766,23 +766,37 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
       return { ok: false, error: "Search query is required." };
     }
 
-    const results = await searchFinnhubSymbols(query);
+    const results = await searchImportSymbols(query);
     if (!results.length) {
-      return { ok: false, error: "No symbols found from Finnhub." };
+      return { ok: false, error: "No symbols found from market data provider." };
     }
 
-    const match = results.find((item) => item.symbol === selectedSymbol) || results[0];
+    const match = findImportSymbolMatch(results, selectedSymbol);
+    if (!match) {
+      return { ok: false, error: "No symbols found from market data provider." };
+    }
+
+    const seed = await getImportSymbolSeed(match.symbol);
 
     const { data: symbolRow, error: symbolError } = await supabase
       .from("symbols")
       .upsert(
         {
           ticker: match.symbol,
-          name: match.description || match.displaySymbol || match.symbol,
-          exchange: null,
-          country: null,
-          asset_type: match.type?.toLowerCase().includes("etf") ? "etf" : "stock",
-          is_etf: match.type?.toLowerCase().includes("etf") || false,
+          name: seed.name || match.description || match.displaySymbol || match.symbol,
+          exchange: seed.exchange,
+          country: seed.country,
+          currency: seed.currency,
+          sector: seed.sector,
+          industry: seed.industry,
+          logo_url: seed.logo_url,
+          web_url: seed.web_url,
+          market_cap: seed.market_cap,
+          ipo_date: seed.ipo_date,
+          raw_profile: seed.raw_profile,
+          last_profile_sync_at: seed.raw_profile ? new Date().toISOString() : null,
+          asset_type: seed.asset_type,
+          is_etf: seed.is_etf,
         },
         { onConflict: "ticker" },
       )
@@ -793,7 +807,27 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
       return { ok: false, error: symbolError?.message || "Failed to import symbol." };
     }
 
-    await enrichSymbolAndRefreshQuote(symbolRow.id, match.symbol, auth.user.id);
+    if (seed.quote) {
+      const { error: quoteError } = await supabase.from("symbol_price_snapshots").upsert({
+        symbol_id: symbolRow.id,
+        price: seed.quote.price ?? null,
+        change: seed.quote.change ?? null,
+        percent_change: seed.quote.changesPercentage ?? null,
+        high: seed.quote.dayHigh ?? null,
+        low: seed.quote.dayLow ?? null,
+        open: seed.quote.open ?? null,
+        previous_close: seed.quote.previousClose ?? null,
+        fetched_at: new Date().toISOString(),
+      });
+
+      if (quoteError) {
+        return { ok: false, error: quoteError.message };
+      }
+
+      await supabase.from("symbols").update({ last_quote_sync_at: new Date().toISOString() }).eq("id", symbolRow.id);
+    } else {
+      await enrichSymbolAndRefreshQuote(symbolRow.id, match.symbol, auth.user.id);
+    }
 
     if (watchlistId) {
       const { data: ownedWatchlist } = await supabase.from("watchlists").select("id").eq("id", watchlistId).eq("owner_id", auth.user.id).maybeSingle();
