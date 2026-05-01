@@ -1,5 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
-import { FinnhubError, getFinnhubCompanyProfile, getFinnhubQuote } from "@/lib/finnhub";
+import { FmpError, getFmpProfile, getFmpQuote } from "@/lib/fmp";
 
 async function recordAgentRun(runType: string, status: string, summary: string, ownerId?: string) {
   const supabase = createSupabaseAdminClient();
@@ -89,7 +89,7 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
     throw new Error("Supabase env vars are not configured yet.");
   }
 
-  const [profileResult, quoteResult] = await Promise.allSettled([getFinnhubCompanyProfile(ticker), getFinnhubQuote(ticker)]);
+  const [profileResult, quoteResult] = await Promise.allSettled([getFmpProfile(ticker), getFmpQuote(ticker)]);
 
   const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
   const quote = quoteResult.status === "fulfilled" ? quoteResult.value : null;
@@ -97,25 +97,25 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
   const profileError = profileResult.status === "rejected" ? profileResult.reason : null;
   const quoteError = quoteResult.status === "rejected" ? quoteResult.reason : null;
 
-  const nonFinnhubError = [profileError, quoteError].find((error) => error && !(error instanceof FinnhubError));
-  if (nonFinnhubError) {
-    throw nonFinnhubError;
+  const nonFmpError = [profileError, quoteError].find((error) => error && !(error instanceof FmpError));
+  if (nonFmpError) {
+    throw nonFmpError;
   }
 
   if (profile) {
     const { error: symbolUpdateError } = await supabase
       .from("symbols")
       .update({
-        name: profile.name || undefined,
-        exchange: profile.exchange || undefined,
+        name: profile.companyName || undefined,
+        exchange: profile.exchangeFullName || profile.exchange || undefined,
         country: profile.country || undefined,
         currency: profile.currency || undefined,
-        sector: profile.finnhubIndustry || undefined,
-        industry: profile.finnhubIndustry || undefined,
-        logo_url: profile.logo || undefined,
-        web_url: profile.weburl || undefined,
-        market_cap: profile.marketCapitalization || undefined,
-        ipo_date: profile.ipo || undefined,
+        sector: profile.sector || profile.industry || undefined,
+        industry: profile.industry || profile.sector || undefined,
+        logo_url: profile.image || undefined,
+        web_url: profile.website || undefined,
+        market_cap: profile.mktCap || undefined,
+        ipo_date: profile.ipoDate || undefined,
         raw_profile: profile,
         last_profile_sync_at: new Date().toISOString(),
       })
@@ -129,13 +129,13 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
   if (quote) {
     const { error: quoteError } = await supabase.from("symbol_price_snapshots").upsert({
       symbol_id: symbolId,
-      price: quote.c ?? null,
-      change: quote.d ?? null,
-      percent_change: quote.dp ?? null,
-      high: quote.h ?? null,
-      low: quote.l ?? null,
-      open: quote.o ?? null,
-      previous_close: quote.pc ?? null,
+      price: quote.price ?? null,
+      change: quote.change ?? null,
+      percent_change: quote.changesPercentage ?? null,
+      high: quote.dayHigh ?? null,
+      low: quote.dayLow ?? null,
+      open: quote.open ?? null,
+      previous_close: quote.previousClose ?? null,
       fetched_at: new Date().toISOString(),
     });
 
@@ -153,17 +153,17 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
     }
   }
 
-  const finnhubIssue = [profileError, quoteError].find((error) => error instanceof FinnhubError) as FinnhubError | undefined;
+  const fmpIssue = [profileError, quoteError].find((error) => error instanceof FmpError) as FmpError | undefined;
   await recordAgentRun(
     "symbol-refresh",
     "completed",
-    finnhubIssue
-      ? `Refreshed ${ticker} with partial data. Finnhub unavailable: ${finnhubIssue.message}`
+    fmpIssue
+      ? `Refreshed ${ticker} with partial data. FMP unavailable: ${fmpIssue.message}`
       : `Refreshed ${ticker} profile=${profile ? "yes" : "no"} quote=${quote ? "yes" : "no"}`,
     ownerId,
   );
 
-  return { profileLoaded: Boolean(profile), quoteLoaded: Boolean(quote), partial: Boolean(finnhubIssue) };
+  return { profileLoaded: Boolean(profile), quoteLoaded: Boolean(quote), partial: Boolean(fmpIssue) };
 }
 
 export async function refreshTrackedSymbols(ownerId?: string) {

@@ -1,5 +1,14 @@
 const FMP_BASE_URL = "https://financialmodelingprep.com";
 
+export class FmpError extends Error {
+  status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "FmpError";
+    this.status = status;
+  }
+}
+
 type FmpSymbolResult = {
   symbol: string;
   name?: string;
@@ -46,17 +55,30 @@ export function hasFmpKey() {
 async function fetchFmp<T>(path: string) {
   const apiKey = getFmpKey();
   if (!apiKey) {
-    throw new Error("FMP API key is not configured.");
+    throw new FmpError("FMP API key is not configured.");
   }
 
   const url = `${FMP_BASE_URL}${path}${path.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(apiKey)}`;
   const response = await fetch(url, { cache: "no-store" });
 
   if (!response.ok) {
-    throw new Error(`FMP request failed with status ${response.status}`);
+    throw new FmpError(`FMP request failed with status ${response.status}`, response.status);
   }
 
-  return (await response.json()) as T;
+  const text = await response.text();
+  let json: unknown;
+
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = text;
+  }
+
+  if (typeof json === "string" && json.toLowerCase().includes("premium query parameter")) {
+    throw new FmpError("FMP credentials are valid, but this FMP plan does not include the requested symbol or endpoint.", 402);
+  }
+
+  return json as T;
 }
 
 export async function searchFmpSymbols(query: string): Promise<FmpSymbolResult[]> {
