@@ -2,7 +2,6 @@ import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { RefreshMarketDataForm } from "@/components/refresh-market-data-form";
 import { RunNewsResearchForm } from "@/components/run-news-research-form";
-import { nextBuildTargets, roadmapCards } from "@/lib/mock-data";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { hasSupabaseEnv } from "@/lib/env";
@@ -60,11 +59,42 @@ export default async function DashboardPage() {
   const marketHoursState = getMarketHoursState();
 
   const stats = [
-    { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${formatAppDateTime(latestQuoteSync)}` : "Quote sync ready" },
-    { label: "Core Positions", value: positionCount, detail: "Live portfolio positions tracked" },
-    { label: "Rebalance Items", value: rebalanceRecommendationCount, detail: latestRebalanceRunSummary || "Latest rebalance recommendations are ready" },
-    { label: "Rebalance Runs", value: rebalanceRunCount, detail: latestRebalanceRunSummary || "Generate a rebalance plan to start run history" },
-    { label: "Research Insights", value: researchInsightCount, detail: latestResearchRunSummary || "Legacy research layer is still available" },
+    { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${formatAppDateTime(latestQuoteSync)}` : "Quote refresh path is live" },
+    { label: "Core Positions", value: positionCount, detail: "Portfolio holdings and market value tracking" },
+    { label: "Rebalance Items", value: rebalanceRecommendationCount, detail: latestRebalanceRunSummary || "Rebalance outputs are available once a plan is generated" },
+    { label: "Rebalance Runs", value: rebalanceRunCount, detail: latestRebalanceRunSummary || "Generate a rebalance plan to build decision history" },
+    { label: "Research Insights", value: researchInsightCount, detail: latestResearchRunSummary || "Research is now a support layer, not the core product story" },
+  ];
+
+  const progressCards = [
+    {
+      title: "What is working now",
+      body:
+        "The portfolio shell is live, symbols can be imported from FMP, positions and cash-aware portfolio views are working, and the rebalance-first framing is now the main product direction.",
+    },
+    {
+      title: "Provider migration status",
+      body:
+        "Symbol discovery and profile enrichment have moved to FMP. Quote refresh now also runs through FMP, with a fallback that derives price and daily move from profile data when quote access is blocked on the current plan.",
+    },
+    {
+      title: "Canadian listings progress",
+      body:
+        "Exact-ticker import is now more reliable for Canadian listings like TSX and NEO symbols. We confirmed that naming differs by exchange, for example NVDA.NE works while NVDA.TO does not.",
+    },
+    {
+      title: "What still feels transitional",
+      body:
+        "Quote coverage is still partly constrained by the active FMP subscription tier, and some dashboard language still needs to evolve from a research-heavy prototype into a cleaner portfolio operating product.",
+    },
+  ];
+
+  const nextBuildTargets = [
+    "Add a clearer symbol-picker experience that shows exchange and currency before import, especially for dual-listed and Canadian names.",
+    "Surface quote-source status in the UI so users can tell when a price came from direct quotes versus profile-derived fallback data.",
+    "Add symbol detail pages or richer holding views that explain current price, target price, and rebalance rationale in one place.",
+    "Tighten the dashboard and portfolio copy so the product reads as a practical rebalancing workspace, not a stock-picking lab.",
+    "Decide whether Canadian quote coverage should rely on the current FMP workaround or whether a stronger market-data provider is worth adding later.",
   ];
 
   return (
@@ -73,11 +103,11 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Mission control"
-            description="This dashboard is the operating view for the project right now: what data is live, what the rebalance engine has produced, and where the product is heading next."
+            description="This dashboard is the operating view for the project right now: what is live in production, how the provider migration is going, and what the next product moves should be."
           >
             <div className="mb-4 space-y-3">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                System status: {hasSupabaseEnv() ? "configured and running" : "not configured yet, add env vars before deployment"}. Core product state: rebalance-first workflow is live, cash-aware portfolio support is live, and research or agent layers are now supporting context instead of the main story.
+                System status: {hasSupabaseEnv() ? "configured and running" : "not configured yet, add env vars before deployment"}. Core product state: the app has moved into a rebalance-first workflow, FMP-backed symbol import is live, and Canadian ticker support is now materially better than before even though quote coverage still depends on provider plan limits.
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-zinc-300">
                 Central quote scheduler: <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours mode" : "off hours mode"}</span>
@@ -100,7 +130,7 @@ export default async function DashboardPage() {
             description="This reflects what is actually implemented today, what still feels transitional, and the best product moves from here."
           >
             <div className="grid gap-4 lg:grid-cols-2">
-              {roadmapCards.map((card) => (
+              {progressCards.map((card) => (
                 <div key={card.title} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                   <h3 className="text-base font-semibold text-zinc-100">{card.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-zinc-400">{card.body}</p>
@@ -113,7 +143,7 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Next build sequence"
-            description="The highest-leverage follow-ups now that the rebalance engine, cash-aware portfolio logic, and owner-scoped holdings flow are all working in production."
+            description="The highest-leverage follow-ups now that FMP import is live, quote refresh is aligned to the same provider, and Canadian symbol handling has improved."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
               {nextBuildTargets.map((item) => (
