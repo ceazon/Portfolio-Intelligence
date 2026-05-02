@@ -2,6 +2,16 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 const EVALUATION_WINDOWS = [90, 180, 365] as const;
 
+type SnapshotRow = {
+  id: string;
+  owner_id: string | null;
+  symbol_id: string;
+  ticker: string;
+  captured_at: string;
+  current_price: number;
+  mean_target: number;
+};
+
 function isoDaysAfter(input: string, days: number) {
   const date = new Date(input);
   date.setUTCDate(date.getUTCDate() + days);
@@ -10,6 +20,18 @@ function isoDaysAfter(input: string, days: number) {
 
 function percentReturn(fromPrice: number, toPrice: number) {
   return ((toPrice - fromPrice) / fromPrice) * 100;
+}
+
+function isSnapshotEligible(snapshot: Partial<SnapshotRow>, nowIso: string) {
+  if (!snapshot.captured_at || typeof snapshot.current_price !== "number" || typeof snapshot.mean_target !== "number") {
+    return false;
+  }
+
+  if (snapshot.current_price <= 0) {
+    return false;
+  }
+
+  return EVALUATION_WINDOWS.some((days) => isoDaysAfter(snapshot.captured_at!, days) <= nowIso);
 }
 
 export async function runPerformanceEvaluation() {
@@ -31,15 +53,10 @@ export async function runPerformanceEvaluation() {
     throw new Error(snapshotError.message);
   }
 
-  const eligibleSnapshots = (snapshots || []).filter((snapshot) => {
-    if (!snapshot.captured_at || typeof snapshot.current_price !== "number" || typeof snapshot.mean_target !== "number") {
-      return false;
-    }
-
-    return EVALUATION_WINDOWS.some((days) => isoDaysAfter(snapshot.captured_at, days) <= nowIso);
-  });
+  const eligibleSnapshots = ((snapshots || []) as Partial<SnapshotRow>[]).filter((snapshot): snapshot is SnapshotRow => isSnapshotEligible(snapshot, nowIso));
 
   let evaluationsCreated = 0;
+  let snapshotsSkippedForMissingPrice = 0;
 
   for (const snapshot of eligibleSnapshots) {
     for (const days of EVALUATION_WINDOWS) {
@@ -76,7 +93,8 @@ export async function runPerformanceEvaluation() {
         throw new Error(priceError.message);
       }
 
-      if (!priceRow || typeof priceRow.price !== "number" || snapshot.current_price <= 0) {
+      if (!priceRow || typeof priceRow.price !== "number") {
+        snapshotsSkippedForMissingPrice += 1;
         continue;
       }
 
@@ -89,19 +107,25 @@ export async function runPerformanceEvaluation() {
         Math.round((new Date(priceRow.captured_at).getTime() - new Date(snapshot.captured_at).getTime()) / (1000 * 60 * 60 * 24)),
       );
 
-      const { error: insertError } = await supabase.from("analyst_target_performance").insert({
-        owner_id: snapshot.owner_id || null,
-        target_snapshot_id: snapshot.id,
-        symbol_id: snapshot.symbol_id,
-        evaluation_window_days: days,
-        price_at_evaluation: priceRow.price,
-        actual_return_pct: Number(actualReturnPct.toFixed(3)),
-        expected_return_pct_at_capture: Number(expectedReturnPctAtCapture.toFixed(3)),
-        alpha_vs_consensus_pct: Number(alphaVsConsensusPct.toFixed(3)),
-        hit_target: hitTarget,
-        days_to_target_hit: hitTarget ? daysToTargetHit : null,
-        evaluated_at: new Date().toISOString(),
-      });
+      const { error: insertError } = await supabase.from("analyst_target_performance").upsert(
+        {
+          owner_id: snapshot.owner_id || null,
+          target_snapshot_id: snapshot.id,
+          symbol_id: snapshot.symbol_id,
+          evaluation_window_days: days,
+          price_at_evaluation: priceRow.price,
+          actual_return_pct: Number(actualReturnPct.toFixed(3)),
+          expected_return_pct_at_capture: Number(expectedReturnPctAtCapture.toFixed(3)),
+          alpha_vs_consensus_pct: Number(alphaVsConsensusPct.toFixed(3)),
+          hit_target: hitTarget,
+          days_to_target_hit: hitTarget ? daysToTargetHit : null,
+          evaluated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "target_snapshot_id,evaluation_window_days",
+          ignoreDuplicates: false,
+        },
+      );
 
       if (insertError) {
         throw new Error(insertError.message);
@@ -114,6 +138,7 @@ export async function runPerformanceEvaluation() {
   return {
     snapshotsConsidered: eligibleSnapshots.length,
     evaluationsCreated,
+    snapshotsSkippedForMissingPrice,
     windows: [...EVALUATION_WINDOWS],
   };
 }

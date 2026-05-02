@@ -29,28 +29,44 @@ export async function capturePerformanceSnapshots(input: PerformanceCaptureInput
   const marketDayKey = getMarketDayKey(now);
 
   if (input.quote && typeof input.quote.price === "number") {
+    const ownerId = input.ownerId || null;
+
     const { data: existingPriceRow, error: priceLookupError } = await supabase
       .from("symbol_price_history")
-      .select("id, captured_at")
+      .select("id")
       .eq("symbol_id", input.symbolId)
-      .gte("captured_at", `${marketDayKey}T00:00:00.000Z`)
-      .lt("captured_at", `${marketDayKey}T23:59:59.999Z`)
-      .order("captured_at", { ascending: false })
-      .limit(1)
+      .eq("market_day", marketDayKey)
+      .is("owner_id", ownerId)
       .maybeSingle();
 
     if (priceLookupError) {
       throw new Error(priceLookupError.message);
     }
 
-    if (!existingPriceRow) {
+    if (existingPriceRow?.id) {
+      const { error: updatePriceError } = await supabase
+        .from("symbol_price_history")
+        .update({
+          ticker: input.ticker,
+          source: input.quote.source,
+          price: input.quote.price,
+          currency: input.quoteCurrency,
+          captured_at: capturedAt,
+        })
+        .eq("id", existingPriceRow.id);
+
+      if (updatePriceError) {
+        throw new Error(updatePriceError.message);
+      }
+    } else {
       const { error: insertPriceError } = await supabase.from("symbol_price_history").insert({
-        owner_id: input.ownerId || null,
+        owner_id: ownerId,
         symbol_id: input.symbolId,
         ticker: input.ticker,
         source: input.quote.source,
         price: input.quote.price,
         currency: input.quoteCurrency,
+        market_day: marketDayKey,
         captured_at: capturedAt,
       });
 

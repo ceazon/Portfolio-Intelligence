@@ -22,8 +22,10 @@ create table if not exists public.symbol_price_history (
   source text not null,
   price numeric(12,4) not null,
   currency text,
+  market_day date not null,
   captured_at timestamptz not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (owner_id, symbol_id, market_day)
 );
 
 create table if not exists public.analyst_target_performance (
@@ -48,6 +50,9 @@ create index if not exists idx_analyst_target_snapshots_symbol_captured
 
 create index if not exists idx_symbol_price_history_symbol_captured
   on public.symbol_price_history(symbol_id, captured_at desc);
+
+create index if not exists idx_symbol_price_history_symbol_market_day
+  on public.symbol_price_history(symbol_id, market_day desc);
 
 create index if not exists idx_analyst_target_performance_symbol_window
   on public.analyst_target_performance(symbol_id, evaluation_window_days, evaluated_at desc);
