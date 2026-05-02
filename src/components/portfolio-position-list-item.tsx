@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { DeletePositionForm } from "@/components/delete-position-form";
 import { EditPositionInlineForm } from "@/components/edit-position-inline-form";
-import { convertMoney, formatMoney, formatQuantity, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+import { convertMoney, formatMoney, formatQuantity, type SupportedCurrency } from "@/lib/currency";
 import { formatAppDateTime } from "@/lib/time";
 
 type ResearchInsight = {

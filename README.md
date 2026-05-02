@@ -17,7 +17,8 @@ Copy `.env.example` to `.env.local` and fill in:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `FINNHUB_API_KEY`
+- `FMP_API_KEY`
+- `FINNHUB_API_KEY` (still used for consensus targets and parts of the research layer)
 - `CRON_SECRET`
 
 ## SQL migrations
@@ -58,16 +59,23 @@ Example approach with an external scheduler:
 - live Supabase connectivity check
 - create watchlists
 - create portfolios
-- import symbols from Finnhub into Supabase
-- enrich imported symbols with company profile data from Finnhub
-- fetch latest quote snapshot for imported symbols
+- import symbols from FMP into Supabase
+- enrich imported symbols with company profile data from FMP
+- fetch latest quote snapshots for imported symbols through FMP when available
+- fall back to Yahoo Finance chart data for some Canadian quotes when FMP quote access is blocked
 - attach imported symbols to watchlists
 - view enriched symbol metadata and quote context on the symbols page
 - create and manage portfolio positions
 - generate recommendation runs with historical tracking
 - central quote refresh runs with shared logging
 
+## Provider strategy right now
+- **FMP** powers symbol search/import and profile enrichment
+- **FMP quotes** are used when the plan supports the requested symbol
+- **Yahoo Finance chart fallback** is used for some Canadian symbols when FMP quote coverage is unavailable
+- **Finnhub** is still used in the research and consensus-target layer, so provider migration is partial rather than fully complete
+
 ## Next step
 - verify deployed Vercel cron execution against the protected quote route
-- add shared research schedulers and research insight writers
-- upgrade recommendation synthesis to use stored research insights
+- surface quote source transparency in the UI (FMP vs Yahoo fallback)
+- continue reducing stale provider assumptions while preserving the research and consensus pipeline

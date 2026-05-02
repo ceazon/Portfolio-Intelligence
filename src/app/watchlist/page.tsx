@@ -101,7 +101,7 @@ export default async function WatchlistPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                No symbols attached yet. Import your first ticker from Finnhub using the form on the right.
+                No symbols attached yet. Import your first ticker using the symbol panel on the right.
               </div>
             )}
           </SectionCard>
