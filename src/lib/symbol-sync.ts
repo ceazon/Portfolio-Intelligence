@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { FmpError, getFmpProfile, getFmpQuote } from "@/lib/fmp";
+import { getYahooChartQuote } from "@/lib/yahoo-finance";
 
 async function recordAgentRun(runType: string, status: string, summary: string, ownerId?: string) {
   const supabase = createSupabaseAdminClient();
@@ -92,7 +93,7 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
   const [profileResult, quoteResult] = await Promise.allSettled([getFmpProfile(ticker), getFmpQuote(ticker)]);
 
   const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
-  const quote = quoteResult.status === "fulfilled" ? quoteResult.value : null;
+  const fmpQuote = quoteResult.status === "fulfilled" ? quoteResult.value : null;
 
   const profileError = profileResult.status === "rejected" ? profileResult.reason : null;
   const quoteError = quoteResult.status === "rejected" ? quoteResult.reason : null;
@@ -101,6 +102,31 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
   if (nonFmpError) {
     throw nonFmpError;
   }
+
+  const yahooQuote = !fmpQuote ? await getYahooChartQuote(ticker) : null;
+  const quote = fmpQuote
+    ? {
+        price: fmpQuote.price ?? null,
+        change: fmpQuote.change ?? null,
+        percentChange: fmpQuote.changesPercentage ?? null,
+        high: fmpQuote.dayHigh ?? null,
+        low: fmpQuote.dayLow ?? null,
+        open: fmpQuote.open ?? null,
+        previousClose: fmpQuote.previousClose ?? null,
+        source: "fmp" as const,
+      }
+    : yahooQuote
+      ? {
+          price: yahooQuote.price,
+          change: yahooQuote.change,
+          percentChange: yahooQuote.percentChange,
+          high: null,
+          low: null,
+          open: null,
+          previousClose: yahooQuote.previousClose,
+          source: "yahoo" as const,
+        }
+      : null;
 
   if (profile) {
     const { error: symbolUpdateError } = await supabase
@@ -131,9 +157,9 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
       symbol_id: symbolId,
       price: quote.price ?? null,
       change: quote.change ?? null,
-      percent_change: quote.changesPercentage ?? null,
-      high: quote.dayHigh ?? null,
-      low: quote.dayLow ?? null,
+      percent_change: quote.percentChange ?? null,
+      high: quote.high ?? null,
+      low: quote.low ?? null,
       open: quote.open ?? null,
       previous_close: quote.previousClose ?? null,
       fetched_at: new Date().toISOString(),
@@ -158,8 +184,8 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
     "symbol-refresh",
     "completed",
     fmpIssue
-      ? `Refreshed ${ticker} with partial data. FMP unavailable: ${fmpIssue.message}`
-      : `Refreshed ${ticker} profile=${profile ? "yes" : "no"} quote=${quote ? "yes" : "no"}`,
+      ? `Refreshed ${ticker} with partial data. FMP unavailable: ${fmpIssue.message}. Yahoo fallback quote=${yahooQuote ? "yes" : "no"}`
+      : `Refreshed ${ticker} profile=${profile ? "yes" : "no"} quote=${quote ? `yes (${quote.source})` : "no"}`,
     ownerId,
   );
 
