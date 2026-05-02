@@ -8,7 +8,7 @@ import { PortfolioCard } from "@/components/portfolio-card";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { buildRebalancePlan } from "@/lib/rebalancing-engine";
-import { normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+import { convertMoney, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
 import { getLatestFxRate } from "@/lib/fx-sync";
 
 type RecommendationCashMode = "managed-cash" | "fully-invested";
@@ -40,6 +40,7 @@ type PortfolioPositionRow = {
         ticker: string;
         name: string | null;
         exchange: string | null;
+        currency: string | null;
         logo_url: string | null;
         symbol_price_snapshots:
           | {
@@ -59,6 +60,7 @@ type PortfolioPositionRow = {
         ticker: string;
         name: string | null;
         exchange: string | null;
+        currency: string | null;
         logo_url: string | null;
         symbol_price_snapshots:
           | {
@@ -125,7 +127,7 @@ export default async function PortfolioPage() {
   const { data: positions } = supabase
     ? await supabase
         .from("portfolio_positions")
-        .select("id, portfolio_id, symbol_id, quantity, average_cost, average_cost_currency, notes, portfolios!inner(id, name, owner_id), symbols(id, ticker, name, exchange, logo_url, symbol_price_snapshots(price, percent_change, fetched_at))")
+        .select("id, portfolio_id, symbol_id, quantity, average_cost, average_cost_currency, notes, portfolios!inner(id, name, owner_id), symbols(id, ticker, name, exchange, currency, logo_url, symbol_price_snapshots(price, percent_change, fetched_at))")
         .eq("portfolios.owner_id", user.id)
         .order("created_at", { ascending: false })
     : { data: [] as PortfolioPositionRow[] };
@@ -176,7 +178,8 @@ export default async function PortfolioPage() {
         const quote = firstRelation(symbol?.symbol_price_snapshots || null);
         const price = quote?.price ?? null;
         const quantity = position.quantity ?? 0;
-        const marketValue = convertUsdToDisplay((price ?? 0) * quantity, displayCurrency, usdCadRate);
+        const quoteCurrency = normalizeCurrency(symbol?.currency);
+        const marketValue = convertMoney((price ?? 0) * quantity, quoteCurrency, displayCurrency, usdCadRate) ?? 0;
         return {
           symbolId: symbol?.id || "",
           label: symbol?.ticker || "Unknown",

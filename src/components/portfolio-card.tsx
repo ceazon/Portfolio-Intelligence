@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { PortfolioPositionListItem } from "@/components/portfolio-position-list-item";
 import { PortfolioSettingsPanel } from "@/components/portfolio-settings-panel";
-import { convertMoney, formatMoney, type SupportedCurrency } from "@/lib/currency";
+import { convertMoney, formatMoney, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
 
 type RecommendationRow = {
   action: string;
@@ -27,6 +27,7 @@ type PositionRow = {
         ticker: string;
         name: string | null;
         exchange: string | null;
+        currency: string | null;
         logo_url: string | null;
         symbol_price_snapshots:
           | {
@@ -46,6 +47,7 @@ type PositionRow = {
         ticker: string;
         name: string | null;
         exchange: string | null;
+        currency: string | null;
         logo_url: string | null;
         symbol_price_snapshots:
           | {
@@ -94,8 +96,9 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
         const symbol = firstRelation(position.symbols);
         const quote = firstRelation(symbol?.symbol_price_snapshots || null);
         const quantity = position.quantity ?? 0;
+        const quoteCurrency = normalizeCurrency(symbol?.currency);
         const avgCost = convertMoney(position.average_cost ?? 0, position.average_cost_currency ?? displayCurrency, displayCurrency, usdCadRate) ?? 0;
-        const currentPrice = convertMoney(quote?.price ?? null, "USD", displayCurrency, usdCadRate) ?? 0;
+        const currentPrice = convertMoney(quote?.price ?? null, quoteCurrency, displayCurrency, usdCadRate) ?? 0;
         const bookValue = quantity * avgCost;
         const marketValue = quantity * currentPrice;
 
@@ -181,13 +184,16 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
                 const recommendation = symbol?.id ? recommendationBySymbol.get(symbol.id) : undefined;
                 const currentPrice = quote?.price ?? null;
                 const quantity = position.quantity ?? 0;
-                const positionMarketValueUsd = quantity * (currentPrice ?? 0);
-                const totalMarketValueUsd = positions.reduce((sum, innerPosition) => {
+                const quoteCurrency = normalizeCurrency(symbol?.currency);
+                const positionMarketValueDisplay = quantity * (convertMoney(currentPrice, quoteCurrency, displayCurrency, usdCadRate) ?? 0);
+                const totalMarketValueDisplay = positions.reduce((sum, innerPosition) => {
                   const innerSymbol = firstRelation(innerPosition.symbols);
                   const innerQuote = firstRelation(innerSymbol?.symbol_price_snapshots || null);
-                  return sum + (innerPosition.quantity ?? 0) * (innerQuote?.price ?? 0);
+                  const innerQuoteCurrency = normalizeCurrency(innerSymbol?.currency);
+                  const convertedInnerPrice = convertMoney(innerQuote?.price ?? null, innerQuoteCurrency, displayCurrency, usdCadRate) ?? 0;
+                  return sum + (innerPosition.quantity ?? 0) * convertedInnerPrice;
                 }, 0);
-                const currentWeight = totalMarketValueUsd > 0 ? (positionMarketValueUsd / totalMarketValueUsd) * 100 : null;
+                const currentWeight = totalMarketValueDisplay > 0 ? (positionMarketValueDisplay / totalMarketValueDisplay) * 100 : null;
 
                 return (
                   <PortfolioPositionListItem
@@ -203,6 +209,7 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
                     averageCost={position.average_cost ?? 0}
                     averageCostCurrency={position.average_cost_currency ?? displayCurrency}
                     currentPrice={currentPrice}
+                    quoteCurrency={quoteCurrency}
                     displayCurrency={displayCurrency}
                     usdCadRate={usdCadRate}
                     percentChange={quote?.percent_change ?? null}

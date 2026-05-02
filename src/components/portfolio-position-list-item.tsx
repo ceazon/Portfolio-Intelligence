@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { DeletePositionForm } from "@/components/delete-position-form";
 import { EditPositionInlineForm } from "@/components/edit-position-inline-form";
-import { convertMoney, formatMoney, formatQuantity, type SupportedCurrency } from "@/lib/currency";
+import { convertMoney, formatMoney, formatQuantity, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
 import { formatAppDateTime } from "@/lib/time";
 
 type ResearchInsight = {
@@ -37,6 +37,7 @@ type PositionListItemProps = {
   averageCost: number;
   averageCostCurrency: SupportedCurrency;
   currentPrice: number | null;
+  quoteCurrency: SupportedCurrency;
   displayCurrency: SupportedCurrency;
   usdCadRate: number;
   percentChange: number | null;
@@ -66,6 +67,7 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
     averageCost,
     averageCostCurrency,
     currentPrice,
+    quoteCurrency,
     displayCurrency,
     usdCadRate,
     percentChange,
@@ -86,7 +88,7 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
 
   const converted = useMemo(() => {
     const averageCostDisplay = convertMoney(averageCost, averageCostCurrency, displayCurrency, usdCadRate);
-    const currentPriceDisplay = convertMoney(currentPrice, "USD", displayCurrency, usdCadRate);
+    const currentPriceDisplay = convertMoney(currentPrice, quoteCurrency, displayCurrency, usdCadRate);
     const bookValue = averageCostDisplay !== null ? quantity * averageCostDisplay : null;
     const marketValue = currentPriceDisplay !== null ? quantity * currentPriceDisplay : null;
     const gainLoss = currentPriceDisplay !== null && averageCostDisplay !== null ? marketValue! - bookValue! : null;
@@ -98,7 +100,7 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
       marketValue,
       gainLoss,
     };
-  }, [averageCost, averageCostCurrency, currentPrice, displayCurrency, quantity, usdCadRate]);
+  }, [averageCost, averageCostCurrency, currentPrice, quoteCurrency, displayCurrency, quantity, usdCadRate]);
 
   const quotePositive = typeof percentChange === "number" ? percentChange >= 0 : null;
   const gainPositive = typeof converted.gainLoss === "number" ? converted.gainLoss >= 0 : null;
