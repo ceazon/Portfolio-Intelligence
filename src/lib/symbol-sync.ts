@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { FmpError, getFmpProfile, getFmpQuote } from "@/lib/fmp";
+import { capturePerformanceSnapshots } from "@/lib/performance-snapshots";
 import { getYahooChartQuote } from "@/lib/yahoo-finance";
 
 async function recordAgentRun(runType: string, status: string, summary: string, ownerId?: string) {
@@ -153,6 +154,7 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
   }
 
   if (quote) {
+    const fetchedAt = new Date().toISOString();
     const { error: quoteError } = await supabase.from("symbol_price_snapshots").upsert({
       symbol_id: symbolId,
       price: quote.price ?? null,
@@ -162,16 +164,29 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
       low: quote.low ?? null,
       open: quote.open ?? null,
       previous_close: quote.previousClose ?? null,
-      fetched_at: new Date().toISOString(),
+      fetched_at: fetchedAt,
     });
 
     if (quoteError) {
       throw new Error(quoteError.message);
     }
 
+    const quoteCurrency = profile?.currency || yahooQuote?.currency || null;
+
+    await capturePerformanceSnapshots({
+      ownerId,
+      symbolId,
+      ticker,
+      quote: {
+        price: quote.price ?? null,
+        source: quote.source,
+      },
+      quoteCurrency,
+    });
+
     const { error: syncStampError } = await supabase
       .from("symbols")
-      .update({ last_quote_sync_at: new Date().toISOString() })
+      .update({ last_quote_sync_at: fetchedAt })
       .eq("id", symbolId);
 
     if (syncStampError) {
