@@ -159,6 +159,22 @@ export function getPaceTone(status: PaceStatus) {
   return "neutral" as const;
 }
 
+export function getPaceSeverity(deltaPct: number | null, tolerancePct = 5) {
+  if (deltaPct === null || !Number.isFinite(deltaPct)) {
+    return "neutral" as const;
+  }
+
+  if (Math.abs(deltaPct) <= tolerancePct) {
+    return "good" as const;
+  }
+
+  if (Math.abs(deltaPct) <= tolerancePct * 2) {
+    return "caution" as const;
+  }
+
+  return "warning" as const;
+}
+
 export function formatPaceLabel(status: PaceStatus) {
   if (status === "ahead") return "Ahead of pace";
   if (status === "behind") return "Behind pace";

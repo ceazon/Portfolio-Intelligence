@@ -2,18 +2,25 @@
 
 import { useState } from "react";
 import { formatAppDateTime } from "@/lib/time";
-import { formatMoney, formatPaceLabel, formatPercent, getPaceTone, type PaceSummary } from "@/lib/performance-metrics";
+import { formatMoney, formatPaceLabel, formatPercent, getPaceSeverity, type PaceSummary } from "@/lib/performance-metrics";
 
-function getToneClasses(status: PaceSummary["status"]) {
-  const tone = getPaceTone(status);
-  if (tone === "positive") {
+function getSeverityClasses(deltaPct: number | null) {
+  const severity = getPaceSeverity(deltaPct);
+  if (severity === "good") {
     return {
       badge: "border-emerald-800/70 bg-emerald-950/25 text-emerald-300",
       accent: "text-emerald-300",
     };
   }
 
-  if (tone === "negative") {
+  if (severity === "caution") {
+    return {
+      badge: "border-amber-800/70 bg-amber-950/25 text-amber-300",
+      accent: "text-amber-300",
+    };
+  }
+
+  if (severity === "warning") {
     return {
       badge: "border-rose-800/70 bg-rose-950/25 text-rose-300",
       accent: "text-rose-300",
@@ -36,30 +43,26 @@ export function PerformancePacePanel({
   original: PaceSummary;
 }) {
   const [open, setOpen] = useState(false);
-  const latestTone = getToneClasses(latest.status);
-  const originalTone = getToneClasses(original.status);
+  const latestTone = getSeverityClasses(latest.deltaPct);
+  const originalTone = getSeverityClasses(original.deltaPct);
 
   const latestStartedLabel = latest.startDate ? formatAppDateTime(latest.startDate) : null;
   const originalStartedLabel = original.startDate ? formatAppDateTime(original.startDate) : null;
 
   return (
-    <div className="min-w-[220px]">
-      <div className="flex flex-col gap-2">
+    <div className="min-w-[260px]">
+      <div className="flex items-center gap-2">
         <span className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-medium ${latestTone.badge}`}>
           {formatPaceLabel(latest.status)}
         </span>
-        <div className="text-xs text-zinc-500">
-          {latest.expectedPriceToday !== null ? `Expected today ${formatMoney(latest.expectedPriceToday, currency)}` : "Latest path not available yet"}
-        </div>
-        <div className="text-xs text-zinc-500">
-          {latestStartedLabel ? `Tracking from ${latestStartedLabel}` : "Tracking start date not available yet"}
-        </div>
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="w-fit rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+          aria-label={open ? "Collapse pace detail" : "Expand pace detail"}
+          title={open ? "Collapse pace detail" : "Expand pace detail"}
         >
-          {open ? "Hide pace detail" : "Show pace detail"}
+          {open ? "−" : "+"}
         </button>
       </div>
 

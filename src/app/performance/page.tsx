@@ -366,6 +366,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         <span className={sortField === "alpha" ? "text-sky-400" : "text-zinc-600"}>{sortField === "alpha" ? "↓" : "↕"}</span>
                       </Link>
                     </th>
+                    <th className="px-3 py-3 font-medium">Expected price</th>
                     <th className="px-3 py-3 font-medium">Pace</th>
                     <th className="px-3 py-3 font-medium">Reliability</th>
                     <th className="px-3 py-3 font-medium">Evaluated snapshots</th>
@@ -401,6 +402,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         <td className={`px-3 py-4 ${getValueToneClass(row.impliedUpsidePct)}`}>{formatPercent(row.impliedUpsidePct)}</td>
                         <td className={`px-3 py-4 ${getValueToneClass(row.hitRatePct === null ? null : row.hitRatePct - 50)}`}>{formatPercent(row.hitRatePct)}</td>
                         <td className={`px-3 py-4 ${getValueToneClass(row.avgAlphaVsConsensusPct)}`}>{formatPercent(row.avgAlphaVsConsensusPct)}</td>
+                        <td className="px-3 py-4">{formatMoney(latestPace.expectedPriceToday, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
                         <td className="px-3 py-4">
                           <PerformancePacePanel
                             currency={row.currentConsensusTargetCurrency || row.currency || "USD"}
