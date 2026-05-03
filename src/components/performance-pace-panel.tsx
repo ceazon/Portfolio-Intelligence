@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatAppDateTime } from "@/lib/time";
 import { formatMoney, formatPaceLabel, formatPercent, getPaceTone, type PaceSummary } from "@/lib/performance-metrics";
 
 function getToneClasses(status: PaceSummary["status"]) {
@@ -38,6 +39,9 @@ export function PerformancePacePanel({
   const latestTone = getToneClasses(latest.status);
   const originalTone = getToneClasses(original.status);
 
+  const latestStartedLabel = latest.startDate ? formatAppDateTime(latest.startDate) : null;
+  const originalStartedLabel = original.startDate ? formatAppDateTime(original.startDate) : null;
+
   return (
     <div className="min-w-[220px]">
       <div className="flex flex-col gap-2">
@@ -46,6 +50,9 @@ export function PerformancePacePanel({
         </span>
         <div className="text-xs text-zinc-500">
           {latest.expectedPriceToday !== null ? `Expected today ${formatMoney(latest.expectedPriceToday, currency)}` : "Latest path not available yet"}
+        </div>
+        <div className="text-xs text-zinc-500">
+          {latestStartedLabel ? `Tracking from ${latestStartedLabel}` : "Tracking start date not available yet"}
         </div>
         <button
           type="button"
@@ -61,6 +68,7 @@ export function PerformancePacePanel({
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
             <p className="text-xs uppercase tracking-wide text-zinc-500">Latest target path</p>
             <p className={`mt-2 text-sm font-semibold ${latestTone.accent}`}>{formatPaceLabel(latest.status)}</p>
+            <p className="mt-1 text-xs text-zinc-500">{latestStartedLabel ? `Tracking started ${latestStartedLabel}` : "No saved tracking start yet"}</p>
             <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2">
               <div>
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
@@ -84,6 +92,7 @@ export function PerformancePacePanel({
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
             <p className="text-xs uppercase tracking-wide text-zinc-500">Original target path</p>
             <p className={`mt-2 text-sm font-semibold ${originalTone.accent}`}>{formatPaceLabel(original.status)}</p>
+            <p className="mt-1 text-xs text-zinc-500">{originalStartedLabel ? `Original snapshot from ${originalStartedLabel}` : "Original snapshot history has not accumulated yet"}</p>
             <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2">
               <div>
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
