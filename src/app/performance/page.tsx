@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
+import { PerformancePacePanel } from "@/components/performance-pace-panel";
 import { SectionCard } from "@/components/section-card";
 import { requireUser } from "@/lib/auth";
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
-import { buildPerformanceSummaryRow, formatMoney, formatPercent, getPerformanceTone, type PerformanceSummaryRow } from "@/lib/performance-metrics";
+import { buildPaceSummary, buildPerformanceSummaryRow, formatMoney, formatPercent, getPerformanceTone, type PerformanceSummaryRow } from "@/lib/performance-metrics";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
 
@@ -36,6 +37,7 @@ type SymbolRow = {
 type SnapshotRow = {
   symbol_id: string;
   mean_target: number | null;
+  current_price: number | null;
   current_price_currency: string | null;
   captured_at: string;
 };
@@ -148,7 +150,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       .select("symbol_id, evaluation_window_days, hit_target, alpha_vs_consensus_pct"),
     supabase
       .from("analyst_target_snapshots")
-      .select("symbol_id, mean_target, current_price_currency, captured_at")
+      .select("symbol_id, mean_target, current_price, current_price_currency, captured_at")
       .order("captured_at", { ascending: false }),
   ]);
 
@@ -200,12 +202,17 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
   });
 
   const latestSnapshotBySymbol = new Map<string, SnapshotRow>();
+  const earliestSnapshotBySymbol = new Map<string, SnapshotRow>();
   latestSnapshots.forEach((snapshot) => {
-    if (!snapshot.symbol_id || latestSnapshotBySymbol.has(snapshot.symbol_id)) {
+    if (!snapshot.symbol_id) {
       return;
     }
 
-    latestSnapshotBySymbol.set(snapshot.symbol_id, snapshot);
+    if (!latestSnapshotBySymbol.has(snapshot.symbol_id)) {
+      latestSnapshotBySymbol.set(snapshot.symbol_id, snapshot);
+    }
+
+    earliestSnapshotBySymbol.set(snapshot.symbol_id, snapshot);
   });
 
   const trackedSymbolsForPerformance = trackedSymbols.filter((symbol) => trackedSymbolIds.has(symbol.id));
@@ -359,28 +366,55 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         <span className={sortField === "alpha" ? "text-sky-400" : "text-zinc-600"}>{sortField === "alpha" ? "↓" : "↕"}</span>
                       </Link>
                     </th>
+                    <th className="px-3 py-3 font-medium">Pace</th>
                     <th className="px-3 py-3 font-medium">Reliability</th>
                     <th className="px-3 py-3 font-medium">Evaluated snapshots</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-900/80">
-                  {summaryRows.map((row) => (
-                    <tr key={row.symbolId} className="align-top text-zinc-300">
-                      <td className="px-3 py-4">
-                        <div className="font-semibold text-zinc-100">{row.ticker}</div>
-                        <div className="text-xs text-zinc-500">{row.exchange || row.name || "Tracked symbol"}</div>
-                      </td>
-                      <td className="px-3 py-4">{formatMoney(row.currentPrice, row.currency || "USD")}</td>
-                      <td className="px-3 py-4">{formatMoney(row.currentConsensusTarget, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
-                      <td className={`px-3 py-4 ${getValueToneClass(row.impliedUpsidePct)}`}>{formatPercent(row.impliedUpsidePct)}</td>
-                      <td className={`px-3 py-4 ${getValueToneClass(row.hitRatePct === null ? null : row.hitRatePct - 50)}`}>{formatPercent(row.hitRatePct)}</td>
-                      <td className={`px-3 py-4 ${getValueToneClass(row.avgAlphaVsConsensusPct)}`}>{formatPercent(row.avgAlphaVsConsensusPct)}</td>
-                      <td className="px-3 py-4">
-                        <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300">{row.reliabilityLabel}</span>
-                      </td>
-                      <td className="px-3 py-4">{row.evaluatedSnapshotCount} ({row.evaluationWindowDays}d basis)</td>
-                    </tr>
-                  ))}
+                  {summaryRows.map((row) => {
+                    const latestSnapshot = latestSnapshotBySymbol.get(row.symbolId);
+                    const originalSnapshot = earliestSnapshotBySymbol.get(row.symbolId);
+                    const latestPace = buildPaceSummary({
+                      startDate: latestSnapshot?.captured_at ?? row.currentPriceFetchedAt,
+                      startPrice: latestSnapshot?.current_price ?? row.currentPrice,
+                      targetPrice: row.currentConsensusTarget,
+                      currentPrice: row.currentPrice,
+                      tolerancePct: 5,
+                    });
+                    const originalPace = buildPaceSummary({
+                      startDate: originalSnapshot?.captured_at ?? null,
+                      startPrice: originalSnapshot?.current_price ?? null,
+                      targetPrice: originalSnapshot?.mean_target ?? null,
+                      currentPrice: row.currentPrice,
+                      tolerancePct: 5,
+                    });
+
+                    return (
+                      <tr key={row.symbolId} className="align-top text-zinc-300">
+                        <td className="px-3 py-4">
+                          <div className="font-semibold text-zinc-100">{row.ticker}</div>
+                          <div className="text-xs text-zinc-500">{row.exchange || row.name || "Tracked symbol"}</div>
+                        </td>
+                        <td className="px-3 py-4">{formatMoney(row.currentPrice, row.currency || "USD")}</td>
+                        <td className="px-3 py-4">{formatMoney(row.currentConsensusTarget, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
+                        <td className={`px-3 py-4 ${getValueToneClass(row.impliedUpsidePct)}`}>{formatPercent(row.impliedUpsidePct)}</td>
+                        <td className={`px-3 py-4 ${getValueToneClass(row.hitRatePct === null ? null : row.hitRatePct - 50)}`}>{formatPercent(row.hitRatePct)}</td>
+                        <td className={`px-3 py-4 ${getValueToneClass(row.avgAlphaVsConsensusPct)}`}>{formatPercent(row.avgAlphaVsConsensusPct)}</td>
+                        <td className="px-3 py-4">
+                          <PerformancePacePanel
+                            currency={row.currentConsensusTargetCurrency || row.currency || "USD"}
+                            latest={latestPace}
+                            original={originalPace}
+                          />
+                        </td>
+                        <td className="px-3 py-4">
+                          <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300">{row.reliabilityLabel}</span>
+                        </td>
+                        <td className="px-3 py-4">{row.evaluatedSnapshotCount} ({row.evaluationWindowDays}d basis)</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
