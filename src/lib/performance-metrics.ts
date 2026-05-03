@@ -3,9 +3,11 @@ type PerformanceSummaryInput = {
   ticker: string;
   name: string | null;
   exchange: string | null;
+  currency: string | null;
   currentPrice: number | null;
   currentPriceFetchedAt: string | null;
   currentConsensusTarget: number | null;
+  currentConsensusTargetCurrency: string | null;
   impliedUpsidePct: number | null;
   evaluationWindowDays: number;
   evaluatedSnapshotCount: number;
@@ -52,12 +54,20 @@ export function formatPercent(value: number | null, digits = 1) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
 }
 
+export function getPerformanceTone(value: number | null) {
+  if (value === null || !Number.isFinite(value) || value === 0) {
+    return "neutral" as const;
+  }
+
+  return value > 0 ? "positive" as const : "negative" as const;
+}
+
 export function formatMoney(value: number | null, currency = "USD") {
   if (value === null || !Number.isFinite(value)) {
     return "—";
   }
 
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency,
     maximumFractionDigits: value >= 100 ? 0 : 2,
