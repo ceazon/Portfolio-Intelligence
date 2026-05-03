@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { requireUser } from "@/lib/auth";
+import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
 import { buildPerformanceSummaryRow, formatMoney, formatPercent, getPerformanceTone, type PerformanceSummaryRow } from "@/lib/performance-metrics";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
@@ -207,14 +208,33 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     latestSnapshotBySymbol.set(snapshot.symbol_id, snapshot);
   });
 
-  const summaryRows: PerformanceSummaryRow[] = trackedSymbols
-    .filter((symbol) => trackedSymbolIds.has(symbol.id))
+  const trackedSymbolsForPerformance = trackedSymbols.filter((symbol) => trackedSymbolIds.has(symbol.id));
+  const liveConsensusEntries = await Promise.all(
+    trackedSymbolsForPerformance.map(async (symbol) => {
+      const latestSnapshot = latestSnapshotBySymbol.get(symbol.id);
+      if (latestSnapshot?.mean_target !== null && latestSnapshot?.mean_target !== undefined) {
+        return [symbol.id, null] as const;
+      }
+
+      try {
+        const consensus = await getConsensusTargetForSymbol(symbol.ticker);
+        const hasConsensusData = [consensus.meanTarget, consensus.medianTarget, consensus.highTarget, consensus.lowTarget].some((value) => typeof value === "number");
+        return [symbol.id, hasConsensusData ? consensus : null] as const;
+      } catch {
+        return [symbol.id, null] as const;
+      }
+    }),
+  );
+  const liveConsensusBySymbol = new Map(liveConsensusEntries);
+
+  const summaryRows: PerformanceSummaryRow[] = trackedSymbolsForPerformance
     .map((symbol) => {
       const latestQuote = firstRelation(symbol.symbol_price_snapshots);
       const latestSnapshot = latestSnapshotBySymbol.get(symbol.id);
+      const liveConsensus = liveConsensusBySymbol.get(symbol.id);
       const aggregate = choosePreferredAggregate(aggregateMap.get(symbol.id) || []);
       const currentPrice = latestQuote?.price ?? null;
-      const currentConsensusTarget = latestSnapshot?.mean_target ?? null;
+      const currentConsensusTarget = latestSnapshot?.mean_target ?? liveConsensus?.meanTarget ?? null;
       const impliedUpsidePct = currentPrice && currentConsensusTarget ? ((currentConsensusTarget - currentPrice) / currentPrice) * 100 : null;
 
       return buildPerformanceSummaryRow({
