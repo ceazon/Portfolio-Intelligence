@@ -70,31 +70,31 @@ export default async function DashboardPage() {
     {
       title: "What is working now",
       body:
-        "The portfolio shell is live, symbols can be imported from FMP, positions and cash-aware portfolio views are working, and the rebalance-first framing is now the main product direction.",
+        "The app now has a stable shared market-data pipeline: tracked symbols refresh through one central quote flow, portfolio and performance pages read stored snapshots, and external scheduling is live in production.",
     },
     {
-      title: "Provider migration status",
+      title: "Performance tracking status",
       body:
-        "Symbol discovery and profile enrichment have moved to FMP. Quote refresh now also runs through FMP, with a fallback that derives price and daily move from profile data when quote access is blocked on the current plan.",
+        "The performance module is wired correctly now. Quote refresh captures downstream target and price history state, and scheduled performance evaluation is running, though meaningful scored results will only accumulate once snapshots age into the 90, 180, and 365 day windows.",
     },
     {
-      title: "Canadian listings progress",
+      title: "Provider and symbol coverage",
       body:
-        "Exact-ticker import is now more reliable for Canadian listings like TSX and NEO symbols. We confirmed that naming differs by exchange, for example NVDA.NE works while NVDA.TO does not.",
+        "Symbol discovery and profile enrichment are FMP-backed, quote refresh uses the same pipeline, and Yahoo fallback still helps for some coverage gaps. Canadian exact-ticker handling is materially better than before, especially for exchange-specific naming.",
     },
     {
       title: "What still feels transitional",
       body:
-        "Quote coverage is still partly constrained by the active FMP subscription tier, and some dashboard language still needs to evolve from a research-heavy prototype into a cleaner portfolio operating product.",
+        "The product is in a stronger operational place now, but the UI still needs a cleaner narrative around quote freshness, price source confidence, and how actual-vs-projected performance matures over time.",
     },
   ];
 
   const nextBuildTargets = [
-    "Add a clearer symbol-picker experience that shows exchange and currency before import, especially for dual-listed and Canadian names.",
-    "Surface quote-source status in the UI so users can tell when a price came from direct quotes versus profile-derived fallback data.",
-    "Add symbol detail pages or richer holding views that explain current price, target price, and rebalance rationale in one place.",
-    "Tighten the dashboard and portfolio copy so the product reads as a practical rebalancing workspace, not a stock-picking lab.",
-    "Decide whether Canadian quote coverage should rely on the current FMP workaround or whether a stronger market-data provider is worth adding later.",
+    "Surface quote freshness and quote-source status more clearly across portfolio, symbols, and performance views.",
+    "Add clearer performance-module onboarding so users understand why 90/180/365 day evaluation history starts sparse and improves over time.",
+    "Build richer symbol or holding detail views that connect current price, target path, and rebalance rationale in one place.",
+    "Tighten dashboard and portfolio copy so the app reads like a disciplined portfolio operating workspace instead of a prototype research lab.",
+    "Review whether the current FMP plus Yahoo fallback mix is good enough long term or whether stronger quote coverage is worth paying for later.",
   ];
 
   return (
@@ -103,11 +103,11 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Mission control"
-            description="This dashboard is the operating view for the project right now: what is live in production, how the provider migration is going, and what the next product moves should be."
+            description="This dashboard is the operating view for the project right now: what is live in production, how the shared quote and performance pipeline is behaving, and what the next product moves should be."
           >
             <div className="mb-4 space-y-3">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                System status: {hasSupabaseEnv() ? "configured and running" : "not configured yet, add env vars before deployment"}. Core product state: the app has moved into a rebalance-first workflow, FMP-backed symbol import is live, and Canadian ticker support is now materially better than before even though quote coverage still depends on provider plan limits.
+                System status: {hasSupabaseEnv() ? "configured and running" : "not configured yet, add env vars before deployment"}. Core product state: the app now has a stable central quote refresh pipeline, external scheduling is active, performance history tables are live, and the rebalance-first workflow is in a much more production-ready place than before.
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-zinc-300">
                 Central quote scheduler: <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours mode" : "off hours mode"}</span>
@@ -127,7 +127,7 @@ export default async function DashboardPage() {
 
           <SectionCard
             title="Current state and next steps"
-            description="This reflects what is actually implemented today, what still feels transitional, and the best product moves from here."
+            description="This reflects what is actually implemented today, what has become stable recently, and the best product moves from here."
           >
             <div className="grid gap-4 lg:grid-cols-2">
               {progressCards.map((card) => (
@@ -143,7 +143,7 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <SectionCard
             title="Next build sequence"
-            description="The highest-leverage follow-ups now that FMP import is live, quote refresh is aligned to the same provider, and Canadian symbol handling has improved."
+            description="The highest-leverage follow-ups now that the shared quote pipeline, external scheduler, and performance-history foundation are all working in production."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
               {nextBuildTargets.map((item) => (
@@ -160,7 +160,7 @@ export default async function DashboardPage() {
 
           <SectionCard
             title="Latest operating signal"
-            description="Recent evidence from rebalance runs, quote refreshes, and the remaining support layers around the core portfolio workflow."
+            description="Recent evidence from rebalance runs, quote refreshes, and the now-working performance data pipeline around the core portfolio workflow."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
               {latestRebalanceRunSummary || latestResearchRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet. Generate a plan to start building operating history."}
