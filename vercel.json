@@ -1,0 +1,25 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/quotes",
+      "schedule": "*/15 13-21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/quotes",
+      "schedule": "10 22 * * 1-5"
+    },
+    {
+      "path": "/api/cron/quotes",
+      "schedule": "10 15 * * 6,0"
+    },
+    {
+      "path": "/api/cron/performance",
+      "schedule": "40 22 * * 1-5"
+    },
+    {
+      "path": "/api/cron/performance",
+      "schedule": "40 15 * * 6,0"
+    }
+  ]
+}

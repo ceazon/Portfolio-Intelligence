@@ -32,27 +32,29 @@ Apply these in order:
 - `supabase/006_research_and_recommendation_runs.sql`
 - `supabase/007_quote_scheduler_foundation.sql`
 
-## External scheduler
-Production quote refresh is designed to run independently via an external scheduler such as **cron-job.org**, while the app keeps the protected cron route.
+## Scheduled jobs
+Production refresh and performance tracking are exposed through protected cron routes and can be driven by Vercel Cron or another external scheduler.
 
-The cron route is:
+The cron routes are:
 - `/api/cron/quotes`
+- `/api/cron/performance`
 
 ### Required env
 Set this on the deployed project:
 - `CRON_SECRET`
 
-The cron route expects:
+Each cron route expects:
 - `Authorization: Bearer <CRON_SECRET>`
 
-### Recommended scheduler cadence
-For a lightweight production setup:
-- every 15 minutes during weekday market hours
-- once daily during off-hours / weekends
+### Default shipped cadence
+The checked-in `vercel.json` schedules:
+- quotes every 15 minutes during weekday market hours
+- quotes once after weekday market close
+- quotes once daily on weekends
+- performance evaluation after the weekday close refresh
+- performance evaluation once daily on weekends
 
-Example approach with an external scheduler:
-- Job 1: weekday market-hours refresh
-- Job 2: daily off-hours refresh
+This keeps the actual-vs-projected history accumulating automatically over time.
 
 ## What works now
 - dashboard shell
