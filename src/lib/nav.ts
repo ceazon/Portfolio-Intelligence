@@ -1,8 +1,8 @@
 export const primaryNav = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/portfolio", label: "Portfolio" },
-  { href: "/performance", label: "Performance" },
-  { href: "/recommendations", label: "Rebalancing" },
+  { href: "/recommendations", label: "Rebalance Plan" },
+  { href: "/performance", label: "Estimate Tracking" },
   { href: "/symbols", label: "Symbols" },
   { href: "/watchlist", label: "Watchlist" },
 ];

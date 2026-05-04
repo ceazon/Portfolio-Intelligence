@@ -38,7 +38,7 @@ export function PortfolioActionBar({ portfolios, symbols }: { portfolios: Portfo
           onClick={() => toggle("add-position")}
           className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-sky-500 hover:text-zinc-50"
         >
-          {openPanel === "add-position" ? "Hide add or update position" : "Add or update position"}
+          {openPanel === "add-position" ? "Hide add or update position" : "Add or update holding"}
         </button>
       </div>
 

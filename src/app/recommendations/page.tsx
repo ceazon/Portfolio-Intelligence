@@ -12,7 +12,7 @@ export default async function RecommendationsPage() {
     <AppShell viewer={user}>
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="space-y-6">
-          <SectionCard title="Rebalance plan" description={plan.summary}>
+          <SectionCard title="Rebalance plan" description={plan.summary || "Proposed portfolio weight changes based on current prices, analyst targets, and the latest rebalance logic."}>
             {plan.items.length > 0 ? (
               <div className="space-y-3">
                 {plan.items.map((item) => {
@@ -92,7 +92,7 @@ export default async function RecommendationsPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                No rebalance plan yet. Generate a plan to populate this view.
+                No rebalance plan yet. Generate a plan to see proposed portfolio changes and target weights here.
               </div>
             )}
           </SectionCard>

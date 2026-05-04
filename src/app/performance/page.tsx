@@ -126,8 +126,8 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
   const fallback = (
     <AppShell viewer={user}>
       <SectionCard
-        title="Performance"
-        description="Performance shows how tracked stocks actually performed after analyst consensus targets were captured. It helps separate names where consensus tends to be useful from names where it tends to be too bullish or too conservative."
+        title="Estimate tracking"
+        description="Estimate tracking shows how tracked stocks are moving relative to captured analyst targets. Over time it separates names where consensus has been useful from names where estimates tend to be too bullish or too conservative."
       >
         <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
           Supabase is not configured yet, so performance history is unavailable in this environment.
@@ -299,11 +299,11 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     <AppShell viewer={user}>
       <div className="space-y-6">
         <SectionCard
-          title="Performance"
-          description="Performance shows how tracked stocks actually performed after analyst consensus targets were captured. It helps separate names where consensus tends to be useful from names where it tends to be too bullish or too conservative."
+          title="Estimate tracking"
+          description="Estimate tracking shows how tracked stocks are moving relative to captured analyst targets. Over time it separates names where consensus has been useful from names where estimates tend to be too bullish or too conservative."
         >
           <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-            Historical reliability is currently summarized from 365-day evaluations first, then 180-day history when 365-day coverage is still thin. Early symbols will still show limited history until more snapshots accumulate.
+            Historical reliability is summarized from 365-day evaluations first, then 180-day history when 365-day coverage is still thin. Early symbols will show lighter history until more snapshots accumulate.
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className={`rounded-2xl border p-4 ${aboveCardTone.border} ${aboveCardTone.bg}`}>
@@ -330,7 +330,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
         </SectionCard>
 
         <SectionCard
-          title="Tracked stock performance"
+          title="Tracked names vs estimates"
           description={`Ranked by ${sortField === "hit-rate" ? "hit rate" : "average alpha vs consensus"}. Timestamps shown in ${getAppTimeZoneLabel()}. Latest quote update ${lastQuoteUpdate ? formatAppDateTime(lastQuoteUpdate) : "not available yet"}.`}
         >
           {summaryRows.length > 0 ? (
@@ -419,7 +419,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
             </div>
           ) : (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              No tracked symbols have reached the performance page yet. Import symbols, refresh quotes, and let snapshots accumulate.
+              No tracked symbols have reached estimate tracking yet. Import symbols, refresh quotes, and let snapshots accumulate.
             </div>
           )}
         </SectionCard>
