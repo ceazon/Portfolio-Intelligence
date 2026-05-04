@@ -335,6 +335,57 @@ export async function refreshTrackedSymbols(ownerId?: string) {
 
 // Central quote refresh is the only recurring tracked-symbol market data pipeline.
 // It updates stored quote snapshots first, then captures downstream performance state.
+export async function scrubSuspiciousSymbolSnapshots() {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase env vars are not configured yet.");
+  }
+
+  const { data: snapshots, error } = await supabase
+    .from("symbol_price_snapshots")
+    .select("symbol_id, price, change, percent_change, previous_close");
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  let scrubbedCount = 0;
+
+  for (const snapshot of snapshots || []) {
+    const normalized = getNormalizedQuoteChange({
+      price: snapshot.price ?? null,
+      change: snapshot.change ?? null,
+      percentChange: snapshot.percent_change ?? null,
+      previousClose: snapshot.previous_close ?? null,
+    });
+
+    const changeMatches = (snapshot.change ?? null) === normalized.change;
+    const pctMatches = (snapshot.percent_change ?? null) === normalized.percentChange;
+    const prevCloseMatches = (snapshot.previous_close ?? null) === normalized.previousClose;
+
+    if (changeMatches && pctMatches && prevCloseMatches) {
+      continue;
+    }
+
+    const { error: updateError } = await supabase
+      .from("symbol_price_snapshots")
+      .update({
+        change: normalized.change,
+        percent_change: normalized.percentChange,
+        previous_close: normalized.previousClose,
+      })
+      .eq("symbol_id", snapshot.symbol_id);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    scrubbedCount += 1;
+  }
+
+  return { scrubbedCount };
+}
+
 export async function runCentralQuoteRefresh(cadenceLabel = "manual") {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {

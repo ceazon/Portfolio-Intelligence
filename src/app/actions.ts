@@ -8,7 +8,7 @@ import { runSharedNewsResearch } from "@/lib/news-research";
 import { runGlobalMacroAgent } from "@/lib/macro-agent";
 import { refreshFundamentalsAndAgent } from "@/lib/fundamentals-agent";
 import { getResearchEvidenceContext } from "@/lib/recommendation-evidence";
-import { enrichSymbolAndRefreshQuote, getNormalizedQuoteChange, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
+import { enrichSymbolAndRefreshQuote, getNormalizedQuoteChange, refreshTrackedSymbols, runCentralQuoteRefresh, scrubSuspiciousSymbolSnapshots } from "@/lib/symbol-sync";
 import { runRecommendationSynthesis } from "@/lib/synthesis-agent";
 import { buildRebalancePlan, persistRebalancePlan } from "@/lib/rebalancing-engine";
 import { findImportSymbolMatch, getImportSymbolSeed, searchImportSymbols } from "@/lib/symbol-import";
@@ -652,6 +652,7 @@ export async function refreshMarketData(_prevState: FormState): Promise<FormStat
     }
 
     const [quoteOutcome, fxOutcome] = await Promise.allSettled([runCentralQuoteRefresh("manual"), refreshFxRate("USD/CAD", "manual")]);
+    const scrubOutcome = await Promise.allSettled([scrubSuspiciousSymbolSnapshots()]);
     revalidatePath("/symbols");
     revalidatePath("/dashboard");
     revalidatePath("/agent-activity");
@@ -660,17 +661,19 @@ export async function refreshMarketData(_prevState: FormState): Promise<FormStat
 
     const quoteError = quoteOutcome.status === "rejected" ? getErrorMessage(quoteOutcome.reason, "Quote refresh failed.") : "";
     const fxError = fxOutcome.status === "rejected" ? getErrorMessage(fxOutcome.reason, "FX refresh failed.") : "";
+    const scrubError = scrubOutcome[0]?.status === "rejected" ? getErrorMessage(scrubOutcome[0].reason, "Quote cleanup failed.") : "";
 
-    if (quoteError && fxError) {
-      return { ok: false, error: `${quoteError} ${fxError}`.trim() };
+    if (quoteError && fxError && scrubError) {
+      return { ok: false, error: `${quoteError} ${fxError} ${scrubError}`.trim() };
     }
 
-    if (quoteError || fxError) {
-      return { ok: true, error: quoteError || fxError };
+    if (quoteError || fxError || scrubError) {
+      return { ok: true, error: quoteError || fxError || scrubError };
     }
 
     const quoteResult = quoteOutcome.status === "fulfilled" ? quoteOutcome.value : null;
-    return { ok: true, error: quoteResult?.refreshedCount ? "" : "No symbols refreshed." };
+    const scrubResult = scrubOutcome[0]?.status === "fulfilled" ? scrubOutcome[0].value : null;
+    return { ok: true, error: !quoteResult?.refreshedCount && !scrubResult?.scrubbedCount ? "No symbols refreshed." : "" };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to refresh tracked symbols.") };
   }
