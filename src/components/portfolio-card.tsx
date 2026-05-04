@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { EditCashPositionForm } from "@/components/edit-cash-position-form";
 import { PortfolioPositionListItem } from "@/components/portfolio-position-list-item";
 import { PortfolioSettingsPanel } from "@/components/portfolio-settings-panel";
 import { convertMoney, formatMoney, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
@@ -165,16 +166,30 @@ export function PortfolioCard({ id, name, description, benchmark, displayCurrenc
 
       {expanded ? (
         <div className="mt-4 space-y-4 border-t border-zinc-800 pt-4">
-          <PortfolioSettingsPanel
-            id={id}
-            name={name}
-            description={description}
-            benchmark={benchmark}
-            displayCurrency={displayCurrency}
-            cashPosition={cashPosition}
-            cashCurrency={cashCurrency}
-            recommendationCashMode={recommendationCashMode}
-          />
+          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+            <EditCashPositionForm
+              id={id}
+              name={name}
+              description={description}
+              benchmark={benchmark}
+              displayCurrency={displayCurrency}
+              cashPosition={cashPosition}
+              cashCurrency={cashCurrency}
+              recommendationCashMode={recommendationCashMode}
+              cashInDisplay={cashInDisplay}
+            />
+
+            <PortfolioSettingsPanel
+              id={id}
+              name={name}
+              description={description}
+              benchmark={benchmark}
+              displayCurrency={displayCurrency}
+              cashPosition={cashPosition}
+              cashCurrency={cashCurrency}
+              recommendationCashMode={recommendationCashMode}
+            />
+          </div>
 
           {positions.length > 0 ? (
             <div className="space-y-3">

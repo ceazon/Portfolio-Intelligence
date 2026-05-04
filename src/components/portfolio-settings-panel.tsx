@@ -30,7 +30,7 @@ export function PortfolioSettingsPanel({
       <button type="button" onClick={() => setExpanded((value) => !value)} className="flex w-full items-center justify-between gap-3 text-left">
         <div>
           <p className="text-sm font-medium text-zinc-100">Portfolio settings</p>
-          <p className="mt-1 text-xs text-zinc-500">Name, benchmark, display currency, cash position, recommendation mode, and description</p>
+          <p className="mt-1 text-xs text-zinc-500">Name, benchmark, display currency, recommendation mode, and description</p>
         </div>
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-lg font-semibold text-zinc-300">
           {expanded ? "−" : "+"}
