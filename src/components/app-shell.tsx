@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ReactNode } from "react";
-import { primaryNav } from "@/lib/nav";
+import { legacyNav, primaryNav } from "@/lib/nav";
 import { LogoutButton } from "@/components/logout-button";
 
 type Viewer = {
@@ -42,6 +42,21 @@ export function AppShell({ children, viewer }: { children: ReactNode; viewer?: V
           ))}
         </nav>
 
+
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/20 p-3 text-xs text-zinc-500">
+          <span>Portfolio workflow is the primary product surface. Older research and agent tools remain available as secondary archives.</span>
+          <div className="flex flex-wrap gap-2">
+            {legacyNav.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="rounded-full border border-zinc-800 px-3 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-600 hover:bg-zinc-800/40 hover:text-zinc-300"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </div>
 
         <main className="flex-1">{children}</main>
       </div>

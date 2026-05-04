@@ -97,8 +97,8 @@ export default async function AgentActivityPage() {
     <AppShell viewer={user}>
       <div className="space-y-6">
         <SectionCard
-          title="Agent Activity"
-          description={`Operational runs are now split into sync jobs, recommendation runs, and research runs. All timestamps shown in ${getAppTimeZoneLabel()}.`}
+          title="Operations Log"
+          description={`Operational runs are split into sync jobs, recommendation runs, and older research support runs. All timestamps shown in ${getAppTimeZoneLabel()}.`}
         >
           <div className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
             <div className="space-y-3">

@@ -8,8 +8,8 @@ export const primaryNav = [
 ];
 
 export const legacyNav = [
-  { href: "/research", label: "Research" },
-  { href: "/fundamentals", label: "Fundamentals" },
-  { href: "/agents", label: "Agents" },
-  { href: "/agent-activity", label: "Agent Activity" },
+  { href: "/research", label: "Research Archive" },
+  { href: "/fundamentals", label: "Fundamentals Archive" },
+  { href: "/agents", label: "Agent Archive" },
+  { href: "/agent-activity", label: "Operations Log" },
 ];

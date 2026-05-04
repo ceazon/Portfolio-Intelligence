@@ -83,7 +83,7 @@ export default async function FundamentalsPage({ searchParams }: FundamentalsPag
 
   return (
     <AppShell viewer={user}>
-      <SectionCard title="Fundamentals" description="Tracked company basics and valuation context used by the Fundamentals Agent.">
+      <SectionCard title="Fundamentals Archive" description="Tracked company basics and valuation context kept as optional support for portfolio decisions.">
         <form className="mb-4 flex flex-wrap items-end gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
           <div>
             <label className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">Sort by</label>
@@ -155,7 +155,7 @@ export default async function FundamentalsPage({ searchParams }: FundamentalsPag
             })}
           </div>
         ) : (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">No fundamentals snapshots yet. Run news research to refresh tracked-symbol fundamentals and populate this view.</div>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">No fundamentals snapshots yet. This archive only fills when you intentionally run supporting research refreshes.</div>
         )}
       </SectionCard>
     </AppShell>

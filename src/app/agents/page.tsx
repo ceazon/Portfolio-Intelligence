@@ -160,8 +160,8 @@ export default async function AgentsPage() {
     <AppShell viewer={user}>
       <div className="space-y-6">
         <SectionCard
-          title="Agent Detail"
-          description="This page explains how fundamentals, news, bear case, and macro each contribute to the final recommendation in plain English first, with model detail second."
+          title="Agent Archive"
+          description="This page keeps older agent reasoning visible for auditability, but it now sits behind the main portfolio and performance workflow."
         >
           {globalOutputs.length ? (
             <div className="mb-4 rounded-2xl border border-indigo-800/60 bg-indigo-950/30 p-4">
@@ -209,7 +209,7 @@ export default async function AgentsPage() {
             </div>
           ) : (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              No structured agent outputs yet. Run news research to populate the live News Agent, Bear Case Agent, and global Macro Agent outputs here.
+              No archived agent outputs yet. Run supporting research only when you want extra context beyond the main portfolio workflow.
             </div>
           )}
         </SectionCard>

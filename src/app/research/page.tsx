@@ -78,8 +78,8 @@ export default async function ResearchPage() {
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <div className="space-y-6">
           <SectionCard
-            title="Tracked Symbol Research"
-            description={`This tab is now the shared intelligence layer for tracked symbols. It keeps the latest thesis, corroboration, and source evidence in one place. Times shown in ${getAppTimeZoneLabel()}.`}
+            title="Research Archive"
+            description={`This area is now a secondary support layer for the portfolio product. It keeps optional thesis, corroboration, and source evidence in one place. Times shown in ${getAppTimeZoneLabel()}.`}
           >
             {latestInsights.length > 0 ? (
               <div className="space-y-3">
@@ -105,14 +105,14 @@ export default async function ResearchPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                No research insights yet. Run the first shared news pass to populate the tracked symbol intelligence feed.
+                No archived research insights yet. Run a news pass only if you want extra supporting context for a portfolio decision.
               </div>
             )}
           </SectionCard>
 
           <SectionCard
             title="Recent research runs"
-            description="The latest raw research artifacts are still visible here for auditability and debugging."
+            description="Raw research artifacts remain visible here for auditability, but this is no longer the core product surface."
           >
             {insights && insights.length > 0 ? (
               <div className="space-y-3">
@@ -151,7 +151,7 @@ export default async function ResearchPage() {
         <div className="space-y-6">
           <RunNewsResearchForm />
 
-          <SectionCard title="Research status" description="Legacy support layer for tracked-symbol research while the product shifts toward rebalance-first workflows.">
+          <SectionCard title="Research status" description="Secondary support layer for portfolio decisions, not the main workflow.">
             <ul className="space-y-3 text-sm text-zinc-300">
               <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Latest symbol snapshots: {latestInsights.length}</li>
               <li className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">Corroborated by multiple feeds: {corroboratedCount}</li>
