@@ -37,10 +37,16 @@ export function PerformancePacePanel({
   currency,
   latest,
   original,
+  reliabilityLabel,
+  evaluatedSnapshotCount,
+  evaluationWindowDays,
 }: {
   currency: string;
   latest: PaceSummary;
   original: PaceSummary;
+  reliabilityLabel: string;
+  evaluatedSnapshotCount: number;
+  evaluationWindowDays: number;
 }) {
   const [open, setOpen] = useState(false);
   const latestTone = getSeverityClasses(latest.deltaPct);
@@ -50,7 +56,7 @@ export function PerformancePacePanel({
   const originalStartedLabel = original.startDate ? formatAppDateTime(original.startDate) : null;
 
   return (
-    <div className="min-w-[260px]">
+    <div className="min-w-[320px]">
       <div className="flex items-center gap-2">
         <span className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-medium ${latestTone.badge}`}>
           {formatPaceLabel(latest.status)}
@@ -67,51 +73,66 @@ export function PerformancePacePanel({
       </div>
 
       {open ? (
-        <div className="mt-3 grid gap-3">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Latest target path</p>
-            <p className={`mt-2 text-sm font-semibold ${latestTone.accent}`}>{formatPaceLabel(latest.status)}</p>
-            <p className="mt-1 text-xs text-zinc-500">{latestStartedLabel ? `Tracking started ${latestStartedLabel}` : "No saved tracking start yet"}</p>
-            <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
-                <p className="mt-1">{formatMoney(latest.expectedPriceToday, currency)}</p>
+        <div className="mt-3 space-y-3">
+          <div className="grid gap-3 xl:grid-cols-2">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Latest target path</p>
+              <p className={`mt-2 text-sm font-semibold ${latestTone.accent}`}>{formatPaceLabel(latest.status)}</p>
+              <p className="mt-1 text-xs text-zinc-500">{latestStartedLabel ? `Tracking started ${latestStartedLabel}` : "No saved tracking start yet"}</p>
+              <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
+                  <p className="mt-1">{formatMoney(latest.expectedPriceToday, currency)}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Delta vs path</p>
+                  <p className={`mt-1 ${latestTone.accent}`}>{formatMoney(latest.deltaValue, currency)} ({formatPercent(latest.deltaPct)})</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Start price</p>
+                  <p className="mt-1">{formatMoney(latest.startPrice, currency)}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Target price</p>
+                  <p className="mt-1">{formatMoney(latest.targetPrice, currency)}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Delta vs path</p>
-                <p className={`mt-1 ${latestTone.accent}`}>{formatMoney(latest.deltaValue, currency)} ({formatPercent(latest.deltaPct)})</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Start price</p>
-                <p className="mt-1">{formatMoney(latest.startPrice, currency)}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Target price</p>
-                <p className="mt-1">{formatMoney(latest.targetPrice, currency)}</p>
+            </div>
+
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Original target path</p>
+              <p className={`mt-2 text-sm font-semibold ${originalTone.accent}`}>{formatPaceLabel(original.status)}</p>
+              <p className="mt-1 text-xs text-zinc-500">{originalStartedLabel ? `Original snapshot from ${originalStartedLabel}` : "Original snapshot history has not accumulated yet"}</p>
+              <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
+                  <p className="mt-1">{formatMoney(original.expectedPriceToday, currency)}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Delta vs path</p>
+                  <p className={`mt-1 ${originalTone.accent}`}>{formatMoney(original.deltaValue, currency)} ({formatPercent(original.deltaPct)})</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Start price</p>
+                  <p className="mt-1">{formatMoney(original.startPrice, currency)}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Target price</p>
+                  <p className="mt-1">{formatMoney(original.targetPrice, currency)}</p>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Original target path</p>
-            <p className={`mt-2 text-sm font-semibold ${originalTone.accent}`}>{formatPaceLabel(original.status)}</p>
-            <p className="mt-1 text-xs text-zinc-500">{originalStartedLabel ? `Original snapshot from ${originalStartedLabel}` : "Original snapshot history has not accumulated yet"}</p>
-            <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
-                <p className="mt-1">{formatMoney(original.expectedPriceToday, currency)}</p>
+                <p className="text-xs uppercase tracking-wide text-zinc-500">Reliability</p>
+                <p className="mt-1 text-sm text-zinc-200">{reliabilityLabel}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Delta vs path</p>
-                <p className={`mt-1 ${originalTone.accent}`}>{formatMoney(original.deltaValue, currency)} ({formatPercent(original.deltaPct)})</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Start price</p>
-                <p className="mt-1">{formatMoney(original.startPrice, currency)}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Target price</p>
-                <p className="mt-1">{formatMoney(original.targetPrice, currency)}</p>
+                <p className="text-xs uppercase tracking-wide text-zinc-500">Evaluated snapshots</p>
+                <p className="mt-1 text-sm text-zinc-200">{evaluatedSnapshotCount} ({evaluationWindowDays}d basis)</p>
               </div>
             </div>
           </div>

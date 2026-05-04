@@ -368,8 +368,6 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                     </th>
                     <th className="px-3 py-3 font-medium">Expected price</th>
                     <th className="px-3 py-3 font-medium">Pace</th>
-                    <th className="px-3 py-3 font-medium">Reliability</th>
-                    <th className="px-3 py-3 font-medium">Evaluated snapshots</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-900/80">
@@ -408,12 +406,11 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                             currency={row.currentConsensusTargetCurrency || row.currency || "USD"}
                             latest={latestPace}
                             original={originalPace}
+                            reliabilityLabel={row.reliabilityLabel}
+                            evaluatedSnapshotCount={row.evaluatedSnapshotCount}
+                            evaluationWindowDays={row.evaluationWindowDays}
                           />
                         </td>
-                        <td className="px-3 py-4">
-                          <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300">{row.reliabilityLabel}</span>
-                        </td>
-                        <td className="px-3 py-4">{row.evaluatedSnapshotCount} ({row.evaluationWindowDays}d basis)</td>
                       </tr>
                     );
                   })}
