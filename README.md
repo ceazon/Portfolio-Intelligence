@@ -56,6 +56,8 @@ The checked-in `vercel.json` schedules:
 
 This keeps the actual-vs-projected history accumulating automatically over time.
 
+Note: if Vercel cron jobs do not appear after deploy, trigger a fresh production deploy from the latest `main` commit rather than only redeploying an older build.
+
 ## What works now
 - dashboard shell
 - live Supabase connectivity check
