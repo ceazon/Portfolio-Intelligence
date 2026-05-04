@@ -5,6 +5,29 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { formatAppDateTime } from "@/lib/time";
 
+function isStaleQuote(fetchedAt: string | null | undefined) {
+  if (!fetchedAt) return true;
+  const ts = new Date(fetchedAt).getTime();
+  if (!Number.isFinite(ts)) return true;
+  return Date.now() - ts > 1000 * 60 * 60 * 24;
+}
+
+function hasTrustedDailyMove(quote: { price: number | null; change: number | null; percent_change: number | null; previous_close: number | null } | null) {
+  if (!quote) return false;
+  if (typeof quote.price !== "number" || typeof quote.change !== "number" || typeof quote.percent_change !== "number" || typeof quote.previous_close !== "number") {
+    return false;
+  }
+
+  if (!Number.isFinite(quote.price) || !Number.isFinite(quote.change) || !Number.isFinite(quote.percent_change) || !Number.isFinite(quote.previous_close) || quote.previous_close <= 0) {
+    return false;
+  }
+
+  const derivedChange = quote.price - quote.previous_close;
+  const derivedPercent = (derivedChange / quote.previous_close) * 100;
+
+  return Math.abs(quote.change - derivedChange) <= Math.max(0.05, quote.previous_close * 0.005) && Math.abs(quote.percent_change - derivedPercent) <= 0.35;
+}
+
 type SymbolRow = {
   id: string;
   ticker: string;
@@ -115,7 +138,9 @@ export default async function SymbolsPage() {
                 {symbols.map((symbol) => {
                   const quote = firstRelation(symbol.symbol_price_snapshots);
                   const marketCap = formatMarketCap(symbol.market_cap);
-                  const changePositive = typeof quote?.change === "number" ? quote.change >= 0 : null;
+                  const staleQuote = isStaleQuote(quote?.fetched_at);
+                  const trustedDailyMove = hasTrustedDailyMove(quote);
+                  const changePositive = trustedDailyMove && typeof quote?.change === "number" ? quote.change >= 0 : null;
 
                   return (
                     <div key={symbol.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -157,11 +182,15 @@ export default async function SymbolsPage() {
                           {typeof quote?.price === "number" ? (
                             <>
                               <p className="text-lg font-semibold text-zinc-100">${quote.price.toFixed(2)}</p>
-                              <p className={`mt-1 text-sm ${changePositive === null ? "text-zinc-400" : changePositive ? "text-emerald-300" : "text-rose-300"}`}>
-                                {typeof quote.change === "number" ? `${changePositive ? "+" : ""}${quote.change.toFixed(2)}` : "--"}
-                                {typeof quote.percent_change === "number" ? ` (${changePositive ? "+" : ""}${quote.percent_change.toFixed(2)}%)` : ""}
+                              <p className={`mt-1 text-sm ${staleQuote || changePositive === null ? "text-zinc-400" : changePositive ? "text-emerald-300" : "text-rose-300"}`}>
+                                {staleQuote
+                                  ? "Daily move stale"
+                                  : trustedDailyMove && typeof quote.change === "number"
+                                    ? `${changePositive ? "+" : ""}${quote.change.toFixed(2)}`
+                                    : "Daily move unavailable"}
+                                {!staleQuote && trustedDailyMove && typeof quote.percent_change === "number" ? ` (${changePositive ? "+" : ""}${quote.percent_change.toFixed(2)}%)` : ""}
                               </p>
-                              <p className="mt-1 text-xs text-zinc-500">Updated {formatAppDateTime(quote.fetched_at)}</p>
+                              <p className="mt-1 text-xs text-zinc-500">Updated {formatAppDateTime(quote.fetched_at)}{staleQuote ? " · refresh needed" : !trustedDailyMove ? " · daily move hidden until next clean quote" : ""}</p>
                             </>
                           ) : (
                             <div className="text-sm text-zinc-500">No quote yet</div>

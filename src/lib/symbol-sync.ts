@@ -5,9 +5,63 @@ import { getYahooChartQuote } from "@/lib/yahoo-finance";
 
 type RefreshedQuoteState = {
   price: number | null;
+  change: number | null;
+  percentChange: number | null;
+  previousClose: number | null;
   source: "fmp" | "yahoo";
   currency: string | null;
 };
+
+function isFinitePositiveNumber(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isReasonableDailyMove(price: number | null, previousClose: number | null, percentChange: number | null, change: number | null) {
+  if (!isFinitePositiveNumber(price) || !isFinitePositiveNumber(previousClose) || typeof percentChange !== "number" || typeof change !== "number") {
+    return false;
+  }
+
+  if (!Number.isFinite(percentChange) || !Number.isFinite(change)) {
+    return false;
+  }
+
+  const derivedChange = price - previousClose;
+  const derivedPercentChange = (derivedChange / previousClose) * 100;
+  const priceGapPct = Math.abs(price - previousClose) / previousClose;
+
+  if (Math.abs(percentChange) > 25 || priceGapPct > 0.25) {
+    return false;
+  }
+
+  if (Math.abs(change - derivedChange) > Math.max(0.05, previousClose * 0.005)) {
+    return false;
+  }
+
+  if (Math.abs(percentChange - derivedPercentChange) > 0.35) {
+    return false;
+  }
+
+  return true;
+}
+
+function getNormalizedQuoteChange(input: {
+  price: number | null;
+  change: number | null;
+  percentChange: number | null;
+  previousClose: number | null;
+}) {
+  const { price, previousClose, change, percentChange } = input;
+
+  if (isReasonableDailyMove(price, previousClose, percentChange, change)) {
+    return { change, percentChange, previousClose };
+  }
+
+  return {
+    change: null,
+    percentChange: null,
+    previousClose: isFinitePositiveNumber(previousClose) ? previousClose : null,
+  };
+}
 
 async function recordAgentRun(runType: string, status: string, summary: string, ownerId?: string) {
   const supabase = createSupabaseAdminClient();
@@ -111,7 +165,7 @@ async function refreshSymbolQuoteAndProfile(symbolId: string, ticker: string) {
   }
 
   const yahooQuote = !fmpQuote ? await getYahooChartQuote(ticker) : null;
-  const quote = fmpQuote
+  const rawQuote = fmpQuote
     ? {
         price: fmpQuote.price ?? null,
         change: fmpQuote.change ?? null,
@@ -134,6 +188,24 @@ async function refreshSymbolQuoteAndProfile(symbolId: string, ticker: string) {
           source: "yahoo" as const,
         }
       : null;
+
+  const normalizedChange = rawQuote
+    ? getNormalizedQuoteChange({
+        price: rawQuote.price ?? null,
+        change: rawQuote.change ?? null,
+        percentChange: rawQuote.percentChange ?? null,
+        previousClose: rawQuote.previousClose ?? null,
+      })
+    : null;
+
+  const quote = rawQuote
+    ? {
+        ...rawQuote,
+        change: normalizedChange?.change ?? null,
+        percentChange: normalizedChange?.percentChange ?? null,
+        previousClose: normalizedChange?.previousClose ?? null,
+      }
+    : null;
 
   if (profile) {
     const { error: symbolUpdateError } = await supabase
@@ -200,6 +272,9 @@ async function refreshSymbolQuoteAndProfile(symbolId: string, ticker: string) {
     refreshedQuote: quote
       ? {
           price: quote.price ?? null,
+          change: quote.change ?? null,
+          percentChange: quote.percentChange ?? null,
+          previousClose: quote.previousClose ?? null,
           source: quote.source,
           currency: profile?.currency || yahooQuote?.currency || null,
         }
