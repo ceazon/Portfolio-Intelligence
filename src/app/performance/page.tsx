@@ -335,14 +335,14 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
         >
           {summaryRows.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-zinc-800 text-sm">
+              <table className="w-full table-auto divide-y divide-zinc-800 text-sm">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-zinc-500">
-                    <th className="px-3 py-3 font-medium">Ticker</th>
-                    <th className="px-3 py-3 font-medium">Current price</th>
-                    <th className="px-3 py-3 font-medium">Consensus target</th>
-                    <th className="px-3 py-3 font-medium">Implied upside</th>
-                    <th className="px-3 py-3 font-medium">
+                    <th className="w-[190px] px-3 py-3 font-medium">Ticker</th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap">Current price</th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap">Consensus target</th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap">Implied upside</th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap">
                       <Link
                         href={`/performance?sort=hit-rate`}
                         className={[
@@ -354,7 +354,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         <span className={sortField === "hit-rate" ? "text-sky-400" : "text-zinc-600"}>{sortField === "hit-rate" ? "↓" : "↕"}</span>
                       </Link>
                     </th>
-                    <th className="px-3 py-3 font-medium">
+                    <th className="px-3 py-3 font-medium whitespace-nowrap">
                       <Link
                         href={`/performance?sort=alpha`}
                         className={[
@@ -366,8 +366,8 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         <span className={sortField === "alpha" ? "text-sky-400" : "text-zinc-600"}>{sortField === "alpha" ? "↓" : "↕"}</span>
                       </Link>
                     </th>
-                    <th className="px-3 py-3 font-medium">Expected price</th>
-                    <th className="px-3 py-3 font-medium">Pace</th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap">Expected price</th>
+                    <th className="w-[220px] px-3 py-3 font-medium">Pace</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-900/80">
@@ -391,17 +391,17 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
 
                     return (
                       <tr key={row.symbolId} className="align-top text-zinc-300">
-                        <td className="px-3 py-4">
+                        <td className="px-3 py-4 align-top">
                           <div className="font-semibold text-zinc-100">{row.ticker}</div>
                           <div className="text-xs text-zinc-500">{row.exchange || row.name || "Tracked symbol"}</div>
                         </td>
-                        <td className="px-3 py-4">{formatMoney(row.currentPrice, row.currency || "USD")}</td>
-                        <td className="px-3 py-4">{formatMoney(row.currentConsensusTarget, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
-                        <td className={`px-3 py-4 ${getValueToneClass(row.impliedUpsidePct)}`}>{formatPercent(row.impliedUpsidePct)}</td>
-                        <td className={`px-3 py-4 ${getValueToneClass(row.hitRatePct === null ? null : row.hitRatePct - 50)}`}>{formatPercent(row.hitRatePct)}</td>
-                        <td className={`px-3 py-4 ${getValueToneClass(row.avgAlphaVsConsensusPct)}`}>{formatPercent(row.avgAlphaVsConsensusPct)}</td>
-                        <td className="px-3 py-4">{formatMoney(latestPace.expectedPriceToday, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
-                        <td className="px-3 py-4">
+                        <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(row.currentPrice, row.currency || "USD")}</td>
+                        <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(row.currentConsensusTarget, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
+                        <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.impliedUpsidePct)}`}>{formatPercent(row.impliedUpsidePct)}</td>
+                        <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.hitRatePct === null ? null : row.hitRatePct - 50)}`}>{formatPercent(row.hitRatePct)}</td>
+                        <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.avgAlphaVsConsensusPct)}`}>{formatPercent(row.avgAlphaVsConsensusPct)}</td>
+                        <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(latestPace.expectedPriceToday, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
+                        <td className="px-3 py-4 align-top">
                           <PerformancePacePanel
                             currency={row.currentConsensusTargetCurrency || row.currency || "USD"}
                             latest={latestPace}

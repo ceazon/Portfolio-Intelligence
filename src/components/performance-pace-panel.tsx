@@ -56,15 +56,15 @@ export function PerformancePacePanel({
   const originalStartedLabel = original.startDate ? formatAppDateTime(original.startDate) : null;
 
   return (
-    <div className="min-w-[320px]">
-      <div className="flex items-center gap-2">
-        <span className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-medium ${latestTone.badge}`}>
+    <div className="w-fit min-w-0">
+      <div className="inline-flex items-center gap-2">
+        <span className={`inline-flex w-fit items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${latestTone.badge}`}>
           {formatPaceLabel(latest.status)}
         </span>
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
           aria-label={open ? "Collapse pace detail" : "Expand pace detail"}
           title={open ? "Collapse pace detail" : "Expand pace detail"}
         >
@@ -73,13 +73,13 @@ export function PerformancePacePanel({
       </div>
 
       {open ? (
-        <div className="mt-3 space-y-3">
-          <div className="grid gap-3 xl:grid-cols-2">
+        <div className="mt-3 w-full max-w-[860px] space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-3">
+          <div className="grid gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
               <p className="text-xs uppercase tracking-wide text-zinc-500">Latest target path</p>
               <p className={`mt-2 text-sm font-semibold ${latestTone.accent}`}>{formatPaceLabel(latest.status)}</p>
               <p className="mt-1 text-xs text-zinc-500">{latestStartedLabel ? `Tracking started ${latestStartedLabel}` : "No saved tracking start yet"}</p>
-              <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2">
+              <div className="mt-3 grid gap-x-4 gap-y-2 text-sm text-zinc-300 sm:grid-cols-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
                   <p className="mt-1">{formatMoney(latest.expectedPriceToday, currency)}</p>
@@ -103,7 +103,7 @@ export function PerformancePacePanel({
               <p className="text-xs uppercase tracking-wide text-zinc-500">Original target path</p>
               <p className={`mt-2 text-sm font-semibold ${originalTone.accent}`}>{formatPaceLabel(original.status)}</p>
               <p className="mt-1 text-xs text-zinc-500">{originalStartedLabel ? `Original snapshot from ${originalStartedLabel}` : "Original snapshot history has not accumulated yet"}</p>
-              <div className="mt-3 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2">
+              <div className="mt-3 grid gap-x-4 gap-y-2 text-sm text-zinc-300 sm:grid-cols-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
                   <p className="mt-1">{formatMoney(original.expectedPriceToday, currency)}</p>
