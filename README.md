@@ -58,6 +58,13 @@ This keeps the actual-vs-projected history accumulating automatically over time.
 
 Note: if Vercel cron jobs do not appear after deploy, trigger a fresh production deploy from the latest `main` commit rather than only redeploying an older build.
 
+## Market data architecture
+- `runCentralQuoteRefresh()` is the single recurring tracked-symbol quote refresh pipeline.
+- Scheduled cron runs and the manual dashboard refresh both use that same central pipeline.
+- UI pages read stored snapshot state from Supabase, they do not fetch live quotes directly on page load.
+- Performance snapshot capture happens downstream of quote refresh, so the performance module does not run its own quote polling loop.
+- Symbol import is the only normal one-off exception, it may bootstrap a newly imported symbol with an immediate quote/profile refresh.
+
 ## What works now
 - dashboard shell
 - live Supabase connectivity check

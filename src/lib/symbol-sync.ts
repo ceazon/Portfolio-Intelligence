@@ -3,6 +3,12 @@ import { FmpError, getFmpProfile, getFmpQuote } from "@/lib/fmp";
 import { capturePerformanceSnapshots } from "@/lib/performance-snapshots";
 import { getYahooChartQuote } from "@/lib/yahoo-finance";
 
+type RefreshedQuoteState = {
+  price: number | null;
+  source: "fmp" | "yahoo";
+  currency: string | null;
+};
+
 async function recordAgentRun(runType: string, status: string, summary: string, ownerId?: string) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -85,7 +91,7 @@ async function getTrackedSymbolRows(ownerId?: string) {
   return symbols || [];
 }
 
-export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: string, ownerId?: string) {
+async function refreshSymbolQuoteAndProfile(symbolId: string, ticker: string) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
     throw new Error("Supabase env vars are not configured yet.");
@@ -173,17 +179,6 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
 
     const quoteCurrency = profile?.currency || yahooQuote?.currency || null;
 
-    await capturePerformanceSnapshots({
-      ownerId,
-      symbolId,
-      ticker,
-      quote: {
-        price: quote.price ?? null,
-        source: quote.source,
-      },
-      quoteCurrency,
-    });
-
     const { error: syncStampError } = await supabase
       .from("symbols")
       .update({ last_quote_sync_at: fetchedAt })
@@ -195,16 +190,53 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
   }
 
   const fmpIssue = [profileError, quoteError].find((error) => error instanceof FmpError) as FmpError | undefined;
+
+  return {
+    profileLoaded: Boolean(profile),
+    quoteLoaded: Boolean(quote),
+    partial: Boolean(fmpIssue),
+    fmpIssue,
+    yahooFallbackUsed: Boolean(yahooQuote),
+    refreshedQuote: quote
+      ? {
+          price: quote.price ?? null,
+          source: quote.source,
+          currency: profile?.currency || yahooQuote?.currency || null,
+        }
+      : null satisfies RefreshedQuoteState | null,
+  };
+}
+
+export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: string, ownerId?: string) {
+  const refreshResult = await refreshSymbolQuoteAndProfile(symbolId, ticker);
+
+  if (refreshResult.refreshedQuote) {
+    await capturePerformanceSnapshots({
+      ownerId,
+      symbolId,
+      ticker,
+      quote: {
+        price: refreshResult.refreshedQuote.price,
+        source: refreshResult.refreshedQuote.source,
+      },
+      quoteCurrency: refreshResult.refreshedQuote.currency,
+    });
+  }
+
   await recordAgentRun(
     "symbol-refresh",
     "completed",
-    fmpIssue
-      ? `Refreshed ${ticker} with partial data. FMP unavailable: ${fmpIssue.message}. Yahoo fallback quote=${yahooQuote ? "yes" : "no"}`
-      : `Refreshed ${ticker} profile=${profile ? "yes" : "no"} quote=${quote ? `yes (${quote.source})` : "no"}`,
+    refreshResult.fmpIssue
+      ? `Refreshed ${ticker} with partial data. FMP unavailable: ${refreshResult.fmpIssue.message}. Yahoo fallback quote=${refreshResult.yahooFallbackUsed ? "yes" : "no"}`
+      : `Refreshed ${ticker} profile=${refreshResult.profileLoaded ? "yes" : "no"} quote=${refreshResult.quoteLoaded ? `yes (${refreshResult.refreshedQuote?.source || "unknown"})` : "no"}`,
     ownerId,
   );
 
-  return { profileLoaded: Boolean(profile), quoteLoaded: Boolean(quote), partial: Boolean(fmpIssue) };
+  return {
+    profileLoaded: refreshResult.profileLoaded,
+    quoteLoaded: refreshResult.quoteLoaded,
+    partial: refreshResult.partial,
+  };
 }
 
 export async function refreshTrackedSymbols(ownerId?: string) {
@@ -224,6 +256,8 @@ export async function refreshTrackedSymbols(ownerId?: string) {
   return { refreshedCount, consideredCount: symbols.length };
 }
 
+// Central quote refresh is the only recurring tracked-symbol market data pipeline.
+// It updates stored quote snapshots first, then captures downstream performance state.
 export async function runCentralQuoteRefresh(cadenceLabel = "manual") {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
