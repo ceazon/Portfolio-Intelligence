@@ -56,7 +56,7 @@ export function PerformancePacePanel({
   const originalStartedLabel = original.startDate ? formatAppDateTime(original.startDate) : null;
 
   return (
-    <div className="w-fit min-w-0">
+    <div className="relative w-fit min-w-0">
       <div className="inline-flex items-center gap-2">
         <span className={`inline-flex w-fit items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium ${latestTone.badge}`}>
           {formatPaceLabel(latest.status)}
@@ -73,8 +73,8 @@ export function PerformancePacePanel({
       </div>
 
       {open ? (
-        <div className="mt-3 w-full max-w-[860px] space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-3">
-          <div className="grid gap-3 lg:grid-cols-2">
+        <div className="absolute right-0 top-full z-30 mt-3 w-[min(92vw,720px)] min-w-[640px] space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-sm">
+          <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
               <p className="text-xs uppercase tracking-wide text-zinc-500">Latest target path</p>
               <p className={`mt-2 text-sm font-semibold ${latestTone.accent}`}>{formatPaceLabel(latest.status)}</p>
@@ -82,19 +82,19 @@ export function PerformancePacePanel({
               <div className="mt-3 grid gap-x-4 gap-y-2 text-sm text-zinc-300 sm:grid-cols-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
-                  <p className="mt-1">{formatMoney(latest.expectedPriceToday, currency)}</p>
+                  <p className="mt-1 whitespace-nowrap">{formatMoney(latest.expectedPriceToday, currency)}</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Delta vs path</p>
-                  <p className={`mt-1 ${latestTone.accent}`}>{formatMoney(latest.deltaValue, currency)} ({formatPercent(latest.deltaPct)})</p>
+                  <p className={`mt-1 whitespace-nowrap ${latestTone.accent}`}>{formatMoney(latest.deltaValue, currency)} ({formatPercent(latest.deltaPct)})</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Start price</p>
-                  <p className="mt-1">{formatMoney(latest.startPrice, currency)}</p>
+                  <p className="mt-1 whitespace-nowrap">{formatMoney(latest.startPrice, currency)}</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Target price</p>
-                  <p className="mt-1">{formatMoney(latest.targetPrice, currency)}</p>
+                  <p className="mt-1 whitespace-nowrap">{formatMoney(latest.targetPrice, currency)}</p>
                 </div>
               </div>
             </div>
@@ -106,19 +106,19 @@ export function PerformancePacePanel({
               <div className="mt-3 grid gap-x-4 gap-y-2 text-sm text-zinc-300 sm:grid-cols-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Expected today</p>
-                  <p className="mt-1">{formatMoney(original.expectedPriceToday, currency)}</p>
+                  <p className="mt-1 whitespace-nowrap">{formatMoney(original.expectedPriceToday, currency)}</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Delta vs path</p>
-                  <p className={`mt-1 ${originalTone.accent}`}>{formatMoney(original.deltaValue, currency)} ({formatPercent(original.deltaPct)})</p>
+                  <p className={`mt-1 whitespace-nowrap ${originalTone.accent}`}>{formatMoney(original.deltaValue, currency)} ({formatPercent(original.deltaPct)})</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Start price</p>
-                  <p className="mt-1">{formatMoney(original.startPrice, currency)}</p>
+                  <p className="mt-1 whitespace-nowrap">{formatMoney(original.startPrice, currency)}</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-zinc-500">Target price</p>
-                  <p className="mt-1">{formatMoney(original.targetPrice, currency)}</p>
+                  <p className="mt-1 whitespace-nowrap">{formatMoney(original.targetPrice, currency)}</p>
                 </div>
               </div>
             </div>
