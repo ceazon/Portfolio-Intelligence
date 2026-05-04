@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ReactNode } from "react";
-import { legacyNav, primaryNav } from "@/lib/nav";
+import { primaryNav } from "@/lib/nav";
 import { LogoutButton } from "@/components/logout-button";
 
 type Viewer = {
@@ -21,7 +21,7 @@ export function AppShell({ children, viewer }: { children: ReactNode; viewer?: V
           </div>
           <div className="flex flex-col items-start gap-3 lg:items-end">
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
-              Phase 1 in progress, app shell + Supabase foundation
+              Portfolio tracking + rebalance workflow live
             </div>
             <div className="flex items-center gap-3 text-sm text-zinc-400">
               {viewer?.email ? <span>{viewer.email}</span> : null}
@@ -42,20 +42,6 @@ export function AppShell({ children, viewer }: { children: ReactNode; viewer?: V
           ))}
         </nav>
 
-        <div className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/30 p-3">
-          <p className="text-xs uppercase tracking-wide text-zinc-500">Legacy research tools</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {legacyNav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-full border border-zinc-800 px-3 py-1.5 text-xs text-zinc-500 transition hover:border-zinc-600 hover:bg-zinc-800/40 hover:text-zinc-300"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
 
         <main className="flex-1">{children}</main>
       </div>

@@ -1,7 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { RefreshMarketDataForm } from "@/components/refresh-market-data-form";
-import { RunNewsResearchForm } from "@/components/run-news-research-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { hasSupabaseEnv } from "@/lib/env";
@@ -19,8 +18,6 @@ export default async function DashboardPage() {
   let latestRebalanceRunSummary: string | null = null;
   let latestQuoteSync: string | null = null;
   let latestCentralQuoteRunSummary: string | null = null;
-  let researchInsightCount = "0";
-  let latestResearchRunSummary: string | null = null;
 
   if (supabase) {
     const [
@@ -31,8 +28,6 @@ export default async function DashboardPage() {
       latestRebalanceRunResult,
       latestQuoteSyncResult,
       latestCentralQuoteRunResult,
-      researchInsightCountResult,
-      latestResearchRunResult,
     ] = await Promise.all([
       supabase.from("symbols").select("id", { count: "exact", head: true }),
       supabase.from("portfolio_positions").select("id, portfolios!inner(owner_id)", { count: "exact", head: true }).eq("portfolios.owner_id", user.id),
@@ -41,8 +36,6 @@ export default async function DashboardPage() {
       supabase.from("rebalancing_runs").select("summary, completed_at").eq("owner_id", user.id).order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("symbols").select("last_quote_sync_at").order("last_quote_sync_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("quote_refresh_runs").select("summary, completed_at").order("completed_at", { ascending: false }).limit(1).maybeSingle(),
-      supabase.from("research_insights").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
-      supabase.from("research_runs").select("summary, completed_at").eq("owner_id", user.id).order("completed_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     symbolCount = String(symbolsCountResult.count ?? 0);
@@ -52,8 +45,6 @@ export default async function DashboardPage() {
     latestRebalanceRunSummary = latestRebalanceRunResult.data?.summary || null;
     latestQuoteSync = latestQuoteSyncResult.data?.last_quote_sync_at || null;
     latestCentralQuoteRunSummary = latestCentralQuoteRunResult.data?.summary || null;
-    researchInsightCount = String(researchInsightCountResult.count ?? 0);
-    latestResearchRunSummary = latestResearchRunResult.data?.summary || null;
   }
 
   const marketHoursState = getMarketHoursState();
@@ -63,7 +54,6 @@ export default async function DashboardPage() {
     { label: "Core Positions", value: positionCount, detail: "Portfolio holdings and market value tracking" },
     { label: "Rebalance Items", value: rebalanceRecommendationCount, detail: latestRebalanceRunSummary || "Rebalance outputs are available once a plan is generated" },
     { label: "Rebalance Runs", value: rebalanceRunCount, detail: latestRebalanceRunSummary || "Generate a rebalance plan to build decision history" },
-    { label: "Research Insights", value: researchInsightCount, detail: latestResearchRunSummary || "Research is now a support layer, not the core product story" },
   ];
 
   const progressCards = [
@@ -85,7 +75,7 @@ export default async function DashboardPage() {
     {
       title: "What still feels transitional",
       body:
-        "The product is in a stronger operational place now, but the UI still needs a cleaner narrative around quote freshness, price source confidence, and how actual-vs-projected performance matures over time.",
+        "The product is in a stronger operational place now, but the UI still needs to do a better job explaining quote freshness, price source confidence, and how actual-vs-projected performance matures over time.",
     },
   ];
 
@@ -93,8 +83,8 @@ export default async function DashboardPage() {
     "Surface quote freshness and quote-source status more clearly across portfolio, symbols, and performance views.",
     "Add clearer performance-module onboarding so users understand why 90/180/365 day evaluation history starts sparse and improves over time.",
     "Build richer symbol or holding detail views that connect current price, target path, and rebalance rationale in one place.",
-    "Tighten dashboard and portfolio copy so the app reads like a disciplined portfolio operating workspace instead of a prototype research lab.",
-    "Review whether the current FMP plus Yahoo fallback mix is good enough long term or whether stronger quote coverage is worth paying for later.",
+    "Tighten the portfolio and performance pages so the product feels like a disciplined portfolio operating workspace.",
+    "Decide whether watchlists should stay as a lightweight intake surface or be folded more tightly into the core portfolio workflow.",
   ];
 
   return (
@@ -156,14 +146,12 @@ export default async function DashboardPage() {
 
           <RefreshMarketDataForm />
 
-          <RunNewsResearchForm />
-
           <SectionCard
             title="Latest operating signal"
             description="Recent evidence from rebalance runs, quote refreshes, and the now-working performance data pipeline around the core portfolio workflow."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
-              {latestRebalanceRunSummary || latestResearchRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet. Generate a plan to start building operating history."}
+              {latestRebalanceRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet. Generate a plan to start building operating history."}
             </div>
           </SectionCard>
         </div>
