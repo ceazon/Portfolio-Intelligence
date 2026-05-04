@@ -8,7 +8,7 @@ import { runSharedNewsResearch } from "@/lib/news-research";
 import { runGlobalMacroAgent } from "@/lib/macro-agent";
 import { refreshFundamentalsAndAgent } from "@/lib/fundamentals-agent";
 import { getResearchEvidenceContext } from "@/lib/recommendation-evidence";
-import { enrichSymbolAndRefreshQuote, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
+import { enrichSymbolAndRefreshQuote, getNormalizedQuoteChange, refreshTrackedSymbols, runCentralQuoteRefresh } from "@/lib/symbol-sync";
 import { runRecommendationSynthesis } from "@/lib/synthesis-agent";
 import { buildRebalancePlan, persistRebalancePlan } from "@/lib/rebalancing-engine";
 import { findImportSymbolMatch, getImportSymbolSeed, searchImportSymbols } from "@/lib/symbol-import";
@@ -806,15 +806,22 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
     }
 
     if (seed.quote) {
+      const normalizedQuote = getNormalizedQuoteChange({
+        price: seed.quote.price ?? null,
+        change: seed.quote.change ?? null,
+        percentChange: seed.quote.changesPercentage ?? null,
+        previousClose: seed.quote.previousClose ?? null,
+      });
+
       const { error: quoteError } = await supabase.from("symbol_price_snapshots").upsert({
         symbol_id: symbolRow.id,
         price: seed.quote.price ?? null,
-        change: seed.quote.change ?? null,
-        percent_change: seed.quote.changesPercentage ?? null,
+        change: normalizedQuote.change,
+        percent_change: normalizedQuote.percentChange,
         high: seed.quote.dayHigh ?? null,
         low: seed.quote.dayLow ?? null,
         open: seed.quote.open ?? null,
-        previous_close: seed.quote.previousClose ?? null,
+        previous_close: normalizedQuote.previousClose,
         fetched_at: new Date().toISOString(),
       });
 

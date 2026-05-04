@@ -12,6 +12,13 @@ type RefreshedQuoteState = {
   currency: string | null;
 };
 
+type QuoteNormalizationInput = {
+  price: number | null;
+  change: number | null;
+  percentChange: number | null;
+  previousClose: number | null;
+};
+
 function isFinitePositiveNumber(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
@@ -44,12 +51,7 @@ function isReasonableDailyMove(price: number | null, previousClose: number | nul
   return true;
 }
 
-function getNormalizedQuoteChange(input: {
-  price: number | null;
-  change: number | null;
-  percentChange: number | null;
-  previousClose: number | null;
-}) {
+export function getNormalizedQuoteChange(input: QuoteNormalizationInput) {
   const { price, previousClose, change, percentChange } = input;
 
   if (isReasonableDailyMove(price, previousClose, percentChange, change)) {
