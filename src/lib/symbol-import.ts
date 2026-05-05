@@ -1,4 +1,4 @@
-import { getFmpProfile, getFmpQuote, searchFmpSymbols } from "@/lib/fmp";
+import { FmpError, getFmpProfile, getFmpQuote, searchFmpSymbols } from "@/lib/fmp";
 
 type ImportSymbolResult = {
   description: string;
@@ -33,19 +33,34 @@ function classifyAssetType(type: string | undefined, exchange: string | undefine
 }
 
 export async function searchImportSymbols(query: string): Promise<ImportSymbolResult[]> {
-  const results = await searchFmpSymbols(query);
+  try {
+    const results = await searchFmpSymbols(query);
 
-  return results.map((item) => ({
-    description: item.name || item.symbol,
-    displaySymbol: item.symbol,
-    symbol: item.symbol,
-    type: item.type || item.exchangeFullName || item.exchange || "stock",
-  }));
+    return results.map((item) => ({
+      description: item.name || item.symbol,
+      displaySymbol: item.symbol,
+      symbol: item.symbol,
+      type: item.type || item.exchangeFullName || item.exchange || "stock",
+    }));
+  } catch (error) {
+    if (error instanceof FmpError && error.status === 429) {
+      return [];
+    }
+
+    throw error;
+  }
 }
 
 export async function getImportSymbolSeed(symbol: string) {
   const normalizedSymbol = normalizeImportSymbol(symbol);
   const [profile, quote] = await Promise.allSettled([getFmpProfile(normalizedSymbol), getFmpQuote(normalizedSymbol)]);
+
+  const profileFailure = profile.status === "rejected" ? profile.reason : null;
+  const quoteFailure = quote.status === "rejected" ? quote.reason : null;
+
+  if (profileFailure instanceof FmpError && profileFailure.status === 429 && quoteFailure instanceof FmpError && quoteFailure.status === 429) {
+    throw new FmpError("FMP is rate-limiting symbol imports right now. Wait a minute and try again, or paste an exact ticker later.", 429);
+  }
 
   const profileValue = profile.status === "fulfilled" ? profile.value : null;
   const quoteValue = quote.status === "fulfilled" ? quote.value : null;

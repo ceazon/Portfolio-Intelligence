@@ -13,6 +13,7 @@ import { runRecommendationSynthesis } from "@/lib/synthesis-agent";
 import { buildRebalancePlan, persistRebalancePlan } from "@/lib/rebalancing-engine";
 import { capturePerformanceSnapshots } from "@/lib/performance-snapshots";
 import { findImportSymbolMatch, getImportSymbolSeed, searchImportSymbols } from "@/lib/symbol-import";
+import { FmpError } from "@/lib/fmp";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
@@ -938,6 +939,10 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
     revalidatePath("/performance");
     return { ok: true, error: "" };
   } catch (error) {
+    if (error instanceof FmpError && error.status === 429) {
+      return { ok: false, error: "Market data import is temporarily rate-limited. Please wait a minute and try again." };
+    }
+
     return { ok: false, error: getErrorMessage(error, "Failed to import symbol.") };
   }
 }
