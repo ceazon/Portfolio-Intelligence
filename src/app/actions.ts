@@ -252,6 +252,74 @@ export async function deletePortfolioPosition(_prevState: FormState, formData: F
   }
 }
 
+export async function deleteSymbol(_prevState: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return { ok: false, error: "Supabase env vars are not configured yet." };
+    }
+
+    const symbolId = String(formData.get("symbolId") || "").trim();
+    if (!symbolId) {
+      return { ok: false, error: "Symbol is required." };
+    }
+
+    const [{ data: ownedWatchlistItem }, { data: ownedPortfolioPosition }] = await Promise.all([
+      supabase
+        .from("watchlist_items")
+        .select("symbol_id, watchlists!inner(owner_id)")
+        .eq("symbol_id", symbolId)
+        .eq("watchlists.owner_id", auth.user.id)
+        .maybeSingle(),
+      supabase
+        .from("portfolio_positions")
+        .select("symbol_id, portfolios!inner(owner_id)")
+        .eq("symbol_id", symbolId)
+        .eq("portfolios.owner_id", auth.user.id)
+        .maybeSingle(),
+    ]);
+
+    if (!ownedWatchlistItem && !ownedPortfolioPosition) {
+      return { ok: false, error: "This symbol is not attached to one of your portfolios or watchlists." };
+    }
+
+    const cleanupSteps = [
+      () => supabase.from("watchlist_items").delete().eq("symbol_id", symbolId),
+      () => supabase.from("portfolio_positions").delete().eq("symbol_id", symbolId),
+      () => supabase.from("recommendations").delete().eq("symbol_id", symbolId).eq("owner_id", auth.user.id),
+      () => supabase.from("rebalance_recommendations").delete().eq("symbol_id", symbolId),
+      () => supabase.from("analyst_target_snapshots").delete().eq("symbol_id", symbolId),
+      () => supabase.from("symbol_price_history").delete().eq("symbol_id", symbolId),
+      () => supabase.from("symbol_fundamentals").delete().eq("symbol_id", symbolId),
+      () => supabase.from("agent_outputs").delete().eq("symbol_id", symbolId),
+      () => supabase.from("symbol_price_snapshots").delete().eq("symbol_id", symbolId),
+      () => supabase.from("symbols").delete().eq("id", symbolId),
+    ];
+
+    for (const step of cleanupSteps) {
+      const { error } = await step();
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+    }
+
+    revalidatePath("/symbols");
+    revalidatePath("/watchlist");
+    revalidatePath("/portfolio");
+    revalidatePath("/dashboard");
+    revalidatePath("/performance");
+    revalidatePath("/recommendations");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to remove symbol.") };
+  }
+}
+
 export async function upsertPortfolioPosition(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
     const auth = await requireActionUser();

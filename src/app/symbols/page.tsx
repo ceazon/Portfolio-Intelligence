@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { SymbolImportPanel } from "@/components/symbol-import-panel";
+import { DeleteSymbolForm } from "@/components/delete-symbol-form";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { requireUser } from "@/lib/auth";
 import { formatAppDateTime } from "@/lib/time";
@@ -197,6 +198,7 @@ export default async function SymbolsPage() {
                           )}
                         </div>
                       </div>
+                      <DeleteSymbolForm symbolId={symbol.id} />
                     </div>
                   );
                 })}
