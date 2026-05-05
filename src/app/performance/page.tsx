@@ -39,6 +39,12 @@ type PortfolioOptionRow = {
   name: string;
 };
 
+type PortfolioPositionFilterRow = {
+  portfolio_id: string | null;
+  symbol_id: string | null;
+  portfolios: { id: string; name: string; owner_id?: string } | { id: string; name: string; owner_id?: string }[] | null;
+};
+
 type SnapshotRow = {
   symbol_id: string;
   mean_target: number | null;
@@ -146,7 +152,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     return fallback;
   }
 
-  const [trackedSymbolsResult, performanceResult, latestSnapshotsResult, portfoliosResult, portfolioPositionsResult] = await Promise.all([
+  const [trackedSymbolsResult, performanceResult, latestSnapshotsResult, portfolioPositionsResult] = await Promise.all([
     supabase
       .from("symbols")
       .select("id, ticker, name, exchange, currency, symbol_price_snapshots(price, fetched_at)")
@@ -158,21 +164,30 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       .from("analyst_target_snapshots")
       .select("symbol_id, mean_target, current_price, current_price_currency, captured_at")
       .order("captured_at", { ascending: false }),
-    supabase.from("portfolios").select("id, name").eq("owner_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("portfolio_positions").select("symbol_id, portfolio_id, portfolios!inner(owner_id)").eq("portfolios.owner_id", user.id),
+    supabase
+      .from("portfolio_positions")
+      .select("portfolio_id, symbol_id, portfolios!inner(id, name, owner_id)")
+      .eq("portfolios.owner_id", user.id),
   ]);
 
   const trackedSymbols = (trackedSymbolsResult.data || []) as SymbolRow[];
   const performanceRows = performanceResult.data || [];
   const latestSnapshots = (latestSnapshotsResult.data || []) as SnapshotRow[];
-  const portfolios = (portfoliosResult.data || []) as PortfolioOptionRow[];
+  const portfolioPositionRows = (portfolioPositionsResult.data || []) as PortfolioPositionFilterRow[];
 
+  const portfolioMap = new Map<string, PortfolioOptionRow>();
   const portfolioSymbolIds = new Set<string>();
-  (portfolioPositionsResult.data || []).forEach((row) => {
+  portfolioPositionRows.forEach((row) => {
+    const portfolio = firstRelation(row.portfolios);
+    if (portfolio?.id && portfolio?.name) {
+      portfolioMap.set(portfolio.id, { id: portfolio.id, name: portfolio.name });
+    }
+
     if (row.symbol_id && (!selectedPortfolioId || row.portfolio_id === selectedPortfolioId)) {
       portfolioSymbolIds.add(row.symbol_id);
     }
   });
+  const portfolios = [...portfolioMap.values()];
 
   const aggregateMap = new Map<string, PerformanceAggregateRow[]>();
   performanceRows.forEach((row) => {
