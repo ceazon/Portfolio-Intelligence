@@ -269,23 +269,18 @@ export async function deleteSymbol(_prevState: FormState, formData: FormData): P
       return { ok: false, error: "Symbol is required." };
     }
 
-    const [{ data: ownedWatchlistItem }, { data: ownedPortfolioPosition }] = await Promise.all([
-      supabase
-        .from("watchlist_items")
-        .select("symbol_id, watchlists!inner(owner_id)")
-        .eq("symbol_id", symbolId)
-        .eq("watchlists.owner_id", auth.user.id)
-        .maybeSingle(),
-      supabase
-        .from("portfolio_positions")
-        .select("symbol_id, portfolios!inner(owner_id)")
-        .eq("symbol_id", symbolId)
-        .eq("portfolios.owner_id", auth.user.id)
-        .maybeSingle(),
-    ]);
+    const { data: symbolRow, error: symbolLookupError } = await supabase
+      .from("symbols")
+      .select("id")
+      .eq("id", symbolId)
+      .maybeSingle();
 
-    if (!ownedWatchlistItem && !ownedPortfolioPosition) {
-      return { ok: false, error: "This symbol is not attached to one of your portfolios or watchlists." };
+    if (symbolLookupError) {
+      return { ok: false, error: symbolLookupError.message };
+    }
+
+    if (!symbolRow) {
+      return { ok: false, error: "Symbol not found." };
     }
 
     const cleanupSteps = [
