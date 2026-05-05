@@ -50,41 +50,35 @@ export default async function DashboardPage() {
   const marketHoursState = getMarketHoursState();
 
   const stats = [
-    { label: "Tracked Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${formatAppDateTime(latestQuoteSync)}` : "Quote refresh path is live" },
-    { label: "Core Positions", value: positionCount, detail: "Portfolio holdings and market value tracking" },
-    { label: "Rebalance Items", value: rebalanceRecommendationCount, detail: latestRebalanceRunSummary || "Rebalance outputs are available once a plan is generated" },
-    { label: "Rebalance Runs", value: rebalanceRunCount, detail: latestRebalanceRunSummary || "Generate a rebalance plan to build decision history" },
+    { label: "Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${formatAppDateTime(latestQuoteSync)}` : "Waiting for first quote refresh" },
+    { label: "Positions", value: positionCount, detail: "Current portfolio holdings" },
+    { label: "Rebalance Items", value: rebalanceRecommendationCount, detail: rebalanceRecommendationCount === "0" ? "No active rebalance items yet" : "Open portfolio actions" },
+    { label: "Rebalance Runs", value: rebalanceRunCount, detail: rebalanceRunCount === "0" ? "No saved rebalance history yet" : "Saved plan history" },
   ];
 
-  const progressCards = [
+  const statusCards = [
     {
-      title: "What is working now",
-      body:
-        "The app now has a stable shared market-data pipeline: tracked symbols refresh through one central quote flow, portfolio and performance pages read stored snapshots, and external scheduling is live in production.",
+      title: "Portfolio",
+      body: "Positions, cash, and allocation are editable in one place.",
     },
     {
-      title: "Performance tracking status",
-      body:
-        "The performance module is wired correctly now. Quote refresh captures downstream target and price history state, and scheduled performance evaluation is running, though meaningful scored results will only accumulate once snapshots age into the 90, 180, and 365 day windows.",
+      title: "Quotes",
+      body: "Daily change now uses the chart close-to-close basis and matches the symbols view.",
     },
     {
-      title: "Provider and symbol coverage",
-      body:
-        "Symbol discovery and profile enrichment are FMP-backed, quote refresh uses the same pipeline, and Yahoo fallback still helps for some coverage gaps. Canadian exact-ticker handling is materially better than before, especially for exchange-specific naming.",
+      title: "Estimate tracking",
+      body: "Snapshot capture and scheduled evaluation are live. Longer windows will fill in over time.",
     },
     {
-      title: "What still feels transitional",
-      body:
-        "The product is in a stronger operational place now, but the UI still needs to do a better job explaining quote freshness, price source confidence, and how actual-vs-projected performance matures over time.",
+      title: "Rebalancing",
+      body: "Rebalance plans and portfolio actions are wired into the current workflow.",
     },
   ];
 
   const nextBuildTargets = [
-    "Surface quote freshness and quote-source status more clearly across portfolio, symbols, and performance views.",
-    "Add clearer performance-module onboarding so users understand why 90/180/365 day evaluation history starts sparse and improves over time.",
-    "Build richer symbol or holding detail views that connect current price, target path, and rebalance rationale in one place.",
-    "Tighten the portfolio and performance pages so the product feels like a disciplined portfolio operating workspace.",
-    "Decide whether watchlists should stay as a lightweight intake surface or be folded more tightly into the core portfolio workflow.",
+    "Tighten quote freshness and source clarity across portfolio, symbols, and estimate tracking.",
+    "Add clearer symbol and holding detail views.",
+    "Keep simplifying the product around portfolio tracking and estimate comparison.",
   ];
 
   return (
@@ -92,16 +86,16 @@ export default async function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
         <div className="space-y-6">
           <SectionCard
-            title="Mission control"
-            description="This dashboard is the operating view for the project right now: what is live in production, how the shared quote and performance pipeline is behaving, and what the next product moves should be."
+            title="Dashboard"
+            description="A compact view of portfolio state, quote refresh, and estimate tracking."
           >
             <div className="mb-4 space-y-3">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-                System status: {hasSupabaseEnv() ? "configured and running" : "not configured yet, add env vars before deployment"}. Core product state: the app now has a stable central quote refresh pipeline, external scheduling is active, performance history tables are live, and the rebalance-first workflow is in a much more production-ready place than before.
+                {hasSupabaseEnv() ? "System configured and running." : "System not configured yet."}
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-zinc-300">
-                Central quote scheduler: <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours mode" : "off hours mode"}</span>
-                <span className="text-zinc-400"> · recommended cadence every {marketHoursState.recommendedEveryMinutes} minutes ({getAppTimeZoneLabel()})</span>
+                Quote refresh: <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours" : "off hours"}</span>
+                <span className="text-zinc-400"> · every {marketHoursState.recommendedEveryMinutes} min ({getAppTimeZoneLabel()})</span>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -116,11 +110,11 @@ export default async function DashboardPage() {
           </SectionCard>
 
           <SectionCard
-            title="Current state and next steps"
-            description="This reflects what is actually implemented today, what has become stable recently, and the best product moves from here."
+            title="Current state"
+            description="What is working right now."
           >
             <div className="grid gap-4 lg:grid-cols-2">
-              {progressCards.map((card) => (
+              {statusCards.map((card) => (
                 <div key={card.title} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                   <h3 className="text-base font-semibold text-zinc-100">{card.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-zinc-400">{card.body}</p>
@@ -132,8 +126,8 @@ export default async function DashboardPage() {
 
         <div className="space-y-6">
           <SectionCard
-            title="Next build sequence"
-            description="The highest-leverage follow-ups now that the shared quote pipeline, external scheduler, and performance-history foundation are all working in production."
+            title="Next"
+            description="Highest-leverage follow-ups."
           >
             <ul className="space-y-3 text-sm text-zinc-300">
               {nextBuildTargets.map((item) => (
@@ -147,8 +141,8 @@ export default async function DashboardPage() {
           <RefreshMarketDataForm />
 
           <SectionCard
-            title="Latest operating signal"
-            description="Recent evidence from rebalance runs, quote refreshes, and the now-working performance data pipeline around the core portfolio workflow."
+            title="Latest signal"
+            description="Most recent operating summary."
           >
             <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
               {latestRebalanceRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet. Generate a plan to start building operating history."}
