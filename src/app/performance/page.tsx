@@ -34,6 +34,11 @@ type SymbolRow = {
     | null;
 };
 
+type PortfolioOptionRow = {
+  id: string;
+  name: string;
+};
+
 type SnapshotRow = {
   symbol_id: string;
   mean_target: number | null;
@@ -121,6 +126,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
   const supabase = await createSupabaseServerClient();
   const params = (await searchParams) || {};
   const sort = getSingleParam(params.sort);
+  const selectedPortfolioId = getSingleParam(params.portfolio);
   const sortField: SortField = sort && SORT_FIELDS.has(sort as SortField) ? (sort as SortField) : "alpha";
 
   const fallback = (
@@ -140,7 +146,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     return fallback;
   }
 
-  const [trackedSymbolsResult, performanceResult, latestSnapshotsResult] = await Promise.all([
+  const [trackedSymbolsResult, performanceResult, latestSnapshotsResult, portfoliosResult, portfolioPositionsResult] = await Promise.all([
     supabase
       .from("symbols")
       .select("id, ticker, name, exchange, currency, symbol_price_snapshots(price, fetched_at)")
@@ -152,23 +158,20 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       .from("analyst_target_snapshots")
       .select("symbol_id, mean_target, current_price, current_price_currency, captured_at")
       .order("captured_at", { ascending: false }),
+    supabase.from("portfolios").select("id, name").eq("owner_id", user.id).order("created_at", { ascending: false }),
+    supabase.from("portfolio_positions").select("symbol_id, portfolio_id, portfolios!inner(owner_id)").eq("portfolios.owner_id", user.id),
   ]);
 
   const trackedSymbols = (trackedSymbolsResult.data || []) as SymbolRow[];
   const performanceRows = performanceResult.data || [];
   const latestSnapshots = (latestSnapshotsResult.data || []) as SnapshotRow[];
+  const portfolios = (portfoliosResult.data || []) as PortfolioOptionRow[];
 
-  const trackedSymbolIds = new Set<string>();
-  const [watchlistItemsResult, portfolioPositionsResult] = await Promise.all([
-    supabase.from("watchlist_items").select("symbol_id, watchlists!inner(owner_id)").eq("watchlists.owner_id", user.id),
-    supabase.from("portfolio_positions").select("symbol_id, portfolios!inner(owner_id)").eq("portfolios.owner_id", user.id),
-  ]);
-
-  (watchlistItemsResult.data || []).forEach((row) => {
-    if (row.symbol_id) trackedSymbolIds.add(row.symbol_id);
-  });
+  const portfolioSymbolIds = new Set<string>();
   (portfolioPositionsResult.data || []).forEach((row) => {
-    if (row.symbol_id) trackedSymbolIds.add(row.symbol_id);
+    if (row.symbol_id && (!selectedPortfolioId || row.portfolio_id === selectedPortfolioId)) {
+      portfolioSymbolIds.add(row.symbol_id);
+    }
   });
 
   const aggregateMap = new Map<string, PerformanceAggregateRow[]>();
@@ -215,7 +218,13 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     earliestSnapshotBySymbol.set(snapshot.symbol_id, snapshot);
   });
 
-  const trackedSymbolsForPerformance = trackedSymbols.filter((symbol) => trackedSymbolIds.has(symbol.id));
+  const trackedSymbolsForPerformance = trackedSymbols.filter((symbol) => {
+    if (!selectedPortfolioId) {
+      return true;
+    }
+
+    return portfolioSymbolIds.has(symbol.id);
+  });
   const liveConsensusEntries = await Promise.all(
     trackedSymbolsForPerformance.map(async (symbol) => {
       const latestSnapshot = latestSnapshotBySymbol.get(symbol.id);
@@ -300,10 +309,28 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       <div className="space-y-6">
         <SectionCard
           title="Estimate tracking"
-          description="Estimate tracking shows how tracked stocks are moving relative to captured analyst targets. Over time it separates names where consensus has been useful from names where estimates tend to be too bullish or too conservative."
+          description="Estimate tracking for all imported symbols, with optional portfolio filtering."
         >
-          <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-            Historical reliability is summarized from 365-day evaluations first, then 180-day history when 365-day coverage is still thin. Early symbols will show lighter history until more snapshots accumulate.
+          <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+              Historical reliability is summarized from 365-day evaluations first, then 180-day history when 365-day coverage is still thin.
+            </div>
+            <form action="/performance" method="get" className="flex items-center gap-3">
+              <input type="hidden" name="sort" value={sortField} />
+              <label className="text-sm text-zinc-400" htmlFor="portfolio-filter">Portfolio view</label>
+              <select
+                id="portfolio-filter"
+                name="portfolio"
+                defaultValue={selectedPortfolioId || ""}
+                onChange={(event) => event.currentTarget.form?.requestSubmit()}
+                className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+              >
+                <option value="">All Symbols</option>
+                {portfolios.map((portfolio) => (
+                  <option key={portfolio.id} value={portfolio.id}>{portfolio.name}</option>
+                ))}
+              </select>
+            </form>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className={`rounded-2xl border p-4 ${aboveCardTone.border} ${aboveCardTone.bg}`}>
@@ -330,7 +357,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
         </SectionCard>
 
         <SectionCard
-          title="Tracked names vs estimates"
+          title={selectedPortfolioId ? "Portfolio symbols vs estimates" : "All imported symbols vs estimates"}
           description={`Ranked by ${sortField === "hit-rate" ? "hit rate" : "average alpha vs consensus"}. Timestamps shown in ${getAppTimeZoneLabel()}. Latest quote update ${lastQuoteUpdate ? formatAppDateTime(lastQuoteUpdate) : "not available yet"}.`}
         >
           {summaryRows.length > 0 ? (
@@ -344,7 +371,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Implied upside</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">
                       <Link
-                        href={`/performance?sort=hit-rate`}
+                        href={`/performance?sort=hit-rate${selectedPortfolioId ? `&portfolio=${selectedPortfolioId}` : ""}`}
                         className={[
                           "inline-flex items-center gap-2 rounded-lg px-2 py-1 transition",
                           sortField === "hit-rate" ? "text-sky-300" : "hover:text-zinc-300",
@@ -356,7 +383,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                     </th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">
                       <Link
-                        href={`/performance?sort=alpha`}
+                        href={`/performance?sort=alpha${selectedPortfolioId ? `&portfolio=${selectedPortfolioId}` : ""}`}
                         className={[
                           "inline-flex items-center gap-2 rounded-lg px-2 py-1 transition",
                           sortField === "alpha" ? "text-sky-300" : "hover:text-zinc-300",
@@ -419,7 +446,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
             </div>
           ) : (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              No tracked symbols have reached estimate tracking yet. Import symbols, refresh quotes, and let snapshots accumulate.
+              No symbols match this view yet. Import symbols, assign them to a portfolio if needed, refresh quotes, and let snapshots accumulate.
             </div>
           )}
         </SectionCard>
