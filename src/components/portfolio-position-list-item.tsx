@@ -145,7 +145,9 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
                   {quotePositive ? "+" : ""}
                   {percentChange.toFixed(2)}%
                 </p>
-              ) : null}
+              ) : (
+                <p className="mt-1 text-sm text-zinc-500">Daily move unavailable</p>
+              )}
               {updatedAt ? <p className="mt-1 text-xs text-zinc-500">Updated {formatAppDateTime(updatedAt)}</p> : null}
             </div>
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-lg font-semibold text-zinc-300">

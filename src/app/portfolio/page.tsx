@@ -45,12 +45,16 @@ type PortfolioPositionRow = {
         symbol_price_snapshots:
           | {
               price: number | null;
+              change: number | null;
               percent_change: number | null;
+              previous_close: number | null;
               fetched_at: string;
             }
           | {
               price: number | null;
+              change: number | null;
               percent_change: number | null;
+              previous_close: number | null;
               fetched_at: string;
             }[]
           | null;
@@ -65,18 +69,45 @@ type PortfolioPositionRow = {
         symbol_price_snapshots:
           | {
               price: number | null;
+              change: number | null;
               percent_change: number | null;
+              previous_close: number | null;
               fetched_at: string;
             }
           | {
               price: number | null;
+              change: number | null;
               percent_change: number | null;
+              previous_close: number | null;
               fetched_at: string;
             }[]
           | null;
       }[]
     | null;
 };
+
+function isStaleQuote(fetchedAt: string | null | undefined) {
+  if (!fetchedAt) return true;
+  const ts = new Date(fetchedAt).getTime();
+  if (!Number.isFinite(ts)) return true;
+  return Date.now() - ts > 1000 * 60 * 60 * 24;
+}
+
+function hasTrustedDailyMove(quote: { price: number | null; change: number | null; percent_change: number | null; previous_close: number | null } | null) {
+  if (!quote) return false;
+  if (typeof quote.price !== "number" || typeof quote.change !== "number" || typeof quote.percent_change !== "number" || typeof quote.previous_close !== "number") {
+    return false;
+  }
+
+  if (!Number.isFinite(quote.price) || !Number.isFinite(quote.change) || !Number.isFinite(quote.percent_change) || !Number.isFinite(quote.previous_close) || quote.previous_close <= 0) {
+    return false;
+  }
+
+  const derivedChange = quote.price - quote.previous_close;
+  const derivedPercent = (derivedChange / quote.previous_close) * 100;
+
+  return Math.abs(quote.change - derivedChange) <= Math.max(0.05, quote.previous_close * 0.005) && Math.abs(quote.percent_change - derivedPercent) <= 0.35;
+}
 
 type SymbolOption = {
   id: string;
@@ -127,7 +158,7 @@ export default async function PortfolioPage() {
   const { data: positions } = supabase
     ? await supabase
         .from("portfolio_positions")
-        .select("id, portfolio_id, symbol_id, quantity, average_cost, average_cost_currency, notes, portfolios!inner(id, name, owner_id), symbols(id, ticker, name, exchange, currency, logo_url, symbol_price_snapshots(price, percent_change, fetched_at))")
+        .select("id, portfolio_id, symbol_id, quantity, average_cost, average_cost_currency, notes, portfolios!inner(id, name, owner_id), symbols(id, ticker, name, exchange, currency, logo_url, symbol_price_snapshots(price, change, percent_change, previous_close, fetched_at))")
         .eq("portfolios.owner_id", user.id)
         .order("created_at", { ascending: false })
     : { data: [] as PortfolioPositionRow[] };
@@ -292,6 +323,29 @@ export default async function PortfolioPage() {
 
                   const recommendationBySymbol = new Map(recommendationEntries);
 
+                  const sanitizedPositions = positions.map((position) => {
+                    const symbol = firstRelation(position.symbols);
+                    const quote = firstRelation(symbol?.symbol_price_snapshots || null);
+                    const trustedPercentChange = hasTrustedDailyMove(quote) && !isStaleQuote(quote?.fetched_at)
+                      ? quote?.percent_change ?? null
+                      : null;
+
+                    if (!symbol || !quote) {
+                      return position;
+                    }
+
+                    return {
+                      ...position,
+                      symbols: {
+                        ...symbol,
+                        symbol_price_snapshots: {
+                          ...quote,
+                          percent_change: trustedPercentChange,
+                        },
+                      },
+                    };
+                  });
+
                   return (
                 <PortfolioCard
                   id={portfolio.id}
@@ -302,7 +356,7 @@ export default async function PortfolioPage() {
                   cashPosition={cashPosition}
                   cashCurrency={cashCurrency}
                   recommendationCashMode={recommendationCashMode}
-                  positions={positions}
+                  positions={sanitizedPositions}
                   recommendationBySymbol={recommendationBySymbol}
                   usdCadRate={usdCadRate}
                 />
