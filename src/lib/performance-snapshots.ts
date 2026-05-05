@@ -31,13 +31,15 @@ export async function capturePerformanceSnapshots(input: PerformanceCaptureInput
   if (input.quote && typeof input.quote.price === "number") {
     const ownerId = input.ownerId || null;
 
-    const { data: existingPriceRow, error: priceLookupError } = await supabase
+    const priceLookupQuery = supabase
       .from("symbol_price_history")
       .select("id")
       .eq("symbol_id", input.symbolId)
-      .eq("market_day", marketDayKey)
-      .is("owner_id", ownerId)
-      .maybeSingle();
+      .eq("market_day", marketDayKey);
+
+    const { data: existingPriceRow, error: priceLookupError } = ownerId
+      ? await priceLookupQuery.eq("owner_id", ownerId).maybeSingle()
+      : await priceLookupQuery.is("owner_id", null).maybeSingle();
 
     if (priceLookupError) {
       throw new Error(priceLookupError.message);
