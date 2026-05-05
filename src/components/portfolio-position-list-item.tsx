@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { DeletePositionForm } from "@/components/delete-position-form";
 import { EditPositionInlineForm } from "@/components/edit-position-inline-form";
 import { convertMoney, formatMoney, formatQuantity, type SupportedCurrency } from "@/lib/currency";
+import { getMarketHoursState } from "@/lib/market-hours";
 import { formatAppDateTime } from "@/lib/time";
 
 type ResearchInsight = {
@@ -104,6 +105,8 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
 
   const quotePositive = typeof percentChange === "number" ? percentChange >= 0 : null;
   const gainPositive = typeof converted.gainLoss === "number" ? converted.gainLoss >= 0 : null;
+  const marketState = getMarketHoursState();
+  const showSessionMove = typeof percentChange === "number" && marketState.isMarketOpen;
 
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -140,15 +143,17 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
             <div className="min-w-[140px] text-right">
               <div className="mb-2 inline-flex rounded-xl border border-zinc-700 bg-zinc-950/70 px-2 py-1 text-xs text-zinc-300">Display {displayCurrency}</div>
               {typeof converted.currentPriceDisplay === "number" ? <p className="text-lg font-semibold text-zinc-100">{formatMoney(converted.currentPriceDisplay, displayCurrency)}</p> : null}
-              {typeof percentChange === "number" ? (
+              {showSessionMove ? (
                 <p className={quotePositive ? "mt-1 text-sm text-emerald-300" : "mt-1 text-sm text-rose-300"}>
                   {quotePositive ? "+" : ""}
                   {percentChange.toFixed(2)}%
                 </p>
               ) : (
-                <p className="mt-1 text-sm text-zinc-500">Daily move unavailable</p>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {typeof percentChange === "number" ? "Session closed, move hidden" : "Daily move unavailable"}
+                </p>
               )}
-              {updatedAt ? <p className="mt-1 text-xs text-zinc-500">Updated {formatAppDateTime(updatedAt)}</p> : null}
+              {updatedAt ? <p className="mt-1 text-xs text-zinc-500">Updated {formatAppDateTime(updatedAt)}{!marketState.isMarketOpen ? " · off-hours" : ""}</p> : null}
             </div>
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-lg font-semibold text-zinc-300">
               {expanded ? "−" : "+"}
