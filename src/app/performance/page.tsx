@@ -330,14 +330,13 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
               Historical reliability is summarized from 365-day evaluations first, then 180-day history when 365-day coverage is still thin.
             </div>
-            <form action="/performance" method="get" className="flex items-center gap-3">
+            <form action="/performance" method="get" className="flex flex-wrap items-center gap-3">
               <input type="hidden" name="sort" value={sortField} />
               <label className="text-sm text-zinc-400" htmlFor="portfolio-filter">Portfolio view</label>
               <select
                 id="portfolio-filter"
                 name="portfolio"
                 defaultValue={selectedPortfolioId || ""}
-                onChange={(event) => event.currentTarget.form?.requestSubmit()}
                 className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
               >
                 <option value="">All Symbols</option>
@@ -345,6 +344,12 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                   <option key={portfolio.id} value={portfolio.id}>{portfolio.name}</option>
                 ))}
               </select>
+              <button
+                type="submit"
+                className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800"
+              >
+                Apply
+              </button>
             </form>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
