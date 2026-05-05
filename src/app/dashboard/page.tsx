@@ -83,37 +83,41 @@ export default async function DashboardPage() {
 
   return (
     <AppShell viewer={user}>
-      <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
-        <div className="space-y-6">
-          <SectionCard
-            title="Dashboard"
-            description="A compact view of portfolio state, quote refresh, and estimate tracking."
-          >
-            <div className="mb-4 space-y-3">
+      <div className="space-y-6">
+        <SectionCard
+          title="Dashboard"
+          description="Portfolio state, quote refresh, and estimate tracking."
+        >
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="space-y-4">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
                 {hasSupabaseEnv() ? "System configured and running." : "System not configured yet."}
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-zinc-300">
-                Quote refresh: <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours" : "off hours"}</span>
+                Quote refresh <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours" : "off hours"}</span>
                 <span className="text-zinc-400"> · every {marketHoursState.recommendedEveryMinutes} min ({getAppTimeZoneLabel()})</span>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-              {stats.map((stat) => (
-                <div key={stat.label} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                  <p className="text-xs uppercase tracking-wide text-zinc-500">{stat.label}</p>
-                  <p className="mt-3 text-3xl font-bold text-zinc-50">{stat.value}</p>
-                  <p className="mt-2 text-sm text-zinc-400">{stat.detail}</p>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
+            <RefreshMarketDataForm />
+          </div>
 
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {stats.map((stat) => (
+              <div key={stat.label} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                <p className="text-xs uppercase tracking-wide text-zinc-500">{stat.label}</p>
+                <p className="mt-3 text-3xl font-bold text-zinc-50">{stat.value}</p>
+                <p className="mt-2 text-sm text-zinc-400">{stat.detail}</p>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <SectionCard
             title="Current state"
-            description="What is working right now."
+            description="What is working now."
           >
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               {statusCards.map((card) => (
                 <div key={card.title} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                   <h3 className="text-base font-semibold text-zinc-100">{card.title}</h3>
@@ -122,32 +126,30 @@ export default async function DashboardPage() {
               ))}
             </div>
           </SectionCard>
-        </div>
 
-        <div className="space-y-6">
-          <SectionCard
-            title="Next"
-            description="Highest-leverage follow-ups."
-          >
-            <ul className="space-y-3 text-sm text-zinc-300">
-              {nextBuildTargets.map((item) => (
-                <li key={item} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </SectionCard>
+          <div className="space-y-6">
+            <SectionCard
+              title="Next"
+              description="Highest-leverage follow-ups."
+            >
+              <ul className="space-y-3 text-sm text-zinc-300">
+                {nextBuildTargets.map((item) => (
+                  <li key={item} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </SectionCard>
 
-          <RefreshMarketDataForm />
-
-          <SectionCard
-            title="Latest signal"
-            description="Most recent operating summary."
-          >
-            <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
-              {latestRebalanceRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet. Generate a plan to start building operating history."}
-            </div>
-          </SectionCard>
+            <SectionCard
+              title="Latest signal"
+              description="Most recent operating summary."
+            >
+              <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
+                {latestRebalanceRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet."}
+              </div>
+            </SectionCard>
+          </div>
         </div>
       </div>
     </AppShell>
