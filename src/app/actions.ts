@@ -11,6 +11,7 @@ import { getResearchEvidenceContext } from "@/lib/recommendation-evidence";
 import { enrichSymbolAndRefreshQuote, getNormalizedQuoteChange, refreshTrackedSymbols, runCentralQuoteRefresh, scrubSuspiciousSymbolSnapshots } from "@/lib/symbol-sync";
 import { runRecommendationSynthesis } from "@/lib/synthesis-agent";
 import { buildRebalancePlan, persistRebalancePlan } from "@/lib/rebalancing-engine";
+import { capturePerformanceSnapshots } from "@/lib/performance-snapshots";
 import { findImportSymbolMatch, getImportSymbolSeed, searchImportSymbols } from "@/lib/symbol-import";
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -833,6 +834,17 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
       }
 
       await supabase.from("symbols").update({ last_quote_sync_at: new Date().toISOString() }).eq("id", symbolRow.id);
+
+      await capturePerformanceSnapshots({
+        ownerId: auth.user.id,
+        symbolId: symbolRow.id,
+        ticker: seed.symbol,
+        quote: {
+          price: seed.quote.price ?? null,
+          source: "fmp",
+        },
+        quoteCurrency: seed.currency ?? null,
+      });
     } else {
       await enrichSymbolAndRefreshQuote(symbolRow.id, seed.symbol, auth.user.id);
     }
@@ -860,8 +872,76 @@ export async function importSymbol(_prevState: FormState, formData: FormData): P
     revalidatePath("/symbols");
     revalidatePath("/watchlist");
     revalidatePath("/dashboard");
+    revalidatePath("/performance");
     return { ok: true, error: "" };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to import symbol.") };
+  }
+}
+
+export async function backfillPerformanceSnapshots(_prevState: FormState): Promise<FormState> {
+  try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return { ok: false, error: "Supabase env vars are not configured yet." };
+    }
+
+    const { data: symbols, error: symbolsError } = await supabase
+      .from("symbols")
+      .select("id, ticker, currency, symbol_price_snapshots(price, fetched_at)")
+      .order("ticker", { ascending: true });
+
+    if (symbolsError) {
+      return { ok: false, error: symbolsError.message };
+    }
+
+    const { data: existingSnapshots, error: snapshotsError } = await supabase
+      .from("analyst_target_snapshots")
+      .select("symbol_id")
+      .eq("owner_id", auth.user.id);
+
+    if (snapshotsError) {
+      return { ok: false, error: snapshotsError.message };
+    }
+
+    const existingSymbolIds = new Set((existingSnapshots || []).map((row) => row.symbol_id).filter(Boolean));
+    let backfilledCount = 0;
+
+    for (const symbol of symbols || []) {
+      if (!symbol.id || !symbol.ticker || existingSymbolIds.has(symbol.id)) {
+        continue;
+      }
+
+      const latestQuote = Array.isArray(symbol.symbol_price_snapshots) ? (symbol.symbol_price_snapshots[0] ?? null) : symbol.symbol_price_snapshots;
+
+      if (typeof latestQuote?.price === "number" && Number.isFinite(latestQuote.price)) {
+        await capturePerformanceSnapshots({
+          ownerId: auth.user.id,
+          symbolId: symbol.id,
+          ticker: symbol.ticker,
+          quote: {
+            price: latestQuote.price,
+            source: "yahoo",
+          },
+          quoteCurrency: symbol.currency ?? null,
+        });
+      } else {
+        await enrichSymbolAndRefreshQuote(symbol.id, symbol.ticker, auth.user.id);
+      }
+
+      backfilledCount += 1;
+    }
+
+    revalidatePath("/performance");
+    revalidatePath("/symbols");
+    revalidatePath("/dashboard");
+    return { ok: true, error: "", notice: backfilledCount ? `Seeded target history for ${backfilledCount} symbols.` : "No symbols needed target-history backfill." };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to backfill target history.") };
   }
 }
