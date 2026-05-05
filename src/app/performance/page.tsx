@@ -53,16 +53,18 @@ type SnapshotRow = {
   captured_at: string;
 };
 
-type SortField = "alpha" | "hit-rate";
+type SortField = "alpha" | "hit-rate" | "upside";
 
 const SORT_OPTIONS = [
   { value: "alpha", label: "Average alpha" },
   { value: "hit-rate", label: "Hit rate" },
+  { value: "upside", label: "Implied upside" },
 ] as const;
 
 const SORT_LABELS: Record<SortField, string> = {
   alpha: "Average alpha",
   "hit-rate": "Hit rate",
+  upside: "Implied upside",
 };
 
 const SORT_FIELDS = new Set<SortField>(SORT_OPTIONS.map((option) => option.value));
@@ -286,6 +288,14 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       });
     })
     .sort((a, b) => {
+      if (sortField === "upside") {
+        const upsideA = a.impliedUpsidePct ?? Number.NEGATIVE_INFINITY;
+        const upsideB = b.impliedUpsidePct ?? Number.NEGATIVE_INFINITY;
+        if (upsideB !== upsideA) {
+          return upsideB - upsideA;
+        }
+      }
+
       if (sortField === "hit-rate") {
         const hitRateA = a.hitRatePct ?? Number.NEGATIVE_INFINITY;
         const hitRateB = b.hitRatePct ?? Number.NEGATIVE_INFINITY;
@@ -298,6 +308,12 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       const alphaB = b.avgAlphaVsConsensusPct ?? Number.NEGATIVE_INFINITY;
       if (alphaB !== alphaA) {
         return alphaB - alphaA;
+      }
+
+      const upsideA = a.impliedUpsidePct ?? Number.NEGATIVE_INFINITY;
+      const upsideB = b.impliedUpsidePct ?? Number.NEGATIVE_INFINITY;
+      if (upsideB !== upsideA) {
+        return upsideB - upsideA;
       }
 
       const hitRateA = a.hitRatePct ?? Number.NEGATIVE_INFINITY;
@@ -378,7 +394,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
 
         <SectionCard
           title={selectedPortfolioId ? "Portfolio symbols vs estimates" : "All imported symbols vs estimates"}
-          description={`Ranked by ${sortField === "hit-rate" ? "hit rate" : "average alpha vs consensus"}. Timestamps shown in ${getAppTimeZoneLabel()}. Latest quote update ${lastQuoteUpdate ? formatAppDateTime(lastQuoteUpdate) : "not available yet"}.`}
+          description={`Ranked by ${SORT_LABELS[sortField].toLowerCase()}. Timestamps shown in ${getAppTimeZoneLabel()}. Latest quote update ${lastQuoteUpdate ? formatAppDateTime(lastQuoteUpdate) : "not available yet"}.`}
         >
           {summaryRows.length > 0 ? (
             <div className="overflow-x-auto">
@@ -388,7 +404,18 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                     <th className="w-[190px] px-3 py-3 font-medium">Ticker</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Current price</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Consensus target</th>
-                    <th className="px-3 py-3 font-medium whitespace-nowrap">Implied upside</th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap">
+                      <Link
+                        href={`/performance?sort=upside${selectedPortfolioId ? `&portfolio=${selectedPortfolioId}` : ""}`}
+                        className={[
+                          "inline-flex items-center gap-2 rounded-lg px-2 py-1 transition",
+                          sortField === "upside" ? "text-sky-300" : "hover:text-zinc-300",
+                        ].join(" ")}
+                      >
+                        <span>{SORT_LABELS.upside}</span>
+                        <span className={sortField === "upside" ? "text-sky-400" : "text-zinc-600"}>{sortField === "upside" ? "↓" : "↕"}</span>
+                      </Link>
+                    </th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">
                       <Link
                         href={`/performance?sort=hit-rate${selectedPortfolioId ? `&portfolio=${selectedPortfolioId}` : ""}`}
