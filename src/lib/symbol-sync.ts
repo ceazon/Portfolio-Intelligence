@@ -166,28 +166,28 @@ async function refreshSymbolQuoteAndProfile(symbolId: string, ticker: string) {
     throw nonFmpError;
   }
 
-  const yahooQuote = !fmpQuote ? await getYahooChartQuote(ticker) : null;
-  const rawQuote = fmpQuote
+  const yahooQuote = await getYahooChartQuote(ticker);
+  const rawQuote = yahooQuote
     ? {
-        price: fmpQuote.price ?? null,
-        change: fmpQuote.change ?? null,
-        percentChange: fmpQuote.changesPercentage ?? null,
-        high: fmpQuote.dayHigh ?? null,
-        low: fmpQuote.dayLow ?? null,
-        open: fmpQuote.open ?? null,
-        previousClose: fmpQuote.previousClose ?? null,
-        source: "fmp" as const,
+        price: yahooQuote.price,
+        change: yahooQuote.change,
+        percentChange: yahooQuote.percentChange,
+        high: null,
+        low: null,
+        open: null,
+        previousClose: yahooQuote.previousClose,
+        source: "yahoo" as const,
       }
-    : yahooQuote
+    : fmpQuote
       ? {
-          price: yahooQuote.price,
-          change: yahooQuote.change,
-          percentChange: yahooQuote.percentChange,
-          high: null,
-          low: null,
-          open: null,
-          previousClose: yahooQuote.previousClose,
-          source: "yahoo" as const,
+          price: fmpQuote.price ?? null,
+          change: fmpQuote.change ?? null,
+          percentChange: fmpQuote.changesPercentage ?? null,
+          high: fmpQuote.dayHigh ?? null,
+          low: fmpQuote.dayLow ?? null,
+          open: fmpQuote.open ?? null,
+          previousClose: fmpQuote.previousClose ?? null,
+          source: "fmp" as const,
         }
       : null;
 
@@ -304,7 +304,7 @@ export async function enrichSymbolAndRefreshQuote(symbolId: string, ticker: stri
     "symbol-refresh",
     "completed",
     refreshResult.fmpIssue
-      ? `Refreshed ${ticker} with partial data. FMP unavailable: ${refreshResult.fmpIssue.message}. Yahoo fallback quote=${refreshResult.yahooFallbackUsed ? "yes" : "no"}`
+      ? `Refreshed ${ticker} with partial data. FMP unavailable: ${refreshResult.fmpIssue.message}. Yahoo quote preference=${refreshResult.yahooFallbackUsed ? "yes" : "no"}`
       : `Refreshed ${ticker} profile=${refreshResult.profileLoaded ? "yes" : "no"} quote=${refreshResult.quoteLoaded ? `yes (${refreshResult.refreshedQuote?.source || "unknown"})` : "no"}`,
     ownerId,
   );

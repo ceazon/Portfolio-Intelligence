@@ -36,7 +36,8 @@ function getFallbackCloses(closes: Array<number | null> | undefined) {
   const numericCloses = (closes || []).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
   const lastClose = numericCloses.at(-1) ?? null;
   const priorClose = numericCloses.length > 1 ? numericCloses.at(-2) ?? null : null;
-  return { lastClose, priorClose };
+  const baselineClose = numericCloses.length > 2 ? numericCloses.at(-3) ?? null : null;
+  return { lastClose, priorClose, baselineClose };
 }
 
 export async function getYahooChartQuote(symbol: string): Promise<YahooChartQuoteResult | null> {
@@ -65,10 +66,11 @@ export async function getYahooChartQuote(symbol: string): Promise<YahooChartQuot
 
   const meta = result.meta || {};
   const closes = result.indicators?.quote?.[0]?.close;
-  const { lastClose, priorClose } = getFallbackCloses(closes);
+  const { lastClose, priorClose, baselineClose } = getFallbackCloses(closes);
 
   const price = typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice : lastClose;
-  const previousClose = typeof meta.previousClose === "number" ? meta.previousClose : typeof meta.chartPreviousClose === "number" ? meta.chartPreviousClose : priorClose;
+  const chartDerivedPreviousClose = typeof priorClose === "number" ? priorClose : null;
+  const previousClose = chartDerivedPreviousClose ?? (typeof meta.previousClose === "number" ? meta.previousClose : typeof meta.chartPreviousClose === "number" ? meta.chartPreviousClose : baselineClose);
   const change = typeof price === "number" && typeof previousClose === "number" ? price - previousClose : null;
   const percentChange = typeof change === "number" && typeof previousClose === "number" && previousClose !== 0 ? (change / previousClose) * 100 : null;
 
