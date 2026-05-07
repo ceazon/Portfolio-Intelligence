@@ -4,7 +4,7 @@ import { PerformancePacePanel } from "@/components/performance-pace-panel";
 import { SectionCard } from "@/components/section-card";
 import { requireUser } from "@/lib/auth";
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
-import { buildPaceSummary, buildPerformanceSummaryRow, formatMoney, formatPercent, getPerformanceTone, type PerformanceSummaryRow } from "@/lib/performance-metrics";
+import { buildPaceSummary, buildPerformanceSummaryRow, formatMoney, formatPercent, formatRatio, getPerformanceTone, type PerformanceSummaryRow } from "@/lib/performance-metrics";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
 
@@ -53,18 +53,25 @@ type SnapshotRow = {
   captured_at: string;
 };
 
-type SortField = "alpha" | "hit-rate" | "upside";
+type FundamentalsRow = {
+  symbol_id: string;
+  pe_ttm: number | null;
+};
+
+type SortField = "alpha" | "hit-rate" | "upside" | "pe";
 
 const SORT_OPTIONS = [
   { value: "alpha", label: "Average alpha" },
   { value: "hit-rate", label: "Hit rate" },
   { value: "upside", label: "Implied upside" },
+  { value: "pe", label: "P/E ratio" },
 ] as const;
 
 const SORT_LABELS: Record<SortField, string> = {
   alpha: "Average alpha",
   "hit-rate": "Hit rate",
   upside: "Implied upside",
+  pe: "P/E ratio",
 };
 
 const SORT_FIELDS = new Set<SortField>(SORT_OPTIONS.map((option) => option.value));
@@ -154,7 +161,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     return fallback;
   }
 
-  const [trackedSymbolsResult, performanceResult, latestSnapshotsResult, portfolioPositionsResult] = await Promise.all([
+  const [trackedSymbolsResult, performanceResult, latestSnapshotsResult, portfolioPositionsResult, fundamentalsResult] = await Promise.all([
     supabase
       .from("symbols")
       .select("id, ticker, name, exchange, currency, symbol_price_snapshots(price, fetched_at)")
@@ -170,12 +177,16 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       .from("portfolio_positions")
       .select("portfolio_id, symbol_id, portfolios!inner(id, name, owner_id)")
       .eq("portfolios.owner_id", user.id),
+    supabase
+      .from("symbol_fundamentals")
+      .select("symbol_id, pe_ttm"),
   ]);
 
   const trackedSymbols = (trackedSymbolsResult.data || []) as SymbolRow[];
   const performanceRows = performanceResult.data || [];
   const latestSnapshots = (latestSnapshotsResult.data || []) as SnapshotRow[];
   const portfolioPositionRows = (portfolioPositionsResult.data || []) as PortfolioPositionFilterRow[];
+  const fundamentalsRows = (fundamentalsResult.data || []) as FundamentalsRow[];
 
   const portfolioMap = new Map<string, PortfolioOptionRow>();
   const portfolioSymbolIds = new Set<string>();
@@ -223,6 +234,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
 
   const latestSnapshotBySymbol = new Map<string, SnapshotRow>();
   const earliestSnapshotBySymbol = new Map<string, SnapshotRow>();
+  const fundamentalsBySymbol = new Map<string, FundamentalsRow>();
   latestSnapshots.forEach((snapshot) => {
     if (!snapshot.symbol_id) {
       return;
@@ -233,6 +245,14 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     }
 
     earliestSnapshotBySymbol.set(snapshot.symbol_id, snapshot);
+  });
+
+  fundamentalsRows.forEach((row) => {
+    if (!row.symbol_id || fundamentalsBySymbol.has(row.symbol_id)) {
+      return;
+    }
+
+    fundamentalsBySymbol.set(row.symbol_id, row);
   });
 
   const trackedSymbolsForPerformance = trackedSymbols.filter((symbol) => {
@@ -269,6 +289,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       const currentPrice = latestQuote?.price ?? null;
       const currentConsensusTarget = latestSnapshot?.mean_target ?? liveConsensus?.meanTarget ?? null;
       const impliedUpsidePct = currentPrice && currentConsensusTarget ? ((currentConsensusTarget - currentPrice) / currentPrice) * 100 : null;
+      const peRatioTtm = fundamentalsBySymbol.get(symbol.id)?.pe_ttm ?? null;
 
       return buildPerformanceSummaryRow({
         symbolId: symbol.id,
@@ -281,6 +302,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
         currentConsensusTarget,
         currentConsensusTargetCurrency: latestSnapshot?.current_price_currency ?? symbol.currency,
         impliedUpsidePct,
+        peRatioTtm,
         evaluationWindowDays: aggregate?.evaluation_window_days ?? 365,
         evaluatedSnapshotCount: aggregate?.evaluated_count ?? 0,
         hitCount: aggregate?.hit_count ?? 0,
@@ -288,6 +310,14 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       });
     })
     .sort((a, b) => {
+      if (sortField === "pe") {
+        const peA = a.peRatioTtm ?? Number.POSITIVE_INFINITY;
+        const peB = b.peRatioTtm ?? Number.POSITIVE_INFINITY;
+        if (peA !== peB) {
+          return peA - peB;
+        }
+      }
+
       if (sortField === "upside") {
         const upsideA = a.impliedUpsidePct ?? Number.NEGATIVE_INFINITY;
         const upsideB = b.impliedUpsidePct ?? Number.NEGATIVE_INFINITY;
@@ -318,7 +348,13 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
 
       const hitRateA = a.hitRatePct ?? Number.NEGATIVE_INFINITY;
       const hitRateB = b.hitRatePct ?? Number.NEGATIVE_INFINITY;
-      return hitRateB - hitRateA;
+      if (hitRateB !== hitRateA) {
+        return hitRateB - hitRateA;
+      }
+
+      const peA = a.peRatioTtm ?? Number.POSITIVE_INFINITY;
+      const peB = b.peRatioTtm ?? Number.POSITIVE_INFINITY;
+      return peA - peB;
     });
 
   const aboveCount = summaryRows.filter((row) => row.avgAlphaVsConsensusPct !== null && row.avgAlphaVsConsensusPct > 0).length;
@@ -406,6 +442,18 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Consensus target</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">
                       <Link
+                        href={`/performance?sort=pe${selectedPortfolioId ? `&portfolio=${selectedPortfolioId}` : ""}`}
+                        className={[
+                          "inline-flex items-center gap-2 rounded-lg px-2 py-1 transition",
+                          sortField === "pe" ? "text-sky-300" : "hover:text-zinc-300",
+                        ].join(" ")}
+                      >
+                        <span>{SORT_LABELS.pe}</span>
+                        <span className={sortField === "pe" ? "text-sky-400" : "text-zinc-600"}>{sortField === "pe" ? "↑" : "↕"}</span>
+                      </Link>
+                    </th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap">
+                      <Link
                         href={`/performance?sort=upside${selectedPortfolioId ? `&portfolio=${selectedPortfolioId}` : ""}`}
                         className={[
                           "inline-flex items-center gap-2 rounded-lg px-2 py-1 transition",
@@ -471,6 +519,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         </td>
                         <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(row.currentPrice, row.currency || "USD")}</td>
                         <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(row.currentConsensusTarget, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
+                        <td className="px-3 py-4 align-top whitespace-nowrap text-zinc-300">{formatRatio(row.peRatioTtm)}</td>
                         <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.impliedUpsidePct)}`}>{formatPercent(row.impliedUpsidePct)}</td>
                         <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.hitRatePct === null ? null : row.hitRatePct - 50)}`}>{formatPercent(row.hitRatePct)}</td>
                         <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.avgAlphaVsConsensusPct)}`}>{formatPercent(row.avgAlphaVsConsensusPct)}</td>

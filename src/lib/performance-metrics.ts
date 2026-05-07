@@ -9,6 +9,7 @@ type PerformanceSummaryInput = {
   currentConsensusTarget: number | null;
   currentConsensusTargetCurrency: string | null;
   impliedUpsidePct: number | null;
+  peRatioTtm: number | null;
   evaluationWindowDays: number;
   evaluatedSnapshotCount: number;
   hitCount: number;
@@ -192,4 +193,12 @@ export function formatMoney(value: number | null, currency = "USD") {
     currency,
     maximumFractionDigits: value >= 100 ? 0 : 2,
   }).format(value);
+}
+
+export function formatRatio(value: number | null, digits = 1) {
+  if (value === null || !Number.isFinite(value)) {
+    return "—";
+  }
+
+  return value.toFixed(digits);
 }
