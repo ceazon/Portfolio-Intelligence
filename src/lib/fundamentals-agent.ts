@@ -27,6 +27,7 @@ type FmpKeyMetricsRow = {
   peRatioTTM?: number;
   pbRatioTTM?: number;
   currentRatioTTM?: number;
+  returnOnEquityTTM?: number;
   marketCap?: number;
 };
 
@@ -36,9 +37,12 @@ type FmpProfileRow = {
 
 type FmpRatiosRow = {
   priceToSalesRatioTTM?: number;
+  priceToEarningsRatioTTM?: number;
+  priceToBookRatioTTM?: number;
   netProfitMarginTTM?: number;
   operatingProfitMarginTTM?: number;
   returnOnEquityTTM?: number;
+  currentRatioTTM?: number;
 };
 
 type FmpGrowthRow = {
@@ -121,6 +125,16 @@ async function getTrackedSymbols(ownerId: string) {
 
 function numberOrNull(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function firstFiniteNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 function buildFundamentalsAgentOutput(ownerId: string, symbol: TrackedSymbol, metrics: Record<string, unknown>) {
@@ -218,16 +232,17 @@ export async function refreshFundamentalsAndAgent(ownerId: string) {
   for (const symbol of trackedSymbols) {
     try {
       const result = await fetchFmpFundamentals(symbol.ticker);
+      const roeBase = firstFiniteNumber(result.keyMetrics.returnOnEquityTTM, result.ratios.returnOnEquityTTM);
       const metrics = {
-        peTTM: result.keyMetrics.peRatioTTM,
-        pbAnnual: result.keyMetrics.pbRatioTTM,
-        psTTM: result.ratios.priceToSalesRatioTTM,
+        peTTM: firstFiniteNumber(result.ratios.priceToEarningsRatioTTM, result.keyMetrics.peRatioTTM),
+        pbAnnual: firstFiniteNumber(result.ratios.priceToBookRatioTTM, result.keyMetrics.pbRatioTTM),
+        psTTM: firstFiniteNumber(result.ratios.priceToSalesRatioTTM),
         revenueGrowthTTMYoy: typeof result.growth.growthRevenue === "number" ? result.growth.growthRevenue * 100 : null,
         epsGrowth5Y: null,
         netMarginTTM: typeof result.ratios.netProfitMarginTTM === "number" ? result.ratios.netProfitMarginTTM * 100 : null,
         operatingMarginTTM: typeof result.ratios.operatingProfitMarginTTM === "number" ? result.ratios.operatingProfitMarginTTM * 100 : null,
-        roeTTM: typeof result.ratios.returnOnEquityTTM === "number" ? result.ratios.returnOnEquityTTM * 100 : null,
-        currentRatioQuarterly: result.keyMetrics.currentRatioTTM,
+        roeTTM: roeBase === null ? null : roeBase * 100,
+        currentRatioQuarterly: firstFiniteNumber(result.keyMetrics.currentRatioTTM, result.ratios.currentRatioTTM),
         marketCapitalization:
           typeof result.keyMetrics.marketCap === "number"
             ? result.keyMetrics.marketCap / 1_000_000
