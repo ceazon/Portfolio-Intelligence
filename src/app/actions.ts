@@ -716,29 +716,64 @@ export async function refreshMarketData(_prevState: FormState): Promise<FormStat
       return { ok: false, error: auth.error || "You must be logged in." };
     }
 
-    const [quoteOutcome, fxOutcome] = await Promise.allSettled([runCentralQuoteRefresh("manual"), refreshFxRate("USD/CAD", "manual")]);
+    const [quoteOutcome, fxOutcome, fundamentalsOutcome] = await Promise.allSettled([
+      runCentralQuoteRefresh("manual"),
+      refreshFxRate("USD/CAD", "manual"),
+      refreshFundamentalsAndAgent(auth.user.id),
+    ]);
     const scrubOutcome = await Promise.allSettled([scrubSuspiciousSymbolSnapshots()]);
     revalidatePath("/symbols");
     revalidatePath("/dashboard");
     revalidatePath("/agent-activity");
     revalidatePath("/recommendations");
     revalidatePath("/portfolio");
+    revalidatePath("/fundamentals");
+    revalidatePath("/agents");
+    revalidatePath("/performance");
 
     const quoteError = quoteOutcome.status === "rejected" ? getErrorMessage(quoteOutcome.reason, "Quote refresh failed.") : "";
     const fxError = fxOutcome.status === "rejected" ? getErrorMessage(fxOutcome.reason, "FX refresh failed.") : "";
+    const fundamentalsError = fundamentalsOutcome.status === "rejected" ? getErrorMessage(fundamentalsOutcome.reason, "Fundamentals refresh failed.") : "";
     const scrubError = scrubOutcome[0]?.status === "rejected" ? getErrorMessage(scrubOutcome[0].reason, "Quote cleanup failed.") : "";
 
-    if (quoteError && fxError && scrubError) {
-      return { ok: false, error: `${quoteError} ${fxError} ${scrubError}`.trim() };
+    if (quoteError && fxError && fundamentalsError && scrubError) {
+      return { ok: false, error: `${quoteError} ${fxError} ${fundamentalsError} ${scrubError}`.trim() };
     }
 
-    if (quoteError || fxError || scrubError) {
-      return { ok: true, error: quoteError || fxError || scrubError };
+    if (quoteError || fxError || fundamentalsError || scrubError) {
+      return { ok: true, error: quoteError || fxError || fundamentalsError || scrubError };
     }
 
     const quoteResult = quoteOutcome.status === "fulfilled" ? quoteOutcome.value : null;
+    const fundamentalsResult = fundamentalsOutcome.status === "fulfilled" ? fundamentalsOutcome.value : null;
     const scrubResult = scrubOutcome[0]?.status === "fulfilled" ? scrubOutcome[0].value : null;
-    return { ok: true, error: !quoteResult?.refreshedCount && !scrubResult?.scrubbedCount ? "No symbols refreshed." : "" };
+
+    if (fundamentalsResult?.skippedSymbols?.length) {
+      return {
+        ok: true,
+        error: "",
+        notice: `Market, FX, and fundamentals refresh completed. Some symbols could not be refreshed for fundamentals under the current provider plan: ${fundamentalsResult.skippedSymbols.join(", ")}.`,
+      };
+    }
+
+    if (fundamentalsResult?.skipReasons?.length) {
+      const partialSymbols = [...new Set(
+        fundamentalsResult.skipReasons
+          .map((reason) => reason.split(":")[0]?.trim())
+          .filter(Boolean),
+      )];
+
+      return {
+        ok: true,
+        error: "",
+        notice: `Market, FX, and fundamentals refresh completed. Some symbols have limited fundamentals coverage under the current provider plan: ${partialSymbols.join(", ")}.`,
+      };
+    }
+
+    return {
+      ok: true,
+      error: !quoteResult?.refreshedCount && !fundamentalsResult?.refreshedCount && !scrubResult?.scrubbedCount ? "No symbols refreshed." : "",
+    };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to refresh tracked symbols.") };
   }

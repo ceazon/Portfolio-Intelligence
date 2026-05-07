@@ -15,11 +15,12 @@ export function RefreshMarketDataForm() {
     <form action={formAction} className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
       <div>
         <h3 className="text-base font-semibold text-zinc-100">Run market + FX refresh</h3>
-        <p className="mt-1 text-sm text-zinc-400">Refresh the shared quote state for tracked symbols and update the stored USD/CAD FX rate.</p>
+        <p className="mt-1 text-sm text-zinc-400">Refresh shared tracked quotes, update the stored USD/CAD FX rate, and refresh fundamentals for your tracked symbols.</p>
       </div>
 
       {state?.error ? <p className="text-sm text-amber-300">{state.error}</p> : null}
-      {state?.ok ? <p className="text-sm text-emerald-300">Market and FX refresh completed.</p> : null}
+      {state?.notice ? <p className="text-sm text-amber-200">{state.notice}</p> : null}
+      {state?.ok && !state?.notice ? <p className="text-sm text-emerald-300">Market, FX, and fundamentals refresh completed.</p> : null}
 
       <button
         type="submit"
