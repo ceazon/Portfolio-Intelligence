@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { PerformancePacePanel } from "@/components/performance-pace-panel";
+import { PerformanceSymbolChartPopover } from "@/components/performance-symbol-chart-popover";
 import { SectionCard } from "@/components/section-card";
 import { requireUser } from "@/lib/auth";
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
@@ -56,6 +57,12 @@ type SnapshotRow = {
 type FundamentalsRow = {
   symbol_id: string;
   pe_ttm: number | null;
+};
+
+type PriceHistoryRow = {
+  symbol_id: string;
+  price: number | null;
+  captured_at: string;
 };
 
 type SortField = "alpha" | "hit-rate" | "upside" | "pe";
@@ -161,7 +168,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     return fallback;
   }
 
-  const [trackedSymbolsResult, performanceResult, latestSnapshotsResult, portfolioPositionsResult, fundamentalsResult] = await Promise.all([
+  const [trackedSymbolsResult, performanceResult, latestSnapshotsResult, portfolioPositionsResult, fundamentalsResult, priceHistoryResult] = await Promise.all([
     supabase
       .from("symbols")
       .select("id, ticker, name, exchange, currency, symbol_price_snapshots(price, fetched_at)")
@@ -180,6 +187,10 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     supabase
       .from("symbol_fundamentals")
       .select("symbol_id, pe_ttm"),
+    supabase
+      .from("symbol_price_history")
+      .select("symbol_id, price, captured_at")
+      .order("captured_at", { ascending: true }),
   ]);
 
   const trackedSymbols = (trackedSymbolsResult.data || []) as SymbolRow[];
@@ -187,6 +198,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
   const latestSnapshots = (latestSnapshotsResult.data || []) as SnapshotRow[];
   const portfolioPositionRows = (portfolioPositionsResult.data || []) as PortfolioPositionFilterRow[];
   const fundamentalsRows = (fundamentalsResult.data || []) as FundamentalsRow[];
+  const priceHistoryRows = (priceHistoryResult.data || []) as PriceHistoryRow[];
 
   const portfolioMap = new Map<string, PortfolioOptionRow>();
   const portfolioSymbolIds = new Set<string>();
@@ -235,6 +247,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
   const latestSnapshotBySymbol = new Map<string, SnapshotRow>();
   const earliestSnapshotBySymbol = new Map<string, SnapshotRow>();
   const fundamentalsBySymbol = new Map<string, FundamentalsRow>();
+  const priceHistoryBySymbol = new Map<string, { capturedAt: string; price: number }[]>();
   latestSnapshots.forEach((snapshot) => {
     if (!snapshot.symbol_id) {
       return;
@@ -253,6 +266,16 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
     }
 
     fundamentalsBySymbol.set(row.symbol_id, row);
+  });
+
+  priceHistoryRows.forEach((row) => {
+    if (!row.symbol_id || typeof row.price !== "number") {
+      return;
+    }
+
+    const history = priceHistoryBySymbol.get(row.symbol_id) || [];
+    history.push({ capturedAt: row.captured_at, price: row.price });
+    priceHistoryBySymbol.set(row.symbol_id, history);
   });
 
   const trackedSymbolsForPerformance = trackedSymbols.filter((symbol) => {
@@ -561,7 +584,16 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                     return (
                       <tr key={row.symbolId} className="align-top text-zinc-300">
                         <td className="px-3 py-4 align-top">
-                          <div className="font-semibold text-zinc-100">{row.ticker}</div>
+                          <PerformanceSymbolChartPopover
+                            ticker={row.ticker}
+                            name={row.name}
+                            currency={row.currentConsensusTargetCurrency || row.currency || "USD"}
+                            startDate={row.originalSnapshot?.captured_at ?? null}
+                            startPrice={row.originalSnapshot?.current_price ?? null}
+                            targetPrice={row.originalSnapshot?.mean_target ?? row.currentConsensusTarget}
+                            currentPrice={row.currentPrice}
+                            priceHistory={priceHistoryBySymbol.get(row.symbolId) || []}
+                          />
                           <div className="text-xs text-zinc-500">{row.exchange || row.name || "Tracked symbol"}</div>
                         </td>
                         <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(row.currentPrice, row.currency || "USD")}</td>
