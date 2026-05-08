@@ -357,17 +357,58 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
       return peA - peB;
     });
 
-  const aboveCount = summaryRows.filter((row) => row.avgAlphaVsConsensusPct !== null && row.avgAlphaVsConsensusPct > 0).length;
-  const belowCount = summaryRows.filter((row) => row.avgAlphaVsConsensusPct !== null && row.avgAlphaVsConsensusPct < 0).length;
-  const highestHitRate = [...summaryRows]
+  const displayRows = summaryRows.map((row) => {
+    const latestSnapshot = latestSnapshotBySymbol.get(row.symbolId);
+    const originalSnapshot = earliestSnapshotBySymbol.get(row.symbolId);
+    const latestPace = buildPaceSummary({
+      startDate: latestSnapshot?.captured_at ?? row.currentPriceFetchedAt,
+      startPrice: latestSnapshot?.current_price ?? row.currentPrice,
+      targetPrice: row.currentConsensusTarget,
+      currentPrice: row.currentPrice,
+      tolerancePct: 5,
+    });
+    const originalPace = buildPaceSummary({
+      startDate: originalSnapshot?.captured_at ?? null,
+      startPrice: originalSnapshot?.current_price ?? null,
+      targetPrice: originalSnapshot?.mean_target ?? null,
+      currentPrice: row.currentPrice,
+      tolerancePct: 5,
+    });
+    const targetHitNow = row.currentPrice !== null && row.currentConsensusTarget !== null
+      ? row.currentPrice >= row.currentConsensusTarget
+      : null;
+
+    return {
+      ...row,
+      latestSnapshot,
+      originalSnapshot,
+      latestPace,
+      originalPace,
+      targetHitNow,
+    };
+  });
+
+  const liveAheadOfPaceCount = displayRows.filter((row) => row.originalPace.status === "ahead").length;
+  const liveBehindPaceCount = displayRows.filter((row) => row.originalPace.status === "behind").length;
+  const atTargetNowCount = displayRows.filter((row) => row.targetHitNow).length;
+  const liveTrackedCount = displayRows.filter((row) => row.originalPace.status !== "unavailable").length;
+  const impliedUpsideValues = displayRows
+    .map((row) => row.impliedUpsidePct)
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+  const averageImpliedUpsidePct = impliedUpsideValues.length > 0
+    ? impliedUpsideValues.reduce((sum, value) => sum + value, 0) / impliedUpsideValues.length
+    : null;
+  const highestHitRate = [...displayRows]
     .filter((row) => row.hitRatePct !== null)
     .sort((a, b) => (b.hitRatePct ?? -1) - (a.hitRatePct ?? -1))[0] || null;
-  const weakestHitRate = [...summaryRows]
+  const weakestHitRate = [...displayRows]
     .filter((row) => row.hitRatePct !== null)
     .sort((a, b) => (a.hitRatePct ?? 101) - (b.hitRatePct ?? 101))[0] || null;
   const lastQuoteUpdate = summaryRows.find((row) => row.currentPriceFetchedAt)?.currentPriceFetchedAt || null;
-  const aboveCardTone = getCardToneClasses(aboveCount > 0 ? "positive" : "neutral");
-  const belowCardTone = getCardToneClasses(belowCount > 0 ? "negative" : "neutral");
+  const liveAheadTone = getCardToneClasses(liveAheadOfPaceCount > 0 ? "positive" : "neutral");
+  const liveBehindTone = getCardToneClasses(liveBehindPaceCount > 0 ? "negative" : "neutral");
+  const atTargetNowTone = getCardToneClasses(atTargetNowCount > 0 ? "positive" : "neutral");
+  const avgUpsideTone = getCardToneClasses(getPerformanceTone(averageImpliedUpsidePct));
   const highestHitRateTone = getCardToneClasses(getPerformanceTone(highestHitRate?.hitRatePct === null || highestHitRate?.hitRatePct === undefined ? null : highestHitRate.hitRatePct - 50));
   const weakestHitRateTone = getCardToneClasses(getPerformanceTone(weakestHitRate?.hitRatePct === null || weakestHitRate?.hitRatePct === undefined ? null : weakestHitRate.hitRatePct - 50));
 
@@ -380,7 +421,7 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
         >
           <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
-              Historical reliability is summarized from 365-day evaluations first, then 180-day history when 365-day coverage is still thin.
+              Live daily tracking updates from current quotes right away. Historical hit rate and average alpha still use 365-day evaluations first, then 180-day history when 365-day coverage is still thin.
             </div>
             <form action="/performance" method="get" className="flex flex-wrap items-center gap-3">
               <input type="hidden" name="sort" value={sortField} />
@@ -405,25 +446,48 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
             </form>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className={`rounded-2xl border p-4 ${aboveCardTone.border} ${aboveCardTone.bg}`}>
-              <p className={`text-xs uppercase tracking-wide ${aboveCardTone.accent}`}>Above analyst expectations</p>
-              <p className={`mt-3 text-3xl font-bold ${aboveCardTone.value}`}>{aboveCount}</p>
-              <p className="mt-2 text-sm text-zinc-400">Tracked names with positive average alpha vs consensus.</p>
+            <div className={`rounded-2xl border p-4 ${liveAheadTone.border} ${liveAheadTone.bg}`}>
+              <p className={`text-xs uppercase tracking-wide ${liveAheadTone.accent}`}>Ahead of pace now</p>
+              <p className={`mt-3 text-3xl font-bold ${liveAheadTone.value}`}>{liveAheadOfPaceCount}</p>
+              <p className="mt-2 text-sm text-zinc-400">Symbols currently ahead of their original 365-day target path.</p>
             </div>
-            <div className={`rounded-2xl border p-4 ${belowCardTone.border} ${belowCardTone.bg}`}>
-              <p className={`text-xs uppercase tracking-wide ${belowCardTone.accent}`}>Below analyst expectations</p>
-              <p className={`mt-3 text-3xl font-bold ${belowCardTone.value}`}>{belowCount}</p>
-              <p className="mt-2 text-sm text-zinc-400">Tracked names where realized results lagged prior consensus.</p>
+            <div className={`rounded-2xl border p-4 ${liveBehindTone.border} ${liveBehindTone.bg}`}>
+              <p className={`text-xs uppercase tracking-wide ${liveBehindTone.accent}`}>Behind pace now</p>
+              <p className={`mt-3 text-3xl font-bold ${liveBehindTone.value}`}>{liveBehindPaceCount}</p>
+              <p className="mt-2 text-sm text-zinc-400">Symbols currently trailing their original target path.</p>
+            </div>
+            <div className={`rounded-2xl border p-4 ${atTargetNowTone.border} ${atTargetNowTone.bg}`}>
+              <p className={`text-xs uppercase tracking-wide ${atTargetNowTone.accent}`}>At target now</p>
+              <p className={`mt-3 text-3xl font-bold ${atTargetNowTone.value}`}>{atTargetNowCount}</p>
+              <p className="mt-2 text-sm text-zinc-400">Names already trading at or above the current consensus target.</p>
+            </div>
+            <div className={`rounded-2xl border p-4 ${avgUpsideTone.border} ${avgUpsideTone.bg}`}>
+              <p className={`text-xs uppercase tracking-wide ${avgUpsideTone.accent}`}>Average implied upside</p>
+              <p className={`mt-3 text-2xl font-bold ${avgUpsideTone.value}`}>{formatPercent(averageImpliedUpsidePct)}</p>
+              <p className="mt-2 text-sm text-zinc-400">Live daily snapshot across {impliedUpsideValues.length} tracked symbols with quote + target data.</p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Live tracking coverage</p>
+              <p className="mt-3 text-3xl font-bold text-zinc-50">{liveTrackedCount}</p>
+              <p className="mt-2 text-sm text-zinc-400">Symbols with enough snapshot history to compute daily pace right now.</p>
             </div>
             <div className={`rounded-2xl border p-4 ${highestHitRateTone.border} ${highestHitRateTone.bg}`}>
               <p className={`text-xs uppercase tracking-wide ${highestHitRateTone.accent}`}>Highest hit-rate stock</p>
               <p className={`mt-3 text-2xl font-bold ${highestHitRateTone.value}`}>{highestHitRate?.ticker || "—"}</p>
-              <p className="mt-2 text-sm text-zinc-400">{highestHitRate ? `${formatPercent(highestHitRate.hitRatePct)} hit rate` : "No evaluated symbols yet."}</p>
+              <p className="mt-2 text-sm text-zinc-400">{highestHitRate ? `${formatPercent(highestHitRate.hitRatePct)} hit rate` : "Historical hit-rate starts once 90-day windows mature."}</p>
             </div>
             <div className={`rounded-2xl border p-4 ${weakestHitRateTone.border} ${weakestHitRateTone.bg}`}>
               <p className={`text-xs uppercase tracking-wide ${weakestHitRateTone.accent}`}>Weakest hit-rate stock</p>
               <p className={`mt-3 text-2xl font-bold ${weakestHitRateTone.value}`}>{weakestHitRate?.ticker || "—"}</p>
-              <p className="mt-2 text-sm text-zinc-400">{weakestHitRate ? `${formatPercent(weakestHitRate.hitRatePct)} hit rate` : "No evaluated symbols yet."}</p>
+              <p className="mt-2 text-sm text-zinc-400">{weakestHitRate ? `${formatPercent(weakestHitRate.hitRatePct)} hit rate` : "Historical hit-rate starts once 90-day windows mature."}</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Historical alpha status</p>
+              <p className="mt-3 text-2xl font-bold text-zinc-50">Warming up</p>
+              <p className="mt-2 text-sm text-zinc-400">Average alpha remains horizon-based so it stays honest instead of pretending final outcomes are known early.</p>
             </div>
           </div>
         </SectionCard>
@@ -488,28 +552,18 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         <span className={sortField === "alpha" ? "text-sky-400" : "text-zinc-600"}>{sortField === "alpha" ? "↓" : "↕"}</span>
                       </Link>
                     </th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap">At target now</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Expected price</th>
                     <th className="w-[220px] px-3 py-3 font-medium">Pace</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-900/80">
-                  {summaryRows.map((row) => {
-                    const latestSnapshot = latestSnapshotBySymbol.get(row.symbolId);
-                    const originalSnapshot = earliestSnapshotBySymbol.get(row.symbolId);
-                    const latestPace = buildPaceSummary({
-                      startDate: latestSnapshot?.captured_at ?? row.currentPriceFetchedAt,
-                      startPrice: latestSnapshot?.current_price ?? row.currentPrice,
-                      targetPrice: row.currentConsensusTarget,
-                      currentPrice: row.currentPrice,
-                      tolerancePct: 5,
-                    });
-                    const originalPace = buildPaceSummary({
-                      startDate: originalSnapshot?.captured_at ?? null,
-                      startPrice: originalSnapshot?.current_price ?? null,
-                      targetPrice: originalSnapshot?.mean_target ?? null,
-                      currentPrice: row.currentPrice,
-                      tolerancePct: 5,
-                    });
+                  {displayRows.map((row) => {
+                    const targetNowClasses = row.targetHitNow
+                      ? "border-emerald-800/70 bg-emerald-950/25 text-emerald-300"
+                      : row.targetHitNow === false
+                        ? "border-zinc-700 bg-zinc-900 text-zinc-300"
+                        : "border-zinc-800 bg-zinc-950/70 text-zinc-500";
 
                     return (
                       <tr key={row.symbolId} className="align-top text-zinc-300">
@@ -521,14 +575,19 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(row.currentConsensusTarget, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
                         <td className="px-3 py-4 align-top whitespace-nowrap text-zinc-300">{formatRatio(row.peRatioTtm)}</td>
                         <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.impliedUpsidePct)}`}>{formatPercent(row.impliedUpsidePct)}</td>
-                        <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.hitRatePct === null ? null : row.hitRatePct - 50)}`}>{formatPercent(row.hitRatePct)}</td>
-                        <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.avgAlphaVsConsensusPct)}`}>{formatPercent(row.avgAlphaVsConsensusPct)}</td>
-                        <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(latestPace.expectedPriceToday, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
+                        <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.hitRatePct === null ? null : row.hitRatePct - 50)}`}>{row.hitRatePct === null ? <span className="text-zinc-500">Warming up</span> : formatPercent(row.hitRatePct)}</td>
+                        <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.avgAlphaVsConsensusPct)}`}>{row.avgAlphaVsConsensusPct === null ? <span className="text-zinc-500">Warming up</span> : formatPercent(row.avgAlphaVsConsensusPct)}</td>
+                        <td className="px-3 py-4 align-top whitespace-nowrap">
+                          <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${targetNowClasses}`}>
+                            {row.targetHitNow === null ? "No target" : row.targetHitNow ? "Hit" : "Not yet"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(row.latestPace.expectedPriceToday, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
                         <td className="px-3 py-4 align-top">
                           <PerformancePacePanel
                             currency={row.currentConsensusTargetCurrency || row.currency || "USD"}
-                            latest={latestPace}
-                            original={originalPace}
+                            latest={row.latestPace}
+                            original={row.originalPace}
                             reliabilityLabel={row.reliabilityLabel}
                             evaluatedSnapshotCount={row.evaluatedSnapshotCount}
                             evaluationWindowDays={row.evaluationWindowDays}
