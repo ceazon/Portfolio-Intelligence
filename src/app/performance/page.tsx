@@ -552,19 +552,12 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         <span className={sortField === "alpha" ? "text-sky-400" : "text-zinc-600"}>{sortField === "alpha" ? "↓" : "↕"}</span>
                       </Link>
                     </th>
-                    <th className="px-3 py-3 font-medium whitespace-nowrap">At target now</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Expected price</th>
                     <th className="w-[220px] px-3 py-3 font-medium">Pace</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-900/80">
                   {displayRows.map((row) => {
-                    const targetNowClasses = row.targetHitNow
-                      ? "border-emerald-800/70 bg-emerald-950/25 text-emerald-300"
-                      : row.targetHitNow === false
-                        ? "border-zinc-700 bg-zinc-900 text-zinc-300"
-                        : "border-zinc-800 bg-zinc-950/70 text-zinc-500";
-
                     return (
                       <tr key={row.symbolId} className="align-top text-zinc-300">
                         <td className="px-3 py-4 align-top">
@@ -577,11 +570,6 @@ export default async function PerformancePage({ searchParams }: PerformancePageP
                         <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.impliedUpsidePct)}`}>{formatPercent(row.impliedUpsidePct)}</td>
                         <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.hitRatePct === null ? null : row.hitRatePct - 50)}`}>{row.hitRatePct === null ? <span className="text-zinc-500">Warming up</span> : formatPercent(row.hitRatePct)}</td>
                         <td className={`px-3 py-4 align-top whitespace-nowrap ${getValueToneClass(row.avgAlphaVsConsensusPct)}`}>{row.avgAlphaVsConsensusPct === null ? <span className="text-zinc-500">Warming up</span> : formatPercent(row.avgAlphaVsConsensusPct)}</td>
-                        <td className="px-3 py-4 align-top whitespace-nowrap">
-                          <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${targetNowClasses}`}>
-                            {row.targetHitNow === null ? "No target" : row.targetHitNow ? "Hit" : "Not yet"}
-                          </span>
-                        </td>
                         <td className="px-3 py-4 align-top whitespace-nowrap">{formatMoney(row.latestPace.expectedPriceToday, row.currentConsensusTargetCurrency || row.currency || "USD")}</td>
                         <td className="px-3 py-4 align-top">
                           <PerformancePacePanel
