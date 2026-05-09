@@ -94,48 +94,55 @@ export default async function DashboardPage() {
     },
   ];
 
-  const statusCards = [
+  const currentStatus = [
     {
-      title: "Portfolio foundation",
-      status: "Live",
-      body: "Positions, cash, allocation, edit flows, and portfolio-scoped views are in place.",
+      label: "Core app",
+      value: "Usable",
+      body: "Portfolios, positions, cash, allocation views, watchlists, symbols, and refresh flows are live.",
     },
     {
-      title: "Market data layer",
-      status: "Live",
-      body: "Central quote refresh, FMP/Yahoo fallback, FX refresh, fundamentals, and quote run history are wired.",
+      label: "Market data",
+      value: "Working",
+      body: "Quotes, FX, fundamentals, consensus targets, and Yahoo fallback are wired into the shared refresh path.",
     },
     {
-      title: "Estimate tracking",
-      status: "Live + warming up",
-      body: "Daily pace, implied upside, and expectation-vs-actual popout charts work now. Formal hit rate and average alpha will fill as 90/180/365-day windows mature.",
+      label: "Performance",
+      value: "Warming up",
+      body: "Daily pace and expectation-vs-actual charts are useful now; formal hit rate and alpha need 90/180/365-day history.",
     },
     {
-      title: "AI research and rebalancing",
-      status: "MVP live",
-      body: "Research, recommendation history, portfolio actions, and rebalance summaries exist; the next lift is making the assistant more proactive and explainable.",
-    },
-  ];
-
-  const nextBuildTargets = [
-    {
-      title: "Make the dashboard decision-first",
-      body: "Surface the 3-5 most important portfolio signals automatically: stale data, big upside changes, position drift, and names falling behind their expectation path.",
-    },
-    {
-      title: "Deepen symbol detail pages",
-      body: "Add a single-symbol workspace with price history, target history, fundamentals, research notes, and the expectation-vs-actual chart in one place.",
-    },
-    {
-      title: "Turn rebalancing into an AI copilot loop",
-      body: "Let the app explain why a rebalance matters, what changed since the last run, and what action is safest to take next.",
+      label: "AI layer",
+      value: "MVP",
+      body: "Research, recommendation synthesis, and rebalance copilot copy exist, but persistence and change tracking should become the next trust layer.",
     },
   ];
 
-  const operatingNotes = [
-    "Core portfolio tracking is usable now.",
-    "Performance tracking has immediate daily visibility, while historical reliability metrics are intentionally still warming up.",
-    "The highest leverage next step is reducing noise: fewer pages that just display data, more surfaces that tell you what changed and why it matters.",
+  const focusedRecommendations = [
+    {
+      priority: "1",
+      title: "Make the dashboard a daily decision brief",
+      body: "Show only the few things that changed: stale data, largest allocation drift, biggest target/price gap, names ahead/behind pace, and the safest next action.",
+    },
+    {
+      priority: "2",
+      title: "Persist the rebalance copilot loop",
+      body: "Save accept/watch/snooze/reject decisions into a journal so future runs can explain what changed since the last decision.",
+    },
+    {
+      priority: "3",
+      title: "Build one symbol intelligence page",
+      body: "Merge quote history, target history, fundamentals, research notes, risks, and the expectation chart into a single ticker workspace.",
+    },
+    {
+      priority: "4",
+      title: "Replace broad recommendations with change tracking",
+      body: "Stop treating recommendations as one-off outputs; version them and surface only material changes in action, conviction, target, risk, or thesis.",
+    },
+    {
+      priority: "5",
+      title: "Automate monitoring after trust improves",
+      body: "Once decisions and deltas are persistent, add alerts for meaningful drift, stale quotes, target revisions, and positions breaking their expected path.",
+    },
   ];
 
   return (
@@ -143,13 +150,13 @@ export default async function DashboardPage() {
       <div className="space-y-6">
         <SectionCard
           title="Portfolio Intelligence command center"
-          description="A snapshot of where the application is today, what is live, what is warming up, and what should come next."
+          description="Current product state and the focused next bets from here."
         >
           <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
             <div className="space-y-4">
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-zinc-300">
                 <span className="font-medium text-emerald-300">{hasSupabaseEnv() ? "System configured and running" : "System not configured yet"}</span>
-                <span className="text-zinc-400"> · core portfolio, market data, research, rebalancing, and performance views are online.</span>
+                <span className="text-zinc-400"> · the app is now past foundation and into trust/decision-usefulness work.</span>
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-zinc-300">
                 Quote refresh <span className="font-medium text-zinc-100">{marketHoursState.cadenceLabel === "market-hours" ? "market hours" : "off hours"}</span>
@@ -180,62 +187,52 @@ export default async function DashboardPage() {
           </div>
         </SectionCard>
 
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
           <SectionCard
-            title="Application state"
-            description="What is already working and what is still maturing."
+            title="Current status"
+            description="Slim read on where the app stands right now."
           >
-            <div className="grid gap-4 md:grid-cols-2">
-              {statusCards.map((card) => (
-                <div key={card.title} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="text-base font-semibold text-zinc-100">{card.title}</h3>
-                    <span className="shrink-0 rounded-full border border-sky-800/70 bg-sky-950/30 px-2.5 py-1 text-xs font-medium text-sky-300">{card.status}</span>
+            <div className="space-y-3">
+              {currentStatus.map((item) => (
+                <div key={item.label} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-zinc-100">{item.label}</p>
+                    <span className="shrink-0 rounded-full border border-sky-800/70 bg-sky-950/30 px-2.5 py-1 text-xs font-medium text-sky-300">{item.value}</span>
                   </div>
-                  <p className="mt-3 text-sm leading-6 text-zinc-400">{card.body}</p>
+                  <p className="mt-2 text-sm leading-6 text-zinc-400">{item.body}</p>
                 </div>
               ))}
             </div>
           </SectionCard>
 
-          <div className="space-y-6">
-            <SectionCard
-              title="What comes next"
-              description="Highest-leverage follow-ups from here."
-            >
-              <ul className="space-y-3 text-sm text-zinc-300">
-                {nextBuildTargets.map((item) => (
-                  <li key={item.title} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-                    <p className="font-semibold text-zinc-100">{item.title}</p>
-                    <p className="mt-1 leading-6 text-zinc-400">{item.body}</p>
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-
-            <SectionCard
-              title="Operating notes"
-              description="How to think about the app right now."
-            >
-              <ul className="space-y-3 text-sm text-zinc-300">
-                {operatingNotes.map((item) => (
-                  <li key={item} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 leading-6 text-zinc-400">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-
-            <SectionCard
-              title="Latest signal"
-              description="Most recent operating summary."
-            >
-              <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm leading-6 text-zinc-400">
-                {latestRebalanceRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet."}
-              </div>
-            </SectionCard>
-          </div>
+          <SectionCard
+            title="Focused next recommendations"
+            description="Best next steps after reviewing the app as a whole."
+          >
+            <ol className="space-y-3 text-sm text-zinc-300">
+              {focusedRecommendations.map((item) => (
+                <li key={item.priority} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                  <div className="flex gap-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-emerald-800/70 bg-emerald-950/25 text-xs font-bold text-emerald-300">{item.priority}</span>
+                    <div>
+                      <p className="font-semibold text-zinc-100">{item.title}</p>
+                      <p className="mt-1 leading-6 text-zinc-400">{item.body}</p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </SectionCard>
         </div>
+
+        <SectionCard
+          title="Latest signal"
+          description="Most recent operating summary."
+        >
+          <div className="rounded-2xl border border-dashed border-zinc-700 p-4 text-sm leading-6 text-zinc-400">
+            {latestRebalanceRunSummary || latestCentralQuoteRunSummary || "No rebalance runs yet."}
+          </div>
+        </SectionCard>
       </div>
     </AppShell>
   );
