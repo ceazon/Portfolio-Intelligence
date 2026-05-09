@@ -148,19 +148,17 @@ export default async function SymbolsPage() {
                     <div key={symbol.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-3">
+                          <Link href={`/symbols/${encodeURIComponent(symbol.ticker)}`} className="group flex w-fit items-center gap-3 rounded-2xl outline-none transition hover:text-sky-300 focus-visible:ring-2 focus-visible:ring-sky-500/70">
                             {symbol.logo_url ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={symbol.logo_url} alt="" className="h-8 w-8 rounded-full bg-white object-contain p-1" />
                             ) : null}
                             <div>
-                              <p className="text-sm font-semibold text-zinc-100">
-                                <Link href={`/symbols/${encodeURIComponent(symbol.ticker)}`} className="underline decoration-zinc-700 underline-offset-4 hover:text-sky-300 hover:decoration-sky-500">
-                                  {symbol.ticker}
-                                </Link>
-                                <span className="ml-2 text-zinc-400">{symbol.name || "Unnamed symbol"}</span>
+                              <p className="text-sm font-semibold text-zinc-100 group-hover:text-sky-300">
+                                {symbol.ticker}
+                                <span className="ml-2 text-zinc-400 group-hover:text-sky-200">{symbol.name || "Unnamed symbol"}</span>
                               </p>
-                              <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
+                              <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500 group-hover:text-sky-400/80">
                                 {symbol.asset_type || "stock"}
                                 {symbol.is_etf ? " · ETF" : ""}
                                 {symbol.exchange ? ` · ${symbol.exchange}` : ""}
@@ -168,12 +166,15 @@ export default async function SymbolsPage() {
                                 {symbol.sector ? ` · ${symbol.sector}` : ""}
                               </p>
                             </div>
-                          </div>
+                          </Link>
 
                           <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-400">
                             {symbol.currency ? <span className="rounded-full border border-zinc-700 px-2 py-1">Currency {symbol.currency}</span> : null}
                             {marketCap ? <span className="rounded-full border border-zinc-700 px-2 py-1">Market cap {marketCap}</span> : null}
                             {symbol.ipo_date ? <span className="rounded-full border border-zinc-700 px-2 py-1">IPO {symbol.ipo_date}</span> : null}
+                            <Link href={`/symbols/${encodeURIComponent(symbol.ticker)}`} className="rounded-full border border-sky-700/70 bg-sky-950/20 px-2 py-1 text-sky-200 hover:border-sky-400 hover:text-sky-100">
+                              Open workspace
+                            </Link>
                             {symbol.web_url ? (
                               <a href={symbol.web_url} target="_blank" rel="noreferrer" className="rounded-full border border-zinc-700 px-2 py-1 hover:border-sky-500/60 hover:text-sky-300">
                                 Website
