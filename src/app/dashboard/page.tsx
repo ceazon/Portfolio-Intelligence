@@ -98,7 +98,7 @@ export default async function DashboardPage() {
     {
       label: "Core app",
       value: "Usable",
-      body: "Portfolios, positions, cash, allocation views, watchlists, symbols, and refresh flows are live.",
+      body: "Portfolios, positions, cash, allocation views, watchlists, symbols, refresh flows, and per-symbol workspaces are live.",
     },
     {
       label: "Market data",
@@ -111,17 +111,37 @@ export default async function DashboardPage() {
       body: "Daily pace and expectation-vs-actual charts are useful now; formal hit rate and alpha need 90/180/365-day history.",
     },
     {
+      label: "Symbol intelligence",
+      value: "Live",
+      body: "Each ticker now opens a single workspace with quote, target history, fundamentals, research evidence, risk notes, portfolio exposure, and expectation-vs-actual charting.",
+    },
+    {
       label: "AI layer",
       value: "MVP",
-      body: "Research, recommendation synthesis, and rebalance copilot copy exist, but persistence and change tracking should become the next trust layer.",
+      body: "Research, recommendation synthesis, and rebalance copilot copy exist; the next trust layer is decision persistence and material-change tracking.",
+    },
+  ];
+
+  const latestProgress = [
+    {
+      title: "Single-symbol workspaces shipped",
+      body: "Ticker cards now link into /symbols/[ticker], consolidating price, target, fundamentals, research, risks, charting, and exposure into one page.",
+    },
+    {
+      title: "Estimate tracking matured",
+      body: "The app now shows daily expectation-vs-actual pacing immediately while formal hit-rate and alpha scoring continue to accumulate history.",
+    },
+    {
+      title: "Product focus tightened",
+      body: "The center of gravity has shifted from broad archives toward portfolio decisions, target paths, and symbol-level evidence review.",
     },
   ];
 
   const focusedRecommendations = [
     {
       priority: "1",
-      title: "Make the dashboard a daily decision brief",
-      body: "Show only the few things that changed: stale data, largest allocation drift, biggest target/price gap, names ahead/behind pace, and the safest next action.",
+      title: "Turn the dashboard into a daily decision brief",
+      body: "Surface the few names that changed: stale data, largest allocation drift, biggest target/price gap, behind/ahead pace, and the safest next action.",
     },
     {
       priority: "2",
@@ -130,13 +150,13 @@ export default async function DashboardPage() {
     },
     {
       priority: "3",
-      title: "Build one symbol intelligence page",
-      body: "Merge quote history, target history, fundamentals, research notes, risks, and the expectation chart into a single ticker workspace.",
+      title: "Polish the symbol workspace into the main research cockpit",
+      body: "Add clearer action CTAs, change badges, and links from portfolio/rebalance/performance rows into the same ticker workspace.",
     },
     {
       priority: "4",
-      title: "Replace broad recommendations with change tracking",
-      body: "Stop treating recommendations as one-off outputs; version them and surface only material changes in action, conviction, target, risk, or thesis.",
+      title: "Replace broad recommendations with material-change tracking",
+      body: "Version recommendations and surface only meaningful changes in action, conviction, target, risk, or thesis.",
     },
     {
       priority: "5",
@@ -182,6 +202,15 @@ export default async function DashboardPage() {
                 <p className="text-xs uppercase tracking-wide text-zinc-500">{stat.label}</p>
                 <p className="mt-3 text-3xl font-bold text-zinc-50">{stat.value}</p>
                 <p className="mt-2 text-sm text-zinc-400">{stat.detail}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {latestProgress.map((item) => (
+              <div key={item.title} className="rounded-2xl border border-emerald-800/50 bg-emerald-950/10 p-4">
+                <p className="text-xs uppercase tracking-wide text-emerald-300">Latest progress</p>
+                <p className="mt-2 font-semibold text-zinc-100">{item.title}</p>
+                <p className="mt-2 text-sm leading-6 text-zinc-400">{item.body}</p>
               </div>
             ))}
           </div>
