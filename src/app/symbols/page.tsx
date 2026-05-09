@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { SymbolImportPanel } from "@/components/symbol-import-panel";
@@ -154,7 +155,9 @@ export default async function SymbolsPage() {
                             ) : null}
                             <div>
                               <p className="text-sm font-semibold text-zinc-100">
-                                {symbol.ticker}
+                                <Link href={`/symbols/${encodeURIComponent(symbol.ticker)}`} className="underline decoration-zinc-700 underline-offset-4 hover:text-sky-300 hover:decoration-sky-500">
+                                  {symbol.ticker}
+                                </Link>
                                 <span className="ml-2 text-zinc-400">{symbol.name || "Unnamed symbol"}</span>
                               </p>
                               <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">
