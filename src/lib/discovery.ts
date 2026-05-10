@@ -108,6 +108,14 @@ function scoreDiscoveryCandidate(input: {
   };
 }
 
+function isFocusedDiscoveryCandidate(input: { impliedUpsidePct: number | null; peTtm: number | null }) {
+  return typeof input.impliedUpsidePct === "number"
+    && input.impliedUpsidePct > 0
+    && typeof input.peTtm === "number"
+    && input.peTtm >= 10
+    && input.peTtm <= 50;
+}
+
 export async function getSp500Universe(): Promise<DiscoveryUniverseMember[]> {
   const response = await fetch(SP500_CONSTITUENTS_URL, { cache: "no-store" });
   if (!response.ok) {
@@ -415,17 +423,8 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
     try {
-      const [profileResult, fmpQuoteResult, yahooQuoteResult, metricsResult, consensusResult] = await Promise.allSettled([
-        getFmpProfile(member.providerTicker),
-        getFmpQuote(member.providerTicker),
-        getYahooChartQuote(member.providerTicker),
-        getFmpKeyMetricsTtm(member.providerTicker),
-        getConsensusTargetForSymbol(member.providerTicker),
-      ]);
-
-      const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
-      const fmpQuote = fmpQuoteResult.status === "fulfilled" ? fmpQuoteResult.value : null;
-      const yahooQuote = yahooQuoteResult.status === "fulfilled" ? yahooQuoteResult.value : null;
+      const storedFallback = storedFallbacks.get(member.ticker);
+      const yahooQuote = await getYahooChartQuote(member.providerTicker).catch(() => null);
       const quote = yahooQuote
         ? {
             price: yahooQuote.price,
@@ -437,14 +436,9 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
             previousClose: yahooQuote.previousClose,
             currency: yahooQuote.currency,
           }
-        : fmpQuote
-          ? { ...fmpQuote, currency: profile?.currency || null }
-          : null;
-      const metrics = metricsResult.status === "fulfilled" ? metricsResult.value : null;
-      const consensus = consensusResult.status === "fulfilled" ? consensusResult.value : null;
-      const storedFallback = storedFallbacks.get(member.ticker);
+        : null;
       const needsAlphaVantage = alphaVantageCalls < alphaVantageCallLimit
-        && (consensus?.meanTarget === null || consensus?.meanTarget === undefined || metrics?.peRatioTTM === null || metrics?.peRatioTTM === undefined || !profile);
+        && (storedFallback?.consensusTarget === null || storedFallback?.consensusTarget === undefined || storedFallback?.peTtm === null || storedFallback?.peTtm === undefined);
       if (needsAlphaVantage) {
         alphaVantageCalls += 1;
       }
@@ -452,12 +446,34 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         ? await getAlphaVantageOverview(member.providerTicker).catch(() => null)
         : null;
 
-      const price = quote?.price ?? profile?.price ?? storedFallback?.price ?? null;
-      const target = consensus?.meanTarget ?? alphaOverview?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
+      const firstPassPrice = quote?.price ?? storedFallback?.price ?? null;
+      const firstPassTarget = alphaOverview?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
+      const firstPassPeTtm = alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? storedFallback?.peTtm ?? null;
+      const firstPassUpsidePct = typeof firstPassPrice === "number" && firstPassPrice > 0 && typeof firstPassTarget === "number"
+        ? ((firstPassTarget - firstPassPrice) / firstPassPrice) * 100
+        : null;
+      const shouldEnrich = isFocusedDiscoveryCandidate({ impliedUpsidePct: firstPassUpsidePct, peTtm: firstPassPeTtm });
+
+      const [profileResult, fmpQuoteResult, metricsResult, consensusResult] = shouldEnrich
+        ? await Promise.allSettled([
+            getFmpProfile(member.providerTicker),
+            quote ? Promise.resolve(null) : getFmpQuote(member.providerTicker),
+            getFmpKeyMetricsTtm(member.providerTicker),
+            getConsensusTargetForSymbol(member.providerTicker),
+          ])
+        : [null, null, null, null] as const;
+
+      const profile = profileResult && profileResult.status === "fulfilled" ? profileResult.value : null;
+      const fmpQuote = fmpQuoteResult && fmpQuoteResult.status === "fulfilled" ? fmpQuoteResult.value : null;
+      const metrics = metricsResult && metricsResult.status === "fulfilled" ? metricsResult.value : null;
+      const consensus = consensusResult && consensusResult.status === "fulfilled" ? consensusResult.value : null;
+      const finalQuote = quote || (fmpQuote ? { ...fmpQuote, currency: profile?.currency || null } : null);
+      const price = finalQuote?.price ?? profile?.price ?? firstPassPrice;
+      const target = consensus?.meanTarget ?? firstPassTarget;
       const impliedUpsidePct = typeof price === "number" && price > 0 && typeof target === "number"
         ? ((target - price) / price) * 100
         : null;
-      const peTtm = metrics?.peRatioTTM ?? alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? storedFallback?.peTtm ?? null;
+      const peTtm = metrics?.peRatioTTM ?? firstPassPeTtm;
       const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? alphaOverview?.revenueGrowthTtm ?? storedFallback?.revenueGrowthTtm ?? null;
       const scoring = scoreDiscoveryCandidate({
         impliedUpsidePct,
@@ -477,7 +493,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         sector: profile?.sector || alphaOverview?.sector || member.sector,
         industry: profile?.industry || alphaOverview?.industry || member.industry,
         price,
-        currency: profile?.currency || alphaOverview?.currency || quote?.currency || storedFallback?.currency || null,
+        currency: profile?.currency || alphaOverview?.currency || finalQuote?.currency || storedFallback?.currency || null,
         consensus_target: target,
         median_target: consensus?.medianTarget ?? alphaOverview?.analystTargetPrice ?? storedFallback?.medianTarget ?? null,
         high_target: consensus?.highTarget ?? storedFallback?.highTarget ?? null,
