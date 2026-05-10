@@ -56,11 +56,14 @@ export async function refreshDiscovery(_prevState: FormState, formData: FormData
     const coverageSummary = coverage && coverage.qualifiedCount !== null && coverage.withTargetCount !== null && coverage.withPeCount !== null
       ? ` Qualified: ${coverage.qualifiedCount}; targets: ${coverage.withTargetCount}; P/E: ${coverage.withPeCount}.`
       : "";
+    const newlyQualifiedSummary = result.newlyQualifiedSymbols?.length
+      ? ` Newly added: ${result.newlyQualifiedSymbols.slice(0, 8).join(", ")}${result.newlyQualifiedSymbols.length > 8 ? ` +${result.newlyQualifiedSymbols.length - 8} more` : ""}.`
+      : " Newly added: none this refresh.";
 
     return {
       ok: true,
       error: "",
-      notice: `Discovery refreshed ${result.refreshedCount} of ${result.consideredCount} S&P 500 candidates. Universe size: ${result.universeCount}.${coverageSummary}`,
+      notice: `Discovery refreshed ${result.refreshedCount} of ${result.consideredCount} S&P 500 candidates. Universe size: ${result.universeCount}.${coverageSummary}${newlyQualifiedSummary}`,
     };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to refresh Discovery.") };
