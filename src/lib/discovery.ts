@@ -1,6 +1,6 @@
 import { getAlphaVantageOverview } from "@/lib/alpha-vantage";
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
-import { getEodhdFundamentals } from "@/lib/eodhd";
+import { getEodhdQuote } from "@/lib/eodhd";
 import { FmpError, getFmpKeyMetricsTtm, getFmpProfile, getFmpQuote } from "@/lib/fmp";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { getYahooChartQuote } from "@/lib/yahoo-finance";
@@ -19,7 +19,7 @@ type DiscoveryUniverseMember = {
 type DiscoveryRefreshOptions = {
   maxSymbols?: number;
   maxAlphaVantageCalls?: number;
-  maxEodhdCalls?: number;
+  maxEodhdQuoteCalls?: number;
 };
 
 type DiscoveryProviderAttempt = {
@@ -451,6 +451,7 @@ async function getDiscoveryProviderAttempts(tickers: string[]) {
 async function recordDiscoveryProviderAttempt(input: {
   ticker: string;
   provider: string;
+  purpose?: string;
   ok: boolean;
   now: string;
   error?: unknown;
@@ -464,7 +465,7 @@ async function recordDiscoveryProviderAttempt(input: {
     .eq("universe", DISCOVERY_UNIVERSE)
     .eq("ticker", input.ticker)
     .eq("provider", input.provider)
-    .eq("purpose", "fundamentals")
+    .eq("purpose", input.purpose || "fundamentals")
     .maybeSingle();
 
   if (previousResult.error) return;
@@ -475,7 +476,7 @@ async function recordDiscoveryProviderAttempt(input: {
       universe: DISCOVERY_UNIVERSE,
       ticker: input.ticker,
       provider: input.provider,
-      purpose: "fundamentals",
+      purpose: input.purpose || "fundamentals",
       last_success_at: input.ok ? input.now : null,
       last_failure_at: input.ok ? null : input.now,
       failure_count: nextFailureCount,
@@ -554,17 +555,36 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   let refreshedCount = 0;
   let failedCount = 0;
   let alphaVantageCalls = 0;
-  let eodhdCalls = 0;
+  let eodhdQuoteCalls = 0;
   const alphaVantageCallLimit = Math.max(0, Math.min(options.maxAlphaVantageCalls ?? 25, selectedMembers.length));
-  const eodhdCallLimit = Math.max(0, Math.min(options.maxEodhdCalls ?? 25, selectedMembers.length));
+  const eodhdQuoteCallLimit = Math.max(0, Math.min(options.maxEodhdQuoteCalls ?? 100, selectedMembers.length));
   const alphaVantageCandidateTickers = new Set(randomizedMissingMembers.slice(0, alphaVantageCallLimit).map((member) => member.ticker));
-  const eodhdCandidateTickers = new Set(randomizedMissingMembers.slice(0, Math.max(alphaVantageCallLimit, eodhdCallLimit) + eodhdCallLimit).map((member) => member.ticker));
 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
     try {
       const storedFallback = storedFallbacks.get(member.ticker);
       const providerAttemptUpdates: Record<string, DiscoveryProviderAttempt> = {};
       const yahooQuote = await getYahooChartQuote(member.providerTicker).catch(() => null);
+      const needsEodhdQuote = !yahooQuote
+        && eodhdQuoteCalls < eodhdQuoteCallLimit
+        && !isProviderCooledDown(providerAttempts.get(providerAttemptKey(member.ticker, "eodhd_quote", "quote")), nowMs);
+      if (needsEodhdQuote) {
+        eodhdQuoteCalls += 1;
+      }
+      const eodhdQuote = needsEodhdQuote
+        ? await getEodhdQuote(member.providerTicker)
+          .then(async (result) => {
+            await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "eodhd_quote", purpose: "quote", ok: Boolean(result), now });
+            providerAttemptUpdates.eodhd_quote = { lastSuccessAt: result ? now : null, lastFailureAt: result ? null : now, failureCount: result ? 0 : 1 };
+            return result;
+          })
+          .catch(async (error) => {
+            await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "eodhd_quote", purpose: "quote", ok: false, now, error });
+            const previous = providerAttempts.get(providerAttemptKey(member.ticker, "eodhd_quote", "quote"));
+            providerAttemptUpdates.eodhd_quote = { lastSuccessAt: previous?.lastSuccessAt || null, lastFailureAt: now, failureCount: Number(previous?.failureCount || 0) + 1 };
+            return null;
+          })
+        : null;
       const quote = yahooQuote
         ? {
             price: yahooQuote.price,
@@ -576,6 +596,17 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
             previousClose: yahooQuote.previousClose,
             currency: yahooQuote.currency,
           }
+        : eodhdQuote
+          ? {
+              price: eodhdQuote.price,
+              change: eodhdQuote.change,
+              changesPercentage: eodhdQuote.percentChange,
+              dayHigh: eodhdQuote.dayHigh,
+              dayLow: eodhdQuote.dayLow,
+              open: eodhdQuote.open,
+              previousClose: eodhdQuote.previousClose,
+              currency: eodhdQuote.currency,
+            }
         : null;
       const needsAlphaVantage = alphaVantageCalls < alphaVantageCallLimit
         && alphaVantageCandidateTickers.has(member.ticker)
@@ -599,32 +630,9 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
           })
         : null;
 
-      const stillNeedsProviderData = alphaOverview?.analystTargetPrice === null || alphaOverview?.analystTargetPrice === undefined || (alphaOverview?.peRatio === null && alphaOverview?.forwardPe === null);
-      const needsEodhd = eodhdCalls < eodhdCallLimit
-        && eodhdCandidateTickers.has(member.ticker)
-        && !isProviderCooledDown(providerAttempts.get(providerAttemptKey(member.ticker, "eodhd")), nowMs)
-        && ((storedFallback?.consensusTarget === null || storedFallback?.consensusTarget === undefined || storedFallback?.peTtm === null || storedFallback?.peTtm === undefined) || stillNeedsProviderData);
-      if (needsEodhd) {
-        eodhdCalls += 1;
-      }
-      const eodhdFundamentals = needsEodhd
-        ? await getEodhdFundamentals(member.providerTicker)
-          .then(async (fundamentals) => {
-            await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "eodhd", ok: Boolean(fundamentals), now });
-            providerAttemptUpdates.eodhd = { lastSuccessAt: fundamentals ? now : null, lastFailureAt: fundamentals ? null : now, failureCount: fundamentals ? 0 : 1 };
-            return fundamentals;
-          })
-          .catch(async (error) => {
-            await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "eodhd", ok: false, now, error });
-            const previous = providerAttempts.get(providerAttemptKey(member.ticker, "eodhd"));
-            providerAttemptUpdates.eodhd = { lastSuccessAt: previous?.lastSuccessAt || null, lastFailureAt: now, failureCount: Number(previous?.failureCount || 0) + 1 };
-            return null;
-          })
-        : null;
-
       const firstPassPrice = quote?.price ?? storedFallback?.price ?? null;
-      const firstPassTarget = alphaOverview?.analystTargetPrice ?? eodhdFundamentals?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
-      const firstPassPeTtm = alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? eodhdFundamentals?.peRatio ?? eodhdFundamentals?.forwardPe ?? storedFallback?.peTtm ?? null;
+      const firstPassTarget = alphaOverview?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
+      const firstPassPeTtm = alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? storedFallback?.peTtm ?? null;
       const firstPassUpsidePct = typeof firstPassPrice === "number" && firstPassPrice > 0 && typeof firstPassTarget === "number"
         ? ((firstPassTarget - firstPassPrice) / firstPassPrice) * 100
         : null;
@@ -650,7 +658,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         ? ((target - price) / price) * 100
         : null;
       const peTtm = metrics?.peRatioTTM ?? firstPassPeTtm;
-      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? alphaOverview?.revenueGrowthTtm ?? eodhdFundamentals?.revenueGrowthTtm ?? storedFallback?.revenueGrowthTtm ?? null;
+      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? alphaOverview?.revenueGrowthTtm ?? storedFallback?.revenueGrowthTtm ?? null;
       const scoring = scoreDiscoveryCandidate({
         impliedUpsidePct,
         peTtm,
@@ -665,25 +673,25 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         universe: DISCOVERY_UNIVERSE,
         ticker: member.ticker,
         provider_ticker: member.providerTicker,
-        name: profile?.companyName || alphaOverview?.name || eodhdFundamentals?.name || member.name,
-        sector: profile?.sector || alphaOverview?.sector || eodhdFundamentals?.sector || member.sector,
-        industry: profile?.industry || alphaOverview?.industry || eodhdFundamentals?.industry || member.industry,
+        name: profile?.companyName || alphaOverview?.name || member.name,
+        sector: profile?.sector || alphaOverview?.sector || member.sector,
+        industry: profile?.industry || alphaOverview?.industry || member.industry,
         price,
-        currency: profile?.currency || alphaOverview?.currency || eodhdFundamentals?.currency || finalQuote?.currency || storedFallback?.currency || null,
+        currency: profile?.currency || alphaOverview?.currency || finalQuote?.currency || storedFallback?.currency || null,
         consensus_target: target,
-        median_target: consensus?.medianTarget ?? alphaOverview?.analystTargetPrice ?? eodhdFundamentals?.analystTargetPrice ?? storedFallback?.medianTarget ?? null,
+        median_target: consensus?.medianTarget ?? alphaOverview?.analystTargetPrice ?? storedFallback?.medianTarget ?? null,
         high_target: consensus?.highTarget ?? storedFallback?.highTarget ?? null,
         low_target: consensus?.lowTarget ?? storedFallback?.lowTarget ?? null,
         implied_upside_pct: impliedUpsidePct === null ? null : Number(impliedUpsidePct.toFixed(3)),
-        market_cap: profile?.mktCap ?? alphaOverview?.marketCap ?? eodhdFundamentals?.marketCap ?? storedFallback?.marketCap ?? null,
+        market_cap: profile?.mktCap ?? alphaOverview?.marketCap ?? storedFallback?.marketCap ?? null,
         pe_ttm: peTtm,
         revenue_growth_ttm: revenueGrowthTtm,
         score: scoring.score,
         score_breakdown_json: {
           ...scoring.breakdown,
           providerAttempts: {
-            ...Object.fromEntries(["alpha_vantage", "eodhd"].flatMap((provider) => {
-              const attempt = providerAttempts.get(providerAttemptKey(member.ticker, provider));
+            ...Object.fromEntries([["alpha_vantage", "fundamentals"], ["eodhd_quote", "quote"]].flatMap(([provider, purpose]) => {
+              const attempt = providerAttempts.get(providerAttemptKey(member.ticker, provider, purpose));
               return attempt ? [[provider, attempt]] : [];
             })),
             ...providerAttemptUpdates,

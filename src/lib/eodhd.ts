@@ -1,4 +1,4 @@
-const EODHD_BASE_URL = "https://eodhd.com/api/v1.1";
+const EODHD_BASE_URL = "https://eodhd.com/api";
 
 export class EodhdError extends Error {
   status?: number;
@@ -9,69 +9,30 @@ export class EodhdError extends Error {
   }
 }
 
-type EodhdFundamentalsRaw = {
-  Code?: string;
-  Name?: string;
-  Exchange?: string;
-  CurrencyCode?: string;
-  CountryName?: string;
-  Sector?: string;
-  Industry?: string;
-  WebURL?: string;
-  LogoURL?: string;
-  IPODate?: string;
-  Highlights?: {
-    MarketCapitalization?: string | number;
-    MarketCapitalizationMln?: string | number;
-    PERatio?: string | number;
-    WallStreetTargetPrice?: string | number;
-    QuarterlyRevenueGrowthYOY?: string | number;
-    RevenueGrowthYOY?: string | number;
-  };
-  Valuation?: {
-    TrailingPE?: string | number;
-    ForwardPE?: string | number;
-  };
-  AnalystRatings?: {
-    TargetPrice?: string | number;
-    StrongBuy?: string | number;
-    Buy?: string | number;
-    Hold?: string | number;
-    Sell?: string | number;
-    StrongSell?: string | number;
-    Rating?: string | number;
-  };
-  General?: {
-    Code?: string;
-    Name?: string;
-    Exchange?: string;
-    CurrencyCode?: string;
-    CountryName?: string;
-    Sector?: string;
-    Industry?: string;
-    WebURL?: string;
-    LogoURL?: string;
-    IPODate?: string;
-  };
+type EodhdRealtimeRaw = {
+  code?: string;
+  timestamp?: number;
+  gmtoffset?: number;
+  open?: number | string;
+  high?: number | string;
+  low?: number | string;
+  close?: number | string;
+  volume?: number | string;
+  previousClose?: number | string;
+  change?: number | string;
+  change_p?: number | string;
 };
 
-export type EodhdFundamentals = {
+export type EodhdQuote = {
   symbol: string | null;
-  name: string | null;
-  exchange: string | null;
+  price: number | null;
+  change: number | null;
+  percentChange: number | null;
+  dayHigh: number | null;
+  dayLow: number | null;
+  open: number | null;
+  previousClose: number | null;
   currency: string | null;
-  country: string | null;
-  sector: string | null;
-  industry: string | null;
-  website: string | null;
-  logoUrl: string | null;
-  ipoDate: string | null;
-  marketCap: number | null;
-  peRatio: number | null;
-  forwardPe: number | null;
-  analystTargetPrice: number | null;
-  revenueGrowthTtm: number | null;
-  raw: EodhdFundamentalsRaw;
 };
 
 function getEodhdKey() {
@@ -118,37 +79,26 @@ async function fetchEodhd<T>(path: string) {
   return json as T;
 }
 
-export async function getEodhdFundamentals(symbol: string): Promise<EodhdFundamentals | null> {
+export async function getEodhdQuote(symbol: string): Promise<EodhdQuote | null> {
   if (!symbol.trim()) return null;
 
-  const raw = await fetchEodhd<EodhdFundamentalsRaw>(`/fundamentals/${encodeURIComponent(toEodhdSymbol(symbol))}`);
-  if (!raw || Object.keys(raw).length === 0) return null;
+  const raw = await fetchEodhd<EodhdRealtimeRaw>(`/real-time/${encodeURIComponent(toEodhdSymbol(symbol))}`);
+  const price = parseNumber(raw.close);
+  if (price === null) return null;
 
-  const general = raw.General || raw;
-  const highlights = raw.Highlights || {};
-  const valuation = raw.Valuation || {};
-  const analystRatings = raw.AnalystRatings || {};
-  const marketCap = parseNumber(highlights.MarketCapitalization) ?? (() => {
-    const marketCapM = parseNumber(highlights.MarketCapitalizationMln);
-    return marketCapM === null ? null : marketCapM * 1_000_000;
-  })();
+  const previousClose = parseNumber(raw.previousClose);
+  const change = parseNumber(raw.change) ?? (previousClose !== null ? price - previousClose : null);
+  const percentChange = parseNumber(raw.change_p) ?? (change !== null && previousClose ? (change / previousClose) * 100 : null);
 
   return {
-    symbol: general.Code || raw.Code || null,
-    name: general.Name || raw.Name || null,
-    exchange: general.Exchange || raw.Exchange || null,
-    currency: general.CurrencyCode || raw.CurrencyCode || null,
-    country: general.CountryName || raw.CountryName || null,
-    sector: general.Sector || raw.Sector || null,
-    industry: general.Industry || raw.Industry || null,
-    website: general.WebURL || raw.WebURL || null,
-    logoUrl: general.LogoURL || raw.LogoURL || null,
-    ipoDate: general.IPODate || raw.IPODate || null,
-    marketCap,
-    peRatio: parseNumber(highlights.PERatio) ?? parseNumber(valuation.TrailingPE),
-    forwardPe: parseNumber(valuation.ForwardPE),
-    analystTargetPrice: parseNumber(analystRatings.TargetPrice) ?? parseNumber(highlights.WallStreetTargetPrice),
-    revenueGrowthTtm: parseNumber(highlights.QuarterlyRevenueGrowthYOY) ?? parseNumber(highlights.RevenueGrowthYOY),
-    raw,
+    symbol: raw.code || null,
+    price,
+    change,
+    percentChange,
+    dayHigh: parseNumber(raw.high),
+    dayLow: parseNumber(raw.low),
+    open: parseNumber(raw.open),
+    previousClose,
+    currency: null,
   };
 }
