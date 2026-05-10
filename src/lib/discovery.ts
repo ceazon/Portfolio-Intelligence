@@ -1,6 +1,7 @@
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
 import { FmpError, getFmpKeyMetricsTtm, getFmpProfile, getFmpQuote } from "@/lib/fmp";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { getYahooChartQuote } from "@/lib/yahoo-finance";
 
 const SP500_CONSTITUENTS_URL = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv";
 const DISCOVERY_UNIVERSE = "sp500";
@@ -133,14 +134,30 @@ async function refreshDiscoverySymbolFallback(selectedMembers: DiscoveryUniverse
 
   await mapWithConcurrency(selectedMembers, 5, async (member) => {
     try {
-      const [profileResult, quoteResult, consensusResult] = await Promise.allSettled([
+      const [profileResult, fmpQuoteResult, yahooQuoteResult, consensusResult] = await Promise.allSettled([
         getFmpProfile(member.providerTicker),
         getFmpQuote(member.providerTicker),
+        getYahooChartQuote(member.providerTicker),
         getConsensusTargetForSymbol(member.providerTicker),
       ]);
 
       const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
-      const quote = quoteResult.status === "fulfilled" ? quoteResult.value : null;
+      const fmpQuote = fmpQuoteResult.status === "fulfilled" ? fmpQuoteResult.value : null;
+      const yahooQuote = yahooQuoteResult.status === "fulfilled" ? yahooQuoteResult.value : null;
+      const quote = yahooQuote
+        ? {
+            price: yahooQuote.price,
+            change: yahooQuote.change,
+            changesPercentage: yahooQuote.percentChange,
+            dayHigh: null,
+            dayLow: null,
+            open: null,
+            previousClose: yahooQuote.previousClose,
+            currency: yahooQuote.currency,
+          }
+        : fmpQuote
+          ? { ...fmpQuote, currency: profile?.currency || null }
+          : null;
       const consensus = consensusResult.status === "fulfilled" ? consensusResult.value : null;
 
       const { data: symbolRow, error: symbolError } = await supabase
@@ -197,7 +214,7 @@ async function refreshDiscoverySymbolFallback(selectedMembers: DiscoveryUniverse
           source: consensus?.source || "unavailable",
           captured_at: now,
           current_price: quote?.price ?? null,
-          current_price_currency: profile?.currency || null,
+          current_price_currency: profile?.currency || quote?.currency || null,
           mean_target: consensus?.meanTarget ?? null,
           median_target: consensus?.medianTarget ?? null,
           high_target: consensus?.highTarget ?? null,
@@ -275,15 +292,31 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
     try {
-      const [profileResult, quoteResult, metricsResult, consensusResult] = await Promise.allSettled([
+      const [profileResult, fmpQuoteResult, yahooQuoteResult, metricsResult, consensusResult] = await Promise.allSettled([
         getFmpProfile(member.providerTicker),
         getFmpQuote(member.providerTicker),
+        getYahooChartQuote(member.providerTicker),
         getFmpKeyMetricsTtm(member.providerTicker),
         getConsensusTargetForSymbol(member.providerTicker),
       ]);
 
       const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
-      const quote = quoteResult.status === "fulfilled" ? quoteResult.value : null;
+      const fmpQuote = fmpQuoteResult.status === "fulfilled" ? fmpQuoteResult.value : null;
+      const yahooQuote = yahooQuoteResult.status === "fulfilled" ? yahooQuoteResult.value : null;
+      const quote = yahooQuote
+        ? {
+            price: yahooQuote.price,
+            change: yahooQuote.change,
+            changesPercentage: yahooQuote.percentChange,
+            dayHigh: null,
+            dayLow: null,
+            open: null,
+            previousClose: yahooQuote.previousClose,
+            currency: yahooQuote.currency,
+          }
+        : fmpQuote
+          ? { ...fmpQuote, currency: profile?.currency || null }
+          : null;
       const metrics = metricsResult.status === "fulfilled" ? metricsResult.value : null;
       const consensus = consensusResult.status === "fulfilled" ? consensusResult.value : null;
       const price = quote?.price ?? profile?.price ?? null;
@@ -311,7 +344,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         sector: profile?.sector || member.sector,
         industry: profile?.industry || member.industry,
         price,
-        currency: profile?.currency || null,
+        currency: profile?.currency || quote?.currency || null,
         consensus_target: target,
         median_target: consensus?.medianTarget ?? null,
         high_target: consensus?.highTarget ?? null,
@@ -359,15 +392,28 @@ export async function ensureDiscoveryCandidateSymbol(ticker: string) {
     throw new Error("Supabase env vars are not configured yet.");
   }
 
-  const [universeResult, profileResult, quoteResult] = await Promise.allSettled([
+  const [universeResult, profileResult, fmpQuoteResult, yahooQuoteResult] = await Promise.allSettled([
     supabase.from("discovery_universe_symbols").select("name, sector, industry").eq("universe", DISCOVERY_UNIVERSE).eq("ticker", normalizedTicker).maybeSingle(),
     getFmpProfile(providerTicker),
     getFmpQuote(providerTicker),
+    getYahooChartQuote(providerTicker),
   ]);
 
   const universe = universeResult.status === "fulfilled" ? universeResult.value.data : null;
   const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
-  const quote = quoteResult.status === "fulfilled" ? quoteResult.value : null;
+  const fmpQuote = fmpQuoteResult.status === "fulfilled" ? fmpQuoteResult.value : null;
+  const yahooQuote = yahooQuoteResult.status === "fulfilled" ? yahooQuoteResult.value : null;
+  const quote = yahooQuote
+    ? {
+        price: yahooQuote.price,
+        change: yahooQuote.change,
+        changesPercentage: yahooQuote.percentChange,
+        dayHigh: null,
+        dayLow: null,
+        open: null,
+        previousClose: yahooQuote.previousClose,
+      }
+    : fmpQuote;
 
   const { data: symbolRow, error: symbolError } = await supabase
     .from("symbols")
