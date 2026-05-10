@@ -18,6 +18,18 @@ type DiscoveryRefreshOptions = {
   maxSymbols?: number;
 };
 
+type DiscoveryStoredFallback = {
+  price: number | null;
+  currency: string | null;
+  consensusTarget: number | null;
+  medianTarget: number | null;
+  highTarget: number | null;
+  lowTarget: number | null;
+  marketCap: number | null;
+  peTtm: number | null;
+  revenueGrowthTtm: number | null;
+};
+
 function normalizeTickerForProvider(ticker: string) {
   return ticker.trim().toUpperCase().replace(".", "-");
 }
@@ -247,6 +259,112 @@ async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper:
   return results;
 }
 
+async function getStoredDiscoveryFallbacks(tickers: string[]) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase || !tickers.length) {
+    return new Map<string, DiscoveryStoredFallback>();
+  }
+
+  const fallbackByTicker = new Map<string, DiscoveryStoredFallback>();
+  const initializeFallback = (ticker: string) => {
+    const existing = fallbackByTicker.get(ticker);
+    if (existing) return existing;
+
+    const fallback: DiscoveryStoredFallback = {
+      price: null,
+      currency: null,
+      consensusTarget: null,
+      medianTarget: null,
+      highTarget: null,
+      lowTarget: null,
+      marketCap: null,
+      peTtm: null,
+      revenueGrowthTtm: null,
+    };
+    fallbackByTicker.set(ticker, fallback);
+    return fallback;
+  };
+
+  const { data: existingSnapshots } = await supabase
+    .from("discovery_snapshots")
+    .select("ticker, price, currency, consensus_target, median_target, high_target, low_target, market_cap, pe_ttm, revenue_growth_ttm")
+    .eq("universe", DISCOVERY_UNIVERSE)
+    .in("ticker", tickers);
+
+  (existingSnapshots || []).forEach((row) => {
+    const ticker = String(row.ticker || "").toUpperCase();
+    const fallback = initializeFallback(ticker);
+    fallback.price = typeof row.price === "number" ? row.price : fallback.price;
+    fallback.currency = row.currency || fallback.currency;
+    fallback.consensusTarget = typeof row.consensus_target === "number" ? row.consensus_target : fallback.consensusTarget;
+    fallback.medianTarget = typeof row.median_target === "number" ? row.median_target : fallback.medianTarget;
+    fallback.highTarget = typeof row.high_target === "number" ? row.high_target : fallback.highTarget;
+    fallback.lowTarget = typeof row.low_target === "number" ? row.low_target : fallback.lowTarget;
+    fallback.marketCap = typeof row.market_cap === "number" ? row.market_cap : fallback.marketCap;
+    fallback.peTtm = typeof row.pe_ttm === "number" ? row.pe_ttm : fallback.peTtm;
+    fallback.revenueGrowthTtm = typeof row.revenue_growth_ttm === "number" ? row.revenue_growth_ttm : fallback.revenueGrowthTtm;
+  });
+
+  const { data: symbols } = await supabase
+    .from("symbols")
+    .select("id, ticker, currency, market_cap, symbol_price_snapshots(price)")
+    .in("ticker", tickers);
+
+  const symbolIds = (symbols || []).map((symbol) => symbol.id).filter(Boolean);
+  const tickerBySymbolId = new Map((symbols || []).map((symbol) => [symbol.id, String(symbol.ticker || "").toUpperCase()]));
+
+  (symbols || []).forEach((symbol) => {
+    const ticker = String(symbol.ticker || "").toUpperCase();
+    const quote = Array.isArray(symbol.symbol_price_snapshots) ? symbol.symbol_price_snapshots[0] : symbol.symbol_price_snapshots;
+    const fallback = initializeFallback(ticker);
+    fallback.price = typeof quote?.price === "number" ? quote.price : fallback.price;
+    fallback.currency = symbol.currency || fallback.currency;
+    fallback.marketCap = typeof symbol.market_cap === "number" ? symbol.market_cap : fallback.marketCap;
+  });
+
+  if (symbolIds.length) {
+    const [{ data: targetRows }, { data: fundamentalsRows }] = await Promise.all([
+      supabase
+        .from("analyst_target_snapshots")
+        .select("symbol_id, mean_target, median_target, high_target, low_target")
+        .in("symbol_id", symbolIds)
+        .order("captured_at", { ascending: false }),
+      supabase
+        .from("symbol_fundamentals")
+        .select("symbol_id, pe_ttm, revenue_growth_ttm, market_cap_m")
+        .in("symbol_id", symbolIds)
+        .order("fetched_at", { ascending: false }),
+    ]);
+
+    const targetSeen = new Set<string>();
+    (targetRows || []).forEach((target) => {
+      if (!target.symbol_id || targetSeen.has(target.symbol_id)) return;
+      targetSeen.add(target.symbol_id);
+      const ticker = tickerBySymbolId.get(target.symbol_id);
+      if (!ticker) return;
+      const fallback = initializeFallback(ticker);
+      fallback.consensusTarget = typeof target.mean_target === "number" ? target.mean_target : fallback.consensusTarget;
+      fallback.medianTarget = typeof target.median_target === "number" ? target.median_target : fallback.medianTarget;
+      fallback.highTarget = typeof target.high_target === "number" ? target.high_target : fallback.highTarget;
+      fallback.lowTarget = typeof target.low_target === "number" ? target.low_target : fallback.lowTarget;
+    });
+
+    const fundamentalsSeen = new Set<string>();
+    (fundamentalsRows || []).forEach((fundamentals) => {
+      if (!fundamentals.symbol_id || fundamentalsSeen.has(fundamentals.symbol_id)) return;
+      fundamentalsSeen.add(fundamentals.symbol_id);
+      const ticker = tickerBySymbolId.get(fundamentals.symbol_id);
+      if (!ticker) return;
+      const fallback = initializeFallback(ticker);
+      fallback.peTtm = typeof fundamentals.pe_ttm === "number" ? fundamentals.pe_ttm : fallback.peTtm;
+      fallback.revenueGrowthTtm = typeof fundamentals.revenue_growth_ttm === "number" ? fundamentals.revenue_growth_ttm : fallback.revenueGrowthTtm;
+      fallback.marketCap = typeof fundamentals.market_cap_m === "number" ? fundamentals.market_cap_m : fallback.marketCap;
+    });
+  }
+
+  return fallbackByTicker;
+}
+
 export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions = {}) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -257,6 +375,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   const cappedMax = Math.max(10, Math.min(options.maxSymbols || 100, universe.length));
   const selectedMembers = universe.slice(0, cappedMax);
   const now = new Date().toISOString();
+  const storedFallbacks = await getStoredDiscoveryFallbacks(selectedMembers.map((member) => member.ticker));
 
   const { error: universeError } = await supabase.from("discovery_universe_symbols").upsert(
     universe.map((member) => ({
@@ -319,13 +438,14 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
           : null;
       const metrics = metricsResult.status === "fulfilled" ? metricsResult.value : null;
       const consensus = consensusResult.status === "fulfilled" ? consensusResult.value : null;
-      const price = quote?.price ?? profile?.price ?? null;
-      const target = consensus?.meanTarget ?? null;
+      const storedFallback = storedFallbacks.get(member.ticker);
+      const price = quote?.price ?? profile?.price ?? storedFallback?.price ?? null;
+      const target = consensus?.meanTarget ?? storedFallback?.consensusTarget ?? null;
       const impliedUpsidePct = typeof price === "number" && price > 0 && typeof target === "number"
         ? ((target - price) / price) * 100
         : null;
-      const peTtm = metrics?.peRatioTTM ?? null;
-      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? null;
+      const peTtm = metrics?.peRatioTTM ?? storedFallback?.peTtm ?? null;
+      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? storedFallback?.revenueGrowthTtm ?? null;
       const scoring = scoreDiscoveryCandidate({
         impliedUpsidePct,
         peTtm,
@@ -344,13 +464,13 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         sector: profile?.sector || member.sector,
         industry: profile?.industry || member.industry,
         price,
-        currency: profile?.currency || quote?.currency || null,
+        currency: profile?.currency || quote?.currency || storedFallback?.currency || null,
         consensus_target: target,
-        median_target: consensus?.medianTarget ?? null,
-        high_target: consensus?.highTarget ?? null,
-        low_target: consensus?.lowTarget ?? null,
+        median_target: consensus?.medianTarget ?? storedFallback?.medianTarget ?? null,
+        high_target: consensus?.highTarget ?? storedFallback?.highTarget ?? null,
+        low_target: consensus?.lowTarget ?? storedFallback?.lowTarget ?? null,
         implied_upside_pct: impliedUpsidePct === null ? null : Number(impliedUpsidePct.toFixed(3)),
-        market_cap: profile?.mktCap ?? null,
+        market_cap: profile?.mktCap ?? storedFallback?.marketCap ?? null,
         pe_ttm: peTtm,
         revenue_growth_ttm: revenueGrowthTtm,
         score: scoring.score,
