@@ -46,6 +46,7 @@ export async function refreshDiscovery(_prevState: FormState, formData: FormData
     const result = await refreshDiscoveryScreener({
       maxSymbols: limit,
       maxFmpFundamentalCalls: 25,
+      maxFinnhubFundamentalCalls: 25,
       maxAlphaVantageCalls: 10,
       maxEodhdQuoteCalls: 100,
     });

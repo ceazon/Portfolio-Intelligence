@@ -60,6 +60,20 @@ type FinnhubPriceTarget = {
   targetMedian?: number;
 };
 
+type FinnhubBasicFinancials = {
+  metric?: {
+    peTTM?: number;
+    peBasicExclExtraTTM?: number;
+    peExclExtraTTM?: number;
+    peInclExtraTTM?: number;
+    forwardPE?: number;
+    revenueGrowthTTMYoy?: number;
+    revenueGrowthQuarterlyYoy?: number;
+    marketCapitalization?: number;
+    [key: string]: unknown;
+  };
+};
+
 async function fetchFinnhub<T>(path: string, params: Record<string, string>) {
   const apiKey = getFinnhubKey();
   if (!apiKey) {
@@ -130,6 +144,19 @@ export async function getFinnhubPriceTarget(symbol: string): Promise<FinnhubPric
   return hasData ? target : null;
 }
 
+export async function getFinnhubBasicFinancials(symbol: string): Promise<FinnhubBasicFinancials | null> {
+  if (!symbol.trim()) {
+    return null;
+  }
+
+  const financials = await fetchFinnhub<FinnhubBasicFinancials>("/stock/metric", {
+    symbol: symbol.trim(),
+    metric: "all",
+  });
+
+  return financials?.metric && Object.keys(financials.metric).length > 0 ? financials : null;
+}
+
 export async function getFinnhubExchangeRate(from: string, to: string) {
   if (!from.trim() || !to.trim()) {
     return null;
@@ -148,4 +175,4 @@ export async function getFinnhubExchangeRate(from: string, to: string) {
   return null;
 }
 
-export type { FinnhubCompanyProfile, FinnhubPriceTarget, FinnhubQuote, FinnhubSymbolResult };
+export type { FinnhubBasicFinancials, FinnhubCompanyProfile, FinnhubPriceTarget, FinnhubQuote, FinnhubSymbolResult };

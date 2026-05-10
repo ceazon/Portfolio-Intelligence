@@ -1,6 +1,7 @@
 import { getAlphaVantageOverview } from "@/lib/alpha-vantage";
 import { getConsensusTargetForSymbol, getFmpPriceTarget } from "@/lib/consensus-targets";
 import { getEodhdQuote } from "@/lib/eodhd";
+import { getFinnhubBasicFinancials, getFinnhubPriceTarget } from "@/lib/finnhub";
 import { FmpError, getFmpKeyMetricsTtm, getFmpProfile, getFmpQuote } from "@/lib/fmp";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { getYahooChartQuote } from "@/lib/yahoo-finance";
@@ -19,6 +20,7 @@ type DiscoveryUniverseMember = {
 type DiscoveryRefreshOptions = {
   maxSymbols?: number;
   maxFmpFundamentalCalls?: number;
+  maxFinnhubFundamentalCalls?: number;
   maxAlphaVantageCalls?: number;
   maxEodhdQuoteCalls?: number;
 };
@@ -46,6 +48,20 @@ type DiscoveryStoredFallback = {
 type FmpDiscoveryFundamentalsResult = {
   metrics: Awaited<ReturnType<typeof getFmpKeyMetricsTtm>> | null;
   consensus: Awaited<ReturnType<typeof getFmpPriceTarget>> | null;
+  error: unknown;
+};
+
+type FinnhubDiscoveryFundamentalsResult = {
+  peTtm: number | null;
+  revenueGrowthTtm: number | null;
+  marketCap: number | null;
+  consensus: {
+    meanTarget: number | null;
+    medianTarget: number | null;
+    highTarget: number | null;
+    lowTarget: number | null;
+    source: "finnhub";
+  } | null;
   error: unknown;
 };
 
@@ -511,6 +527,39 @@ async function getFmpDiscoveryFundamentals(symbol: string): Promise<FmpDiscovery
   };
 }
 
+function firstFiniteNumber(...values: unknown[]) {
+  return values.find((value): value is number => typeof value === "number" && Number.isFinite(value)) ?? null;
+}
+
+async function getFinnhubDiscoveryFundamentals(symbol: string): Promise<FinnhubDiscoveryFundamentalsResult> {
+  const [financialsResult, targetResult] = await Promise.allSettled([
+    getFinnhubBasicFinancials(symbol),
+    getFinnhubPriceTarget(symbol),
+  ]);
+
+  const financials = financialsResult.status === "fulfilled" ? financialsResult.value?.metric : null;
+  const target = targetResult.status === "fulfilled" ? targetResult.value : null;
+  const errors = [financialsResult, targetResult]
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    .map((result) => result.reason);
+
+  return {
+    peTtm: firstFiniteNumber(financials?.peTTM, financials?.peBasicExclExtraTTM, financials?.peExclExtraTTM, financials?.peInclExtraTTM, financials?.forwardPE),
+    revenueGrowthTtm: firstFiniteNumber(financials?.revenueGrowthTTMYoy, financials?.revenueGrowthQuarterlyYoy),
+    marketCap: firstFiniteNumber(financials?.marketCapitalization),
+    consensus: target
+      ? {
+          meanTarget: target.targetMean ?? null,
+          medianTarget: target.targetMedian ?? null,
+          highTarget: target.targetHigh ?? null,
+          lowTarget: target.targetLow ?? null,
+          source: "finnhub",
+        }
+      : null,
+    error: errors[0] ?? null,
+  };
+}
+
 export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions = {}) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -579,14 +628,20 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   let refreshedCount = 0;
   let failedCount = 0;
   let fmpFundamentalCalls = 0;
+  let finnhubFundamentalCalls = 0;
   let alphaVantageCalls = 0;
   let eodhdQuoteCalls = 0;
   const fmpFundamentalCallLimit = Math.max(0, Math.min(options.maxFmpFundamentalCalls ?? 25, selectedMembers.length));
+  const finnhubFundamentalCallLimit = Math.max(0, Math.min(options.maxFinnhubFundamentalCalls ?? 25, selectedMembers.length));
   const alphaVantageCallLimit = Math.max(0, Math.min(options.maxAlphaVantageCalls ?? 25, selectedMembers.length));
   const eodhdQuoteCallLimit = Math.max(0, Math.min(options.maxEodhdQuoteCalls ?? 100, selectedMembers.length));
   const fmpCandidateTickers = new Set(randomizedMissingMembers
     .filter((member) => !isProviderCooledDown(providerAttempts.get(providerAttemptKey(member.ticker, "fmp")), nowMs))
     .slice(0, fmpFundamentalCallLimit)
+    .map((member) => member.ticker));
+  const finnhubCandidateTickers = new Set(randomizedMissingMembers
+    .filter((member) => !isProviderCooledDown(providerAttempts.get(providerAttemptKey(member.ticker, "finnhub")), nowMs))
+    .slice(0, finnhubFundamentalCallLimit)
     .map((member) => member.ticker));
   const alphaVantageCandidateTickers = new Set(randomizedMissingMembers.slice(0, alphaVantageCallLimit).map((member) => member.ticker));
 
@@ -660,10 +715,33 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
       const firstPassFmpMetrics = firstPassFmp?.metrics ?? null;
       const firstPassConsensus = firstPassFmp?.consensus ?? null;
       const firstPassFmpTarget = firstPassConsensus?.meanTarget ?? null;
+      const needsFinnhubFundamentals = finnhubFundamentalCalls < finnhubFundamentalCallLimit
+        && finnhubCandidateTickers.has(member.ticker)
+        && (firstPassFmpTarget === null || firstPassFmpTarget === undefined || firstPassFmpMetrics?.peRatioTTM === null || firstPassFmpMetrics?.peRatioTTM === undefined)
+        && (storedFallback?.consensusTarget === null || storedFallback?.consensusTarget === undefined || storedFallback?.peTtm === null || storedFallback?.peTtm === undefined);
+      if (needsFinnhubFundamentals) {
+        finnhubFundamentalCalls += 1;
+      }
+      const firstPassFinnhub = needsFinnhubFundamentals
+        ? await getFinnhubDiscoveryFundamentals(member.providerTicker)
+        : null;
+      if (needsFinnhubFundamentals) {
+        const hasFinnhubData = Boolean(firstPassFinnhub?.consensus || firstPassFinnhub?.peTtm !== null || firstPassFinnhub?.revenueGrowthTtm !== null || firstPassFinnhub?.marketCap !== null);
+        await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "finnhub", ok: hasFinnhubData, now, error: firstPassFinnhub?.error });
+        const previous = providerAttempts.get(providerAttemptKey(member.ticker, "finnhub"));
+        providerAttemptUpdates.finnhub = {
+          lastSuccessAt: hasFinnhubData ? now : previous?.lastSuccessAt || null,
+          lastFailureAt: hasFinnhubData ? null : now,
+          failureCount: hasFinnhubData ? 0 : Number(previous?.failureCount || 0) + 1,
+        };
+      }
+      const firstPassFinnhubTarget = firstPassFinnhub?.consensus?.meanTarget ?? null;
+      const firstPassFinnhubPeTtm = firstPassFinnhub?.peTtm ?? null;
       const needsAlphaVantage = alphaVantageCalls < alphaVantageCallLimit
         && alphaVantageCandidateTickers.has(member.ticker)
         && !isProviderCooledDown(providerAttempts.get(providerAttemptKey(member.ticker, "alpha_vantage")), nowMs)
-        && (firstPassFmpTarget === null || firstPassFmpTarget === undefined || (firstPassFmpMetrics?.peRatioTTM === null || firstPassFmpMetrics?.peRatioTTM === undefined))
+        && ((firstPassFmpTarget === null || firstPassFmpTarget === undefined) && (firstPassFinnhubTarget === null || firstPassFinnhubTarget === undefined)
+          || ((firstPassFmpMetrics?.peRatioTTM === null || firstPassFmpMetrics?.peRatioTTM === undefined) && (firstPassFinnhubPeTtm === null || firstPassFinnhubPeTtm === undefined)))
         && (storedFallback?.consensusTarget === null || storedFallback?.consensusTarget === undefined || storedFallback?.peTtm === null || storedFallback?.peTtm === undefined);
       if (needsAlphaVantage) {
         alphaVantageCalls += 1;
@@ -684,8 +762,8 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         : null;
 
       const firstPassPrice = quote?.price ?? storedFallback?.price ?? null;
-      const firstPassTarget = firstPassFmpTarget ?? alphaOverview?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
-      const firstPassPeTtm = firstPassFmpMetrics?.peRatioTTM ?? alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? storedFallback?.peTtm ?? null;
+      const firstPassTarget = firstPassFmpTarget ?? firstPassFinnhubTarget ?? alphaOverview?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
+      const firstPassPeTtm = firstPassFmpMetrics?.peRatioTTM ?? firstPassFinnhubPeTtm ?? alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? storedFallback?.peTtm ?? null;
       const firstPassUpsidePct = typeof firstPassPrice === "number" && firstPassPrice > 0 && typeof firstPassTarget === "number"
         ? ((firstPassTarget - firstPassPrice) / firstPassPrice) * 100
         : null;
@@ -696,7 +774,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
             getFmpProfile(member.providerTicker),
             quote ? Promise.resolve(null) : getFmpQuote(member.providerTicker),
             firstPassFmpMetrics ? Promise.resolve(firstPassFmpMetrics) : getFmpKeyMetricsTtm(member.providerTicker),
-            firstPassConsensus ? Promise.resolve(firstPassConsensus) : getConsensusTargetForSymbol(member.providerTicker),
+            firstPassConsensus || firstPassFinnhub?.consensus ? Promise.resolve(firstPassConsensus ?? firstPassFinnhub?.consensus ?? null) : getConsensusTargetForSymbol(member.providerTicker),
           ])
         : [null, null, null, null] as const;
 
@@ -711,7 +789,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         ? ((target - price) / price) * 100
         : null;
       const peTtm = metrics?.peRatioTTM ?? firstPassPeTtm;
-      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? alphaOverview?.revenueGrowthTtm ?? storedFallback?.revenueGrowthTtm ?? null;
+      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? firstPassFinnhub?.revenueGrowthTtm ?? alphaOverview?.revenueGrowthTtm ?? storedFallback?.revenueGrowthTtm ?? null;
       const scoring = scoreDiscoveryCandidate({
         impliedUpsidePct,
         peTtm,
@@ -736,14 +814,14 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         high_target: consensus?.highTarget ?? storedFallback?.highTarget ?? null,
         low_target: consensus?.lowTarget ?? storedFallback?.lowTarget ?? null,
         implied_upside_pct: impliedUpsidePct === null ? null : Number(impliedUpsidePct.toFixed(3)),
-        market_cap: profile?.mktCap ?? alphaOverview?.marketCap ?? storedFallback?.marketCap ?? null,
+        market_cap: profile?.mktCap ?? firstPassFinnhub?.marketCap ?? alphaOverview?.marketCap ?? storedFallback?.marketCap ?? null,
         pe_ttm: peTtm,
         revenue_growth_ttm: revenueGrowthTtm,
         score: scoring.score,
         score_breakdown_json: {
           ...scoring.breakdown,
           providerAttempts: {
-          ...Object.fromEntries([["fmp", "fundamentals"], ["alpha_vantage", "fundamentals"], ["eodhd_quote", "quote"]].flatMap(([provider, purpose]) => {
+          ...Object.fromEntries([["fmp", "fundamentals"], ["finnhub", "fundamentals"], ["alpha_vantage", "fundamentals"], ["eodhd_quote", "quote"]].flatMap(([provider, purpose]) => {
               const attempt = providerAttempts.get(providerAttemptKey(member.ticker, provider, purpose));
               return attempt ? [[provider, attempt]] : [];
             })),
