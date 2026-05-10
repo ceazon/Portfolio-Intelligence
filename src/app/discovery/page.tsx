@@ -84,10 +84,12 @@ type DiscoveryPageProps = {
 const SORT_LABELS = {
   upside: "Implied upside",
   pe: "P/E ratio",
+  revenue: "Revenue growth",
   marketcap: "Market cap",
 } as const;
 
 type SortField = keyof typeof SORT_LABELS;
+type SortDirection = "asc" | "desc";
 
 function getSingleParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -121,12 +123,35 @@ function formatGrowthPercent(value: number | null) {
   return formatPercent(percentValue);
 }
 
-function sortRows(rows: DiscoveryRow[], sort: SortField) {
+function getDefaultSortDirection(sort: SortField): SortDirection {
+  return sort === "pe" ? "asc" : "desc";
+}
+
+function sortLink(currentSort: SortField, currentDirection: SortDirection, nextSort: SortField) {
+  const nextDirection: SortDirection = currentSort === nextSort
+    ? currentDirection === "asc" ? "desc" : "asc"
+    : getDefaultSortDirection(nextSort);
+  return `/discovery?sort=${nextSort}&dir=${nextDirection}`;
+}
+
+function SortableHeader({ label, field, sortField, sortDirection }: { label: string; field: SortField; sortField: SortField; sortDirection: SortDirection }) {
+  const active = field === sortField;
+  return (
+    <Link href={sortLink(sortField, sortDirection, field)} className={`inline-flex items-center gap-1 hover:text-zinc-200 ${active ? "text-sky-300" : "text-zinc-500"}`}>
+      {label}
+      <span className="text-[10px]">{active ? sortDirection === "asc" ? "↑" : "↓" : "↕"}</span>
+    </Link>
+  );
+}
+
+function sortRows(rows: DiscoveryRow[], sort: SortField, direction: SortDirection = getDefaultSortDirection(sort)) {
+  const multiplier = direction === "asc" ? 1 : -1;
   return [...rows].sort((a, b) => {
-    if (sort === "upside") return (b.implied_upside_pct ?? Number.NEGATIVE_INFINITY) - (a.implied_upside_pct ?? Number.NEGATIVE_INFINITY);
-    if (sort === "pe") return (a.pe_ttm ?? Number.POSITIVE_INFINITY) - (b.pe_ttm ?? Number.POSITIVE_INFINITY);
-    if (sort === "marketcap") return (b.market_cap ?? Number.NEGATIVE_INFINITY) - (a.market_cap ?? Number.NEGATIVE_INFINITY);
-    return (b.implied_upside_pct ?? Number.NEGATIVE_INFINITY) - (a.implied_upside_pct ?? Number.NEGATIVE_INFINITY);
+    const valueA = sort === "upside" ? a.implied_upside_pct : sort === "pe" ? a.pe_ttm : sort === "revenue" ? a.revenue_growth_ttm : a.market_cap;
+    const valueB = sort === "upside" ? b.implied_upside_pct : sort === "pe" ? b.pe_ttm : sort === "revenue" ? b.revenue_growth_ttm : b.market_cap;
+    const normalizedA = typeof valueA === "number" && Number.isFinite(valueA) ? valueA : direction === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+    const normalizedB = typeof valueB === "number" && Number.isFinite(valueB) ? valueB : direction === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+    return (normalizedA - normalizedB) * multiplier;
   });
 }
 
@@ -206,7 +231,9 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
   const supabase = await createSupabaseServerClient();
   const params = (await searchParams) || {};
   const sortParam = getSingleParam(params.sort);
+  const directionParam = getSingleParam(params.dir);
   const sortField: SortField = sortParam && sortParam in SORT_LABELS ? (sortParam as SortField) : "upside";
+  const sortDirection: SortDirection = directionParam === "asc" || directionParam === "desc" ? directionParam : getDefaultSortDirection(sortField);
 
   if (!supabase) {
     return (
@@ -222,10 +249,10 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     .from("discovery_snapshots")
     .select("ticker, provider_ticker, name, sector, industry, price, currency, consensus_target, implied_upside_pct, market_cap, pe_ttm, revenue_growth_ttm, score, score_breakdown_json, flags_json, captured_at")
     .eq("universe", "sp500")
-    .order(sortField === "marketcap" ? "market_cap" : sortField === "pe" ? "pe_ttm" : "implied_upside_pct", { ascending: sortField === "pe" });
+    .order(sortField === "marketcap" ? "market_cap" : sortField === "pe" ? "pe_ttm" : sortField === "revenue" ? "revenue_growth_ttm" : "implied_upside_pct", { ascending: sortDirection === "asc" });
 
   const allRows = error ? await getExistingSymbolDiscoveryRows(supabase) : ((data || []) as DiscoveryRow[]);
-  const rows = sortRows(allRows.filter(isQualifiedDiscoveryCandidate), sortField);
+  const rows = sortRows(allRows.filter(isQualifiedDiscoveryCandidate), sortField, sortDirection);
   const tickers = rows.map((row) => row.ticker);
   const ownershipResult = tickers.length
     ? await supabase
@@ -256,7 +283,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     ? rows.map((row) => row.implied_upside_pct).filter((value): value is number => typeof value === "number").reduce((sum, value, _index, values) => sum + value / values.length, 0)
     : null;
   const lastRefresh = rows.map((row) => row.captured_at).sort().at(-1) || null;
-  const topTen = sortRows(rows, "upside").filter((row) => typeof row.consensus_target === "number" && typeof row.price === "number" && typeof row.implied_upside_pct === "number").slice(0, 10);
+  const topTen = sortRows(rows, "upside", "desc").filter((row) => typeof row.consensus_target === "number" && typeof row.price === "number" && typeof row.implied_upside_pct === "number").slice(0, 10);
   const bestSector = rows.reduce<Map<string, number>>((map, row) => {
     if (row.sector && typeof row.implied_upside_pct === "number") map.set(row.sector, (map.get(row.sector) || 0) + 1);
     return map;
@@ -333,10 +360,10 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
           )}
         </SectionCard>
 
-        <SectionCard title="S&P 500 screener" description={`Only showing stocks with positive implied upside and P/E between 10–50. Sorted by ${SORT_LABELS[sortField].toLowerCase()}.`}>
+        <SectionCard title="S&P 500 screener" description={`Only showing stocks with positive implied upside and P/E between 10–50. Sorted by ${SORT_LABELS[sortField].toLowerCase()} ${sortDirection === "asc" ? "ascending" : "descending"}.`}>
           <div className="mb-4 flex flex-wrap gap-2 text-sm">
             {(Object.keys(SORT_LABELS) as SortField[]).map((field) => (
-              <Link key={field} href={`/discovery?sort=${field}`} className={`rounded-full border px-3 py-1 ${sortField === field ? "border-sky-500/70 bg-sky-950/30 text-sky-200" : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"}`}>{SORT_LABELS[field]}</Link>
+              <Link key={field} href={sortLink(sortField, sortDirection, field)} className={`rounded-full border px-3 py-1 ${sortField === field ? "border-sky-500/70 bg-sky-950/30 text-sky-200" : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"}`}>{SORT_LABELS[field]}{sortField === field ? sortDirection === "asc" ? " ↑" : " ↓" : ""}</Link>
             ))}
           </div>
           {rows.length ? (
@@ -348,10 +375,10 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                     <th className="px-3 py-3 font-medium">Sector</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Current price</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Consensus target</th>
-                    <th className="px-3 py-3 font-medium whitespace-nowrap">Implied upside</th>
-                    <th className="px-3 py-3 font-medium whitespace-nowrap">P/E</th>
-                    <th className="px-3 py-3 font-medium whitespace-nowrap">Revenue growth</th>
-                    <th className="px-3 py-3 font-medium whitespace-nowrap">Market cap</th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap"><SortableHeader label="Implied upside" field="upside" sortField={sortField} sortDirection={sortDirection} /></th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap"><SortableHeader label="P/E" field="pe" sortField={sortField} sortDirection={sortDirection} /></th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap"><SortableHeader label="Revenue growth" field="revenue" sortField={sortField} sortDirection={sortDirection} /></th>
+                    <th className="px-3 py-3 font-medium whitespace-nowrap"><SortableHeader label="Market cap" field="marketcap" sortField={sortField} sortDirection={sortDirection} /></th>
                     <th className="px-3 py-3 font-medium">Action</th>
                   </tr>
                 </thead>
