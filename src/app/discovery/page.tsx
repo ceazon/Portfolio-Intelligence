@@ -107,6 +107,14 @@ function sortRows(rows: DiscoveryRow[], sort: SortField) {
   });
 }
 
+function isQualifiedDiscoveryCandidate(row: DiscoveryRow) {
+  return typeof row.implied_upside_pct === "number"
+    && row.implied_upside_pct > 0
+    && typeof row.pe_ttm === "number"
+    && row.pe_ttm >= 10
+    && row.pe_ttm <= 50;
+}
+
 function scoreFallbackRow(impliedUpsidePct: number | null) {
   if (impliedUpsidePct === null || !Number.isFinite(impliedUpsidePct)) return null;
   return Math.max(0, Math.min(100, 40 + impliedUpsidePct));
@@ -193,7 +201,8 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     .eq("universe", "sp500")
     .order(sortField === "marketcap" ? "market_cap" : sortField === "pe" ? "pe_ttm" : "implied_upside_pct", { ascending: sortField === "pe" });
 
-  const rows = sortRows(error ? await getExistingSymbolDiscoveryRows(supabase) : ((data || []) as DiscoveryRow[]), sortField);
+  const allRows = error ? await getExistingSymbolDiscoveryRows(supabase) : ((data || []) as DiscoveryRow[]);
+  const rows = sortRows(allRows.filter(isQualifiedDiscoveryCandidate), sortField);
   const tickers = rows.map((row) => row.ticker);
   const ownershipResult = tickers.length
     ? await supabase
@@ -235,17 +244,17 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Candidates refreshed</p>
                 <p className="mt-3 text-3xl font-bold text-zinc-50">{rows.length}</p>
-                <p className="mt-2 text-sm text-zinc-400">S&P 500 symbols currently cached in Discovery.</p>
+                <p className="mt-2 text-sm text-zinc-400">Qualified names with positive upside and P/E between 10–50.</p>
               </div>
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Consensus coverage</p>
                 <p className="mt-3 text-3xl font-bold text-sky-300">{withConsensus}</p>
-                <p className="mt-2 text-sm text-zinc-400">Names with analyst target data available.</p>
+                <p className="mt-2 text-sm text-zinc-400">Qualified names with analyst target data available.</p>
               </div>
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Average implied upside</p>
                 <p className={`mt-3 text-2xl font-bold ${getTone(averageUpside)}`}>{formatPercent(averageUpside)}</p>
-                <p className="mt-2 text-sm text-zinc-400">Across currently refreshed names with quote + target data.</p>
+                <p className="mt-2 text-sm text-zinc-400">Across qualified names with quote + target data.</p>
               </div>
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Most represented sector</p>
@@ -256,7 +265,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
           </div>
         </SectionCard>
 
-        <SectionCard title="Top 10 research candidates" description="Ranked by implied upside versus the latest available analyst consensus target.">
+        <SectionCard title="Top 10 research candidates" description="Ranked by implied upside. Only stocks with positive upside and P/E between 10–50 are included.">
           {topTen.length ? (
             <div className="grid gap-3 lg:grid-cols-2">
               {topTen.map((row, index) => (
@@ -292,7 +301,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
           )}
         </SectionCard>
 
-        <SectionCard title="S&P 500 screener" description={`Sorted by ${SORT_LABELS[sortField].toLowerCase()}.`}>
+        <SectionCard title="S&P 500 screener" description={`Only showing stocks with positive implied upside and P/E between 10–50. Sorted by ${SORT_LABELS[sortField].toLowerCase()}.`}>
           <div className="mb-4 flex flex-wrap gap-2 text-sm">
             {(Object.keys(SORT_LABELS) as SortField[]).map((field) => (
               <Link key={field} href={`/discovery?sort=${field}`} className={`rounded-full border px-3 py-1 ${sortField === field ? "border-sky-500/70 bg-sky-950/30 text-sky-200" : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"}`}>{SORT_LABELS[field]}</Link>
@@ -339,7 +348,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
               </table>
             </div>
           ) : (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">No Discovery snapshots yet. Run the refresh to seed S&P 500 candidates.</div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">No qualified Discovery candidates yet. Run the refresh to find S&P 500 stocks with positive upside and P/E between 10–50.</div>
           )}
         </SectionCard>
       </div>
