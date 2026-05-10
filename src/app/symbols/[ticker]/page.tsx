@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { requireUser } from "@/lib/auth";
 import { formatConfidencePercent, formatNormalizedScore, getReadableBiasLabel } from "@/lib/agent-output-format";
+import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
 import { buildPaceSummary, formatMoney, formatPaceLabel, formatPercent, formatRatio, getPaceTone } from "@/lib/performance-metrics";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
@@ -293,6 +294,10 @@ export default async function SymbolIntelligencePage({ params }: SymbolPageProps
   const priceHistory = (priceHistoryResult.data || []) as PriceHistoryRow[];
   const targetHistory = (targetHistoryResult.data || []) as TargetSnapshotRow[];
   const latestTarget = targetHistory[0] || null;
+  const liveConsensusTarget = latestTarget?.mean_target === null || latestTarget?.mean_target === undefined
+    ? await getConsensusTargetForSymbol(symbol.ticker).catch(() => null)
+    : null;
+  const displayConsensusTarget = latestTarget?.mean_target ?? liveConsensusTarget?.meanTarget ?? null;
   const originalTarget = targetHistory.at(-1) || null;
   const fundamentals = ((fundamentalsResult.data || [])[0] || null) as FundamentalsRow | null;
   const research = (researchResult.data || []) as ResearchInsightRow[];
@@ -300,7 +305,7 @@ export default async function SymbolIntelligencePage({ params }: SymbolPageProps
   const positions = (positionsResult.data || []) as PositionRow[];
   const currency = symbol.currency || latestTarget?.current_price_currency || "USD";
   const currentPrice = quote?.price ?? latestTarget?.current_price ?? null;
-  const impliedUpsidePct = currentPrice && latestTarget?.mean_target ? ((latestTarget.mean_target - currentPrice) / currentPrice) * 100 : null;
+  const impliedUpsidePct = typeof currentPrice === "number" && currentPrice > 0 && typeof displayConsensusTarget === "number" ? ((displayConsensusTarget - currentPrice) / currentPrice) * 100 : null;
   const quotePositive = typeof quote?.change === "number" ? quote.change >= 0 : null;
   const pace = buildPaceSummary({
     startDate: originalTarget?.captured_at ?? null,
@@ -346,7 +351,7 @@ export default async function SymbolIntelligencePage({ params }: SymbolPageProps
             <div className="grid min-w-[min(100%,520px)] gap-3 sm:grid-cols-2">
               <MetricCard label="Current quote" value={formatMoney(currentPrice, currency)} detail={quote?.fetched_at ? `Updated ${formatAppDateTime(quote.fetched_at)}` : "No quote snapshot yet"} />
               <MetricCard label="Daily move" value={quotePositive === null || typeof quote?.change !== "number" ? "—" : `${quotePositive ? "+" : ""}${quote.change.toFixed(2)} (${quotePositive ? "+" : ""}${(quote.percent_change ?? 0).toFixed(2)}%)`} tone={quotePositive === null ? "zinc" : quotePositive ? "emerald" : "rose"} />
-              <MetricCard label="Consensus target" value={formatMoney(latestTarget?.mean_target ?? null, currency)} detail={latestTarget?.captured_at ? formatAppDateTime(latestTarget.captured_at) : "No target captured yet"} tone="sky" />
+              <MetricCard label="Consensus target" value={formatMoney(displayConsensusTarget, currency)} detail={latestTarget?.captured_at ? formatAppDateTime(latestTarget.captured_at) : liveConsensusTarget ? "Live target not captured yet" : "No target captured yet"} tone="sky" />
               <MetricCard label="Implied upside" value={formatPercent(impliedUpsidePct)} detail="Current price vs consensus target" tone={impliedUpsidePct === null ? "zinc" : impliedUpsidePct >= 0 ? "emerald" : "rose"} />
             </div>
           </div>
