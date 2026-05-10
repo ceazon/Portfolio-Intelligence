@@ -12,6 +12,7 @@ import { enrichSymbolAndRefreshQuote, getNormalizedQuoteChange, refreshTrackedSy
 import { runRecommendationSynthesis } from "@/lib/synthesis-agent";
 import { buildRebalancePlan, persistRebalancePlan } from "@/lib/rebalancing-engine";
 import { capturePerformanceSnapshots } from "@/lib/performance-snapshots";
+import { ensureDiscoveryCandidateSymbol, refreshDiscoveryScreener } from "@/lib/discovery";
 import { findImportSymbolMatch, getImportSymbolSeed, searchImportSymbols } from "@/lib/symbol-import";
 import { FmpError } from "@/lib/fmp";
 
@@ -32,6 +33,99 @@ export type FormState = {
   error: string;
   notice?: string;
 };
+
+export async function refreshDiscovery(_prevState: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
+    const requestedLimit = Number(formData.get("limit") || 100);
+    const limit = Number.isFinite(requestedLimit) ? requestedLimit : 100;
+    const result = await refreshDiscoveryScreener({ maxSymbols: limit });
+
+    revalidatePath("/discovery");
+    return {
+      ok: true,
+      error: "",
+      notice: `Discovery refreshed ${result.refreshedCount} of ${result.consideredCount} S&P 500 candidates. Universe size: ${result.universeCount}.`,
+    };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to refresh Discovery.") };
+  }
+}
+
+export async function addDiscoveryCandidateToWatchlist(_prevState: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const auth = await requireActionUser();
+    if (auth.error || !auth.user) {
+      return { ok: false, error: auth.error || "You must be logged in." };
+    }
+
+    const supabase = createSupabaseAdminClient();
+    if (!supabase) {
+      return { ok: false, error: "Supabase env vars are not configured yet." };
+    }
+
+    const ticker = String(formData.get("ticker") || "").trim().toUpperCase();
+    if (!ticker) {
+      return { ok: false, error: "Ticker is required." };
+    }
+
+    const symbolId = await ensureDiscoveryCandidateSymbol(ticker);
+    const { data: existingWatchlist, error: watchlistLookupError } = await supabase
+      .from("watchlists")
+      .select("id")
+      .eq("owner_id", auth.user.id)
+      .eq("name", "Discovery Ideas")
+      .maybeSingle();
+
+    if (watchlistLookupError) {
+      return { ok: false, error: watchlistLookupError.message };
+    }
+
+    let watchlistId = existingWatchlist?.id as string | undefined;
+    if (!watchlistId) {
+      const { data: insertedWatchlist, error: insertWatchlistError } = await supabase
+        .from("watchlists")
+        .insert({
+          owner_id: auth.user.id,
+          name: "Discovery Ideas",
+          description: "Stocks surfaced by the Discovery screener for research and possible watchlist follow-up.",
+        })
+        .select("id")
+        .single();
+
+      if (insertWatchlistError || !insertedWatchlist) {
+        return { ok: false, error: insertWatchlistError?.message || "Failed to create Discovery Ideas watchlist." };
+      }
+
+      watchlistId = insertedWatchlist.id;
+    }
+
+    const { error: itemError } = await supabase.from("watchlist_items").upsert(
+      {
+        watchlist_id: watchlistId,
+        symbol_id: symbolId,
+        status: "watch",
+        notes: "Added from Discovery screener for research follow-up.",
+      },
+      { onConflict: "watchlist_id,symbol_id" },
+    );
+
+    if (itemError) {
+      return { ok: false, error: itemError.message };
+    }
+
+    revalidatePath("/discovery");
+    revalidatePath("/watchlist");
+    revalidatePath("/symbols");
+    return { ok: true, error: "", notice: `${ticker} added to Discovery Ideas.` };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to add candidate to watchlist.") };
+  }
+}
 
 async function requireActionUser() {
   const supabase = await createSupabaseServerClient();

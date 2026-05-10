@@ -36,6 +36,12 @@ type FmpProfileResult = {
   changePercentage?: number;
 };
 
+type FmpKeyMetricsTtmResult = {
+  symbol?: string;
+  peRatioTTM?: number;
+  revenueGrowthTTM?: number;
+};
+
 type FmpQuoteResult = {
   symbol?: string;
   price?: number;
@@ -152,5 +158,14 @@ export async function getFmpQuote(symbol: string): Promise<FmpQuoteResult | null
   }
 }
 
-export type { FmpProfileResult, FmpQuoteResult, FmpSymbolResult };
+export async function getFmpKeyMetricsTtm(symbol: string): Promise<FmpKeyMetricsTtmResult | null> {
+  if (!symbol.trim()) {
+    return null;
+  }
 
+  const json = await fetchFmp<FmpKeyMetricsTtmResult[]>(`/stable/key-metrics-ttm?symbol=${encodeURIComponent(symbol.trim())}`);
+  const metrics = Array.isArray(json) ? (json[0] ?? null) : null;
+  return metrics && Object.keys(metrics).length > 0 ? metrics : null;
+}
+
+export type { FmpKeyMetricsTtmResult, FmpProfileResult, FmpQuoteResult, FmpSymbolResult };
