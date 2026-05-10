@@ -1,5 +1,6 @@
 import { getAlphaVantageOverview } from "@/lib/alpha-vantage";
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
+import { getEodhdFundamentals } from "@/lib/eodhd";
 import { FmpError, getFmpKeyMetricsTtm, getFmpProfile, getFmpQuote } from "@/lib/fmp";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { getYahooChartQuote } from "@/lib/yahoo-finance";
@@ -18,6 +19,13 @@ type DiscoveryUniverseMember = {
 type DiscoveryRefreshOptions = {
   maxSymbols?: number;
   maxAlphaVantageCalls?: number;
+  maxEodhdCalls?: number;
+};
+
+type DiscoveryProviderAttempt = {
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  failureCount: number;
 };
 
 type DiscoveryStoredFallback = {
@@ -116,6 +124,23 @@ function isFocusedDiscoveryCandidate(input: { impliedUpsidePct: number | null; p
     && typeof input.peTtm === "number"
     && input.peTtm >= 10
     && input.peTtm <= 50;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error || "Unknown provider error");
+}
+
+function providerAttemptKey(ticker: string, provider: string, purpose = "fundamentals") {
+  return `${ticker.toUpperCase()}::${provider}::${purpose}`;
+}
+
+function isProviderCooledDown(attempt: DiscoveryProviderAttempt | undefined, nowMs: number) {
+  if (!attempt?.lastFailureAt) return false;
+  const lastFailureMs = new Date(attempt.lastFailureAt).getTime();
+  if (!Number.isFinite(lastFailureMs)) return false;
+  const failureCount = Math.max(1, attempt.failureCount || 1);
+  const cooldownHours = Math.min(24, 2 ** Math.min(failureCount - 1, 4));
+  return nowMs - lastFailureMs < cooldownHours * 60 * 60 * 1000;
 }
 
 export async function getSp500Universe(): Promise<DiscoveryUniverseMember[]> {
@@ -381,6 +406,70 @@ async function getStoredDiscoveryFallbacks(tickers: string[]) {
   return fallbackByTicker;
 }
 
+async function getDiscoveryProviderAttempts(tickers: string[]) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase || !tickers.length) {
+    return new Map<string, DiscoveryProviderAttempt>();
+  }
+
+  const { data, error } = await supabase
+    .from("discovery_provider_attempts")
+    .select("ticker, provider, purpose, last_success_at, last_failure_at, failure_count")
+    .eq("universe", DISCOVERY_UNIVERSE)
+    .in("ticker", tickers);
+
+  if (error) {
+    return new Map<string, DiscoveryProviderAttempt>();
+  }
+
+  return new Map((data || []).map((row) => [
+    providerAttemptKey(String(row.ticker || ""), String(row.provider || ""), String(row.purpose || "fundamentals")),
+    {
+      lastSuccessAt: row.last_success_at || null,
+      lastFailureAt: row.last_failure_at || null,
+      failureCount: Number(row.failure_count || 0),
+    },
+  ]));
+}
+
+async function recordDiscoveryProviderAttempt(input: {
+  ticker: string;
+  provider: string;
+  ok: boolean;
+  now: string;
+  error?: unknown;
+}) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return;
+
+  const previousResult = await supabase
+    .from("discovery_provider_attempts")
+    .select("failure_count")
+    .eq("universe", DISCOVERY_UNIVERSE)
+    .eq("ticker", input.ticker)
+    .eq("provider", input.provider)
+    .eq("purpose", "fundamentals")
+    .maybeSingle();
+
+  if (previousResult.error) return;
+
+  const nextFailureCount = input.ok ? 0 : Number(previousResult.data?.failure_count || 0) + 1;
+  await supabase.from("discovery_provider_attempts").upsert(
+    {
+      universe: DISCOVERY_UNIVERSE,
+      ticker: input.ticker,
+      provider: input.provider,
+      purpose: "fundamentals",
+      last_success_at: input.ok ? input.now : null,
+      last_failure_at: input.ok ? null : input.now,
+      failure_count: nextFailureCount,
+      last_error: input.ok ? null : getErrorMessage(input.error).slice(0, 500),
+      updated_at: input.now,
+    },
+    { onConflict: "universe,ticker,provider,purpose" },
+  );
+}
+
 export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions = {}) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -389,7 +478,9 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
 
   const universe = await getSp500Universe();
   const now = new Date().toISOString();
+  const nowMs = new Date(now).getTime();
   const storedFallbacks = await getStoredDiscoveryFallbacks(universe.map((member) => member.ticker));
+  const providerAttempts = await getDiscoveryProviderAttempts(universe.map((member) => member.ticker));
   const requestedMax = options.maxSymbols || universe.length;
   const cappedMax = Math.max(10, Math.min(requestedMax, universe.length));
   const missingDataMembers = universe.filter((member) => {
@@ -447,8 +538,11 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   let refreshedCount = 0;
   let failedCount = 0;
   let alphaVantageCalls = 0;
+  let eodhdCalls = 0;
   const alphaVantageCallLimit = Math.max(0, Math.min(options.maxAlphaVantageCalls ?? 25, selectedMembers.length));
+  const eodhdCallLimit = Math.max(0, Math.min(options.maxEodhdCalls ?? 25, selectedMembers.length));
   const alphaVantageCandidateTickers = new Set(randomizedMissingMembers.slice(0, alphaVantageCallLimit).map((member) => member.ticker));
+  const eodhdCandidateTickers = new Set(randomizedMissingMembers.slice(0, Math.max(alphaVantageCallLimit, eodhdCallLimit) + eodhdCallLimit).map((member) => member.ticker));
 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
     try {
@@ -468,17 +562,46 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         : null;
       const needsAlphaVantage = alphaVantageCalls < alphaVantageCallLimit
         && alphaVantageCandidateTickers.has(member.ticker)
+        && !isProviderCooledDown(providerAttempts.get(providerAttemptKey(member.ticker, "alpha_vantage")), nowMs)
         && (storedFallback?.consensusTarget === null || storedFallback?.consensusTarget === undefined || storedFallback?.peTtm === null || storedFallback?.peTtm === undefined);
       if (needsAlphaVantage) {
         alphaVantageCalls += 1;
       }
       const alphaOverview = needsAlphaVantage
-        ? await getAlphaVantageOverview(member.providerTicker).catch(() => null)
+        ? await getAlphaVantageOverview(member.providerTicker)
+          .then(async (overview) => {
+            await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "alpha_vantage", ok: Boolean(overview), now });
+            return overview;
+          })
+          .catch(async (error) => {
+            await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "alpha_vantage", ok: false, now, error });
+            return null;
+          })
+        : null;
+
+      const stillNeedsProviderData = alphaOverview?.analystTargetPrice === null || alphaOverview?.analystTargetPrice === undefined || (alphaOverview?.peRatio === null && alphaOverview?.forwardPe === null);
+      const needsEodhd = eodhdCalls < eodhdCallLimit
+        && eodhdCandidateTickers.has(member.ticker)
+        && !isProviderCooledDown(providerAttempts.get(providerAttemptKey(member.ticker, "eodhd")), nowMs)
+        && ((storedFallback?.consensusTarget === null || storedFallback?.consensusTarget === undefined || storedFallback?.peTtm === null || storedFallback?.peTtm === undefined) || stillNeedsProviderData);
+      if (needsEodhd) {
+        eodhdCalls += 1;
+      }
+      const eodhdFundamentals = needsEodhd
+        ? await getEodhdFundamentals(member.providerTicker)
+          .then(async (fundamentals) => {
+            await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "eodhd", ok: Boolean(fundamentals), now });
+            return fundamentals;
+          })
+          .catch(async (error) => {
+            await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "eodhd", ok: false, now, error });
+            return null;
+          })
         : null;
 
       const firstPassPrice = quote?.price ?? storedFallback?.price ?? null;
-      const firstPassTarget = alphaOverview?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
-      const firstPassPeTtm = alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? storedFallback?.peTtm ?? null;
+      const firstPassTarget = alphaOverview?.analystTargetPrice ?? eodhdFundamentals?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
+      const firstPassPeTtm = alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? eodhdFundamentals?.peRatio ?? eodhdFundamentals?.forwardPe ?? storedFallback?.peTtm ?? null;
       const firstPassUpsidePct = typeof firstPassPrice === "number" && firstPassPrice > 0 && typeof firstPassTarget === "number"
         ? ((firstPassTarget - firstPassPrice) / firstPassPrice) * 100
         : null;
@@ -504,7 +627,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         ? ((target - price) / price) * 100
         : null;
       const peTtm = metrics?.peRatioTTM ?? firstPassPeTtm;
-      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? alphaOverview?.revenueGrowthTtm ?? storedFallback?.revenueGrowthTtm ?? null;
+      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? alphaOverview?.revenueGrowthTtm ?? eodhdFundamentals?.revenueGrowthTtm ?? storedFallback?.revenueGrowthTtm ?? null;
       const scoring = scoreDiscoveryCandidate({
         impliedUpsidePct,
         peTtm,
@@ -519,17 +642,17 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         universe: DISCOVERY_UNIVERSE,
         ticker: member.ticker,
         provider_ticker: member.providerTicker,
-        name: profile?.companyName || alphaOverview?.name || member.name,
-        sector: profile?.sector || alphaOverview?.sector || member.sector,
-        industry: profile?.industry || alphaOverview?.industry || member.industry,
+        name: profile?.companyName || alphaOverview?.name || eodhdFundamentals?.name || member.name,
+        sector: profile?.sector || alphaOverview?.sector || eodhdFundamentals?.sector || member.sector,
+        industry: profile?.industry || alphaOverview?.industry || eodhdFundamentals?.industry || member.industry,
         price,
-        currency: profile?.currency || alphaOverview?.currency || finalQuote?.currency || storedFallback?.currency || null,
+        currency: profile?.currency || alphaOverview?.currency || eodhdFundamentals?.currency || finalQuote?.currency || storedFallback?.currency || null,
         consensus_target: target,
-        median_target: consensus?.medianTarget ?? alphaOverview?.analystTargetPrice ?? storedFallback?.medianTarget ?? null,
+        median_target: consensus?.medianTarget ?? alphaOverview?.analystTargetPrice ?? eodhdFundamentals?.analystTargetPrice ?? storedFallback?.medianTarget ?? null,
         high_target: consensus?.highTarget ?? storedFallback?.highTarget ?? null,
         low_target: consensus?.lowTarget ?? storedFallback?.lowTarget ?? null,
         implied_upside_pct: impliedUpsidePct === null ? null : Number(impliedUpsidePct.toFixed(3)),
-        market_cap: profile?.mktCap ?? alphaOverview?.marketCap ?? storedFallback?.marketCap ?? null,
+        market_cap: profile?.mktCap ?? alphaOverview?.marketCap ?? eodhdFundamentals?.marketCap ?? storedFallback?.marketCap ?? null,
         pe_ttm: peTtm,
         revenue_growth_ttm: revenueGrowthTtm,
         score: scoring.score,

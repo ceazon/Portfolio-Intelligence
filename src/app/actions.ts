@@ -43,9 +43,11 @@ export async function refreshDiscovery(_prevState: FormState, formData: FormData
 
     const requestedLimit = Number(formData.get("limit") || 500);
     const requestedAlphaLimit = Number(formData.get("alphaLimit") || 25);
+    const requestedEodhdLimit = Number(formData.get("eodhdLimit") || 25);
     const limit = Number.isFinite(requestedLimit) ? requestedLimit : 500;
     const alphaLimit = Number.isFinite(requestedAlphaLimit) ? requestedAlphaLimit : 25;
-    const result = await refreshDiscoveryScreener({ maxSymbols: limit, maxAlphaVantageCalls: alphaLimit });
+    const eodhdLimit = Number.isFinite(requestedEodhdLimit) ? requestedEodhdLimit : 25;
+    const result = await refreshDiscoveryScreener({ maxSymbols: limit, maxAlphaVantageCalls: alphaLimit, maxEodhdCalls: eodhdLimit });
 
     revalidatePath("/discovery");
     return {
