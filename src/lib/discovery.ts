@@ -419,7 +419,23 @@ async function getDiscoveryProviderAttempts(tickers: string[]) {
     .in("ticker", tickers);
 
   if (error) {
-    return new Map<string, DiscoveryProviderAttempt>();
+    const fallbackResult = await supabase
+      .from("discovery_snapshots")
+      .select("ticker, score_breakdown_json")
+      .eq("universe", DISCOVERY_UNIVERSE)
+      .in("ticker", tickers);
+
+    if (fallbackResult.error) return new Map<string, DiscoveryProviderAttempt>();
+
+    const fallbackAttempts = new Map<string, DiscoveryProviderAttempt>();
+    (fallbackResult.data || []).forEach((row) => {
+      const ticker = String(row.ticker || "").toUpperCase();
+      const providerAttempts = (row.score_breakdown_json as { providerAttempts?: Record<string, DiscoveryProviderAttempt> } | null)?.providerAttempts || {};
+      Object.entries(providerAttempts).forEach(([provider, attempt]) => {
+        fallbackAttempts.set(providerAttemptKey(ticker, provider), attempt);
+      });
+    });
+    return fallbackAttempts;
   }
 
   return new Map((data || []).map((row) => [
@@ -547,6 +563,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
     try {
       const storedFallback = storedFallbacks.get(member.ticker);
+      const providerAttemptUpdates: Record<string, DiscoveryProviderAttempt> = {};
       const yahooQuote = await getYahooChartQuote(member.providerTicker).catch(() => null);
       const quote = yahooQuote
         ? {
@@ -571,10 +588,13 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         ? await getAlphaVantageOverview(member.providerTicker)
           .then(async (overview) => {
             await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "alpha_vantage", ok: Boolean(overview), now });
+            providerAttemptUpdates.alpha_vantage = { lastSuccessAt: overview ? now : null, lastFailureAt: overview ? null : now, failureCount: overview ? 0 : 1 };
             return overview;
           })
           .catch(async (error) => {
             await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "alpha_vantage", ok: false, now, error });
+            const previous = providerAttempts.get(providerAttemptKey(member.ticker, "alpha_vantage"));
+            providerAttemptUpdates.alpha_vantage = { lastSuccessAt: previous?.lastSuccessAt || null, lastFailureAt: now, failureCount: Number(previous?.failureCount || 0) + 1 };
             return null;
           })
         : null;
@@ -591,10 +611,13 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         ? await getEodhdFundamentals(member.providerTicker)
           .then(async (fundamentals) => {
             await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "eodhd", ok: Boolean(fundamentals), now });
+            providerAttemptUpdates.eodhd = { lastSuccessAt: fundamentals ? now : null, lastFailureAt: fundamentals ? null : now, failureCount: fundamentals ? 0 : 1 };
             return fundamentals;
           })
           .catch(async (error) => {
             await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "eodhd", ok: false, now, error });
+            const previous = providerAttempts.get(providerAttemptKey(member.ticker, "eodhd"));
+            providerAttemptUpdates.eodhd = { lastSuccessAt: previous?.lastSuccessAt || null, lastFailureAt: now, failureCount: Number(previous?.failureCount || 0) + 1 };
             return null;
           })
         : null;
@@ -656,7 +679,16 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         pe_ttm: peTtm,
         revenue_growth_ttm: revenueGrowthTtm,
         score: scoring.score,
-        score_breakdown_json: scoring.breakdown,
+        score_breakdown_json: {
+          ...scoring.breakdown,
+          providerAttempts: {
+            ...Object.fromEntries(["alpha_vantage", "eodhd"].flatMap((provider) => {
+              const attempt = providerAttempts.get(providerAttemptKey(member.ticker, provider));
+              return attempt ? [[provider, attempt]] : [];
+            })),
+            ...providerAttemptUpdates,
+          },
+        },
         flags_json: scoring.flags,
         captured_at: now,
       };
