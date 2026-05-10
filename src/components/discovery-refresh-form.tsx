@@ -29,6 +29,13 @@ export function DiscoveryRefreshForm() {
             <option value="200">200-symbol rotating sample</option>
             <option value="500">Full S&P 500 scan</option>
           </select>
+          <label className="text-sm text-zinc-400" htmlFor="discovery-alpha-limit">Fallbacks</label>
+          <select id="discovery-alpha-limit" name="alphaLimit" defaultValue="25" className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500">
+            <option value="10">10 Alpha Vantage calls</option>
+            <option value="25">25 Alpha Vantage calls</option>
+            <option value="50">50 Alpha Vantage calls</option>
+            <option value="100">100 Alpha Vantage calls</option>
+          </select>
           <button type="submit" disabled={pending} className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60">
             {pending ? "Refreshing..." : "Refresh Discovery"}
           </button>

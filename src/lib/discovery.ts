@@ -22,6 +22,7 @@ type DiscoveryRefreshOptions = {
 
 type DiscoveryStoredFallback = {
   hasSnapshot: boolean;
+  capturedAt: string | null;
   price: number | null;
   currency: string | null;
   consensusTarget: number | null;
@@ -283,6 +284,7 @@ async function getStoredDiscoveryFallbacks(tickers: string[]) {
 
     const fallback: DiscoveryStoredFallback = {
       hasSnapshot: false,
+      capturedAt: null,
       price: null,
       currency: null,
       consensusTarget: null,
@@ -299,7 +301,7 @@ async function getStoredDiscoveryFallbacks(tickers: string[]) {
 
   const { data: existingSnapshots } = await supabase
     .from("discovery_snapshots")
-    .select("ticker, price, currency, consensus_target, median_target, high_target, low_target, market_cap, pe_ttm, revenue_growth_ttm")
+    .select("ticker, price, currency, consensus_target, median_target, high_target, low_target, market_cap, pe_ttm, revenue_growth_ttm, captured_at")
     .eq("universe", DISCOVERY_UNIVERSE)
     .in("ticker", tickers);
 
@@ -307,6 +309,7 @@ async function getStoredDiscoveryFallbacks(tickers: string[]) {
     const ticker = String(row.ticker || "").toUpperCase();
     const fallback = initializeFallback(ticker);
     fallback.hasSnapshot = true;
+    fallback.capturedAt = typeof row.captured_at === "string" ? row.captured_at : fallback.capturedAt;
     fallback.price = typeof row.price === "number" ? row.price : fallback.price;
     fallback.currency = row.currency || fallback.currency;
     fallback.consensusTarget = typeof row.consensus_target === "number" ? row.consensus_target : fallback.consensusTarget;
@@ -393,12 +396,23 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
     const fallback = storedFallbacks.get(member.ticker);
     return !fallback?.hasSnapshot || fallback.consensusTarget === null || fallback.consensusTarget === undefined || fallback.peTtm === null || fallback.peTtm === undefined;
   });
-  const coveredMembers = universe.filter((member) => !missingDataMembers.some((missing) => missing.ticker === member.ticker));
-  const rotationSeed = Math.floor(Date.now() / (1000 * 60 * 60));
-  const rotationOffset = missingDataMembers.length ? rotationSeed % missingDataMembers.length : 0;
-  const rotatedMissingMembers = [...missingDataMembers.slice(rotationOffset), ...missingDataMembers.slice(0, rotationOffset)];
+  const missingTickers = new Set(missingDataMembers.map((member) => member.ticker));
+  const coveredMembers = universe.filter((member) => !missingTickers.has(member.ticker));
+  const randomizedMissingMembers = [...missingDataMembers].sort((a, b) => {
+    const fallbackA = storedFallbacks.get(a.ticker);
+    const fallbackB = storedFallbacks.get(b.ticker);
+    const completenessA = (fallbackA?.consensusTarget === null || fallbackA?.consensusTarget === undefined ? 0 : 1) + (fallbackA?.peTtm === null || fallbackA?.peTtm === undefined ? 0 : 1);
+    const completenessB = (fallbackB?.consensusTarget === null || fallbackB?.consensusTarget === undefined ? 0 : 1) + (fallbackB?.peTtm === null || fallbackB?.peTtm === undefined ? 0 : 1);
+    if (completenessA !== completenessB) return completenessA - completenessB;
+
+    const capturedA = fallbackA?.capturedAt ? new Date(fallbackA.capturedAt).getTime() : 0;
+    const capturedB = fallbackB?.capturedAt ? new Date(fallbackB.capturedAt).getTime() : 0;
+    if (capturedA !== capturedB) return capturedA - capturedB;
+
+    return Math.random() - 0.5;
+  });
   const selectedMemberMap = new Map<string, DiscoveryUniverseMember>();
-  [...rotatedMissingMembers, ...coveredMembers].slice(0, cappedMax).forEach((member) => selectedMemberMap.set(member.ticker, member));
+  [...randomizedMissingMembers, ...coveredMembers].slice(0, cappedMax).forEach((member) => selectedMemberMap.set(member.ticker, member));
   const selectedMembers = [...selectedMemberMap.values()];
 
   const { error: universeError } = await supabase.from("discovery_universe_symbols").upsert(
@@ -434,7 +448,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   let failedCount = 0;
   let alphaVantageCalls = 0;
   const alphaVantageCallLimit = Math.max(0, Math.min(options.maxAlphaVantageCalls ?? 25, selectedMembers.length));
-  const alphaVantageCandidateTickers = new Set(rotatedMissingMembers.slice(0, alphaVantageCallLimit).map((member) => member.ticker));
+  const alphaVantageCandidateTickers = new Set(randomizedMissingMembers.slice(0, alphaVantageCallLimit).map((member) => member.ticker));
 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
     try {
