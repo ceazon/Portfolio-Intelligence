@@ -13,7 +13,6 @@ export default async function DashboardPage() {
 
   let symbolCount = "0";
   let positionCount = "0";
-  let rebalanceRecommendationCount = "0";
   let rebalanceRunCount = "0";
   let latestRebalanceRunSummary: string | null = null;
   let latestQuoteSync: string | null = null;
@@ -21,6 +20,8 @@ export default async function DashboardPage() {
   let targetSnapshotCount = "0";
   let priceHistoryCount = "0";
   let performanceEvaluationCount = "0";
+  let discoveryCandidateCount = "0";
+  let savedDiscoveryIdeaCount = "0";
   let latestTargetSnapshot: string | null = null;
   let latestPriceHistory: string | null = null;
 
@@ -28,7 +29,6 @@ export default async function DashboardPage() {
     const [
       symbolsCountResult,
       positionsCountResult,
-      rebalanceRecommendationsCountResult,
       rebalanceRunsCountResult,
       latestRebalanceRunResult,
       latestQuoteSyncResult,
@@ -36,12 +36,13 @@ export default async function DashboardPage() {
       targetSnapshotCountResult,
       priceHistoryCountResult,
       performanceEvaluationCountResult,
+      discoveryCandidateCountResult,
+      savedDiscoveryIdeaCountResult,
       latestTargetSnapshotResult,
       latestPriceHistoryResult,
     ] = await Promise.all([
       supabase.from("symbols").select("id", { count: "exact", head: true }),
       supabase.from("portfolio_positions").select("id, portfolios!inner(owner_id)", { count: "exact", head: true }).eq("portfolios.owner_id", user.id),
-      supabase.from("rebalance_recommendations").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
       supabase.from("rebalancing_runs").select("id", { count: "exact", head: true }).eq("owner_id", user.id),
       supabase.from("rebalancing_runs").select("summary, completed_at").eq("owner_id", user.id).order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("symbols").select("last_quote_sync_at").order("last_quote_sync_at", { ascending: false }).limit(1).maybeSingle(),
@@ -49,13 +50,14 @@ export default async function DashboardPage() {
       supabase.from("analyst_target_snapshots").select("id", { count: "exact", head: true }),
       supabase.from("symbol_price_history").select("id", { count: "exact", head: true }),
       supabase.from("analyst_target_performance").select("id", { count: "exact", head: true }),
+      supabase.from("discovery_snapshots").select("id", { count: "exact", head: true }).gt("implied_upside_pct", 0).gte("pe_ttm", 10).lte("pe_ttm", 50),
+      supabase.from("watchlist_items").select("id, watchlists!inner(name, owner_id)", { count: "exact", head: true }).eq("watchlists.owner_id", user.id).eq("watchlists.name", "Discovery Ideas"),
       supabase.from("analyst_target_snapshots").select("captured_at").order("captured_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("symbol_price_history").select("captured_at").order("captured_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     symbolCount = String(symbolsCountResult.count ?? 0);
     positionCount = String(positionsCountResult.count ?? 0);
-    rebalanceRecommendationCount = String(rebalanceRecommendationsCountResult.count ?? 0);
     rebalanceRunCount = String(rebalanceRunsCountResult.count ?? 0);
     latestRebalanceRunSummary = latestRebalanceRunResult.data?.summary || null;
     latestQuoteSync = latestQuoteSyncResult.data?.last_quote_sync_at || null;
@@ -63,6 +65,8 @@ export default async function DashboardPage() {
     targetSnapshotCount = String(targetSnapshotCountResult.count ?? 0);
     priceHistoryCount = String(priceHistoryCountResult.count ?? 0);
     performanceEvaluationCount = String(performanceEvaluationCountResult.count ?? 0);
+    discoveryCandidateCount = String(discoveryCandidateCountResult.count ?? 0);
+    savedDiscoveryIdeaCount = String(savedDiscoveryIdeaCountResult.count ?? 0);
     latestTargetSnapshot = latestTargetSnapshotResult.data?.captured_at || null;
     latestPriceHistory = latestPriceHistoryResult.data?.captured_at || null;
   }
@@ -72,11 +76,16 @@ export default async function DashboardPage() {
   const stats = [
     { label: "Symbols", value: symbolCount, detail: latestQuoteSync ? `Last quote sync ${formatAppDateTime(latestQuoteSync)}` : "Waiting for first quote refresh" },
     { label: "Positions", value: positionCount, detail: "Current portfolio holdings" },
-    { label: "Rebalance Items", value: rebalanceRecommendationCount, detail: rebalanceRecommendationCount === "0" ? "No active rebalance items yet" : "Open portfolio actions" },
+    { label: "Discovery Ideas", value: savedDiscoveryIdeaCount, detail: "Saved research candidates" },
     { label: "Rebalance Runs", value: rebalanceRunCount, detail: rebalanceRunCount === "0" ? "No saved rebalance history yet" : "Saved plan history" },
   ];
 
   const performanceStats = [
+    {
+      label: "Qualified Discovery",
+      value: discoveryCandidateCount,
+      detail: "Positive upside + P/E 10–50",
+    },
     {
       label: "Target Snapshots",
       value: targetSnapshotCount,
@@ -96,72 +105,52 @@ export default async function DashboardPage() {
 
   const currentStatus = [
     {
-      label: "Core app",
+      label: "Portfolio core",
       value: "Usable",
-      body: "Portfolios, positions, cash, allocation views, watchlists, symbols, refresh flows, and per-symbol workspaces are live.",
+      body: "Portfolios, positions, cash, allocation views, refresh flows, and symbol workspaces are live.",
     },
     {
-      label: "Market data",
-      value: "Working",
-      body: "Quotes, FX, fundamentals, consensus targets, and Yahoo fallback are wired into the shared refresh path.",
+      label: "Discovery",
+      value: "New",
+      body: "S&P 500 idea screening is live with positive-upside/P/E filters, staged enrichment, Alpha Vantage fallback, and saved ideas on-page.",
     },
     {
       label: "Performance",
       value: "Warming up",
-      body: "Daily pace and expectation-vs-actual charts are useful now; formal hit rate and alpha need 90/180/365-day history.",
-    },
-    {
-      label: "Symbol intelligence",
-      value: "Live",
-      body: "Each ticker now opens a single workspace with quote, target history, fundamentals, research evidence, risk notes, portfolio exposure, and expectation-vs-actual charting.",
-    },
-    {
-      label: "AI layer",
-      value: "MVP",
-      body: "Research, recommendation synthesis, and rebalance copilot copy exist; the next trust layer is decision persistence and material-change tracking.",
+      body: "Estimate tracking shows live target gaps now; hit rate and alpha improve as 90/180/365-day history matures.",
     },
   ];
 
   const latestProgress = [
     {
-      title: "Single-symbol workspaces shipped",
-      body: "Ticker cards now link into /symbols/[ticker], consolidating price, target, fundamentals, research, risks, charting, and exposure into one page.",
+      title: "Discovery shipped",
+      body: "S&P 500 screener now ranks qualified research candidates by implied upside and lets you save ideas for follow-up.",
     },
     {
-      title: "Estimate tracking matured",
-      body: "The app now shows daily expectation-vs-actual pacing immediately while formal hit-rate and alpha scoring continue to accumulate history.",
+      title: "Data fallbacks improved",
+      body: "Yahoo quotes and Alpha Vantage fundamentals/targets now backstop FMP/Finnhub limits.",
     },
     {
-      title: "Product focus tightened",
-      body: "The center of gravity has shifted from broad archives toward portfolio decisions, target paths, and symbol-level evidence review.",
+      title: "Saved ideas clarified",
+      body: "Discovery ideas now stay visible directly on the Discovery page instead of hiding in the old watchlist area.",
     },
   ];
 
   const focusedRecommendations = [
     {
       priority: "1",
-      title: "Turn the dashboard into a daily decision brief",
-      body: "Surface the few names that changed: stale data, largest allocation drift, biggest target/price gap, behind/ahead pace, and the safest next action.",
+      title: "Make Discovery higher coverage",
+      body: "Keep rotating enrichment across the S&P 500 and consider a stronger paid estimates provider if Discovery becomes central.",
     },
     {
       priority: "2",
-      title: "Persist the rebalance copilot loop",
-      body: "Save accept/watch/snooze/reject decisions into a journal so future runs can explain what changed since the last decision.",
+      title: "Turn saved ideas into research workflow",
+      body: "Add run-research, dismiss, and promote-to-portfolio actions for each saved idea.",
     },
     {
       priority: "3",
-      title: "Polish the symbol workspace into the main research cockpit",
-      body: "Add clearer action CTAs, change badges, and links from portfolio/rebalance/performance rows into the same ticker workspace.",
-    },
-    {
-      priority: "4",
-      title: "Replace broad recommendations with material-change tracking",
-      body: "Version recommendations and surface only meaningful changes in action, conviction, target, risk, or thesis.",
-    },
-    {
-      priority: "5",
-      title: "Automate monitoring after trust improves",
-      body: "Once decisions and deltas are persistent, add alerts for meaningful drift, stale quotes, target revisions, and positions breaking their expected path.",
+      title: "Add material-change tracking",
+      body: "Highlight target revisions, valuation changes, and candidates newly entering/leaving the qualified screen.",
     },
   ];
 
