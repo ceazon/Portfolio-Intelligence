@@ -65,7 +65,6 @@ type DiscoveryPageProps = {
 };
 
 const SORT_LABELS = {
-  score: "Discovery score",
   upside: "Implied upside",
   pe: "P/E ratio",
   marketcap: "Market cap",
@@ -104,7 +103,7 @@ function sortRows(rows: DiscoveryRow[], sort: SortField) {
     if (sort === "upside") return (b.implied_upside_pct ?? Number.NEGATIVE_INFINITY) - (a.implied_upside_pct ?? Number.NEGATIVE_INFINITY);
     if (sort === "pe") return (a.pe_ttm ?? Number.POSITIVE_INFINITY) - (b.pe_ttm ?? Number.POSITIVE_INFINITY);
     if (sort === "marketcap") return (b.market_cap ?? Number.NEGATIVE_INFINITY) - (a.market_cap ?? Number.NEGATIVE_INFINITY);
-    return (b.score ?? Number.NEGATIVE_INFINITY) - (a.score ?? Number.NEGATIVE_INFINITY);
+    return (b.implied_upside_pct ?? Number.NEGATIVE_INFINITY) - (a.implied_upside_pct ?? Number.NEGATIVE_INFINITY);
   });
 }
 
@@ -176,7 +175,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
   const supabase = await createSupabaseServerClient();
   const params = (await searchParams) || {};
   const sortParam = getSingleParam(params.sort);
-  const sortField: SortField = sortParam && sortParam in SORT_LABELS ? (sortParam as SortField) : "score";
+  const sortField: SortField = sortParam && sortParam in SORT_LABELS ? (sortParam as SortField) : "upside";
 
   if (!supabase) {
     return (
@@ -192,7 +191,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     .from("discovery_snapshots")
     .select("ticker, provider_ticker, name, sector, industry, price, currency, consensus_target, implied_upside_pct, market_cap, pe_ttm, revenue_growth_ttm, score, score_breakdown_json, flags_json, captured_at")
     .eq("universe", "sp500")
-    .order(sortField === "upside" ? "implied_upside_pct" : sortField === "marketcap" ? "market_cap" : sortField === "pe" ? "pe_ttm" : "score", { ascending: sortField === "pe" });
+    .order(sortField === "marketcap" ? "market_cap" : sortField === "pe" ? "pe_ttm" : "implied_upside_pct", { ascending: sortField === "pe" });
 
   const rows = sortRows(error ? await getExistingSymbolDiscoveryRows(supabase) : ((data || []) as DiscoveryRow[]), sortField);
   const tickers = rows.map((row) => row.ticker);
@@ -216,7 +215,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     ? rows.map((row) => row.implied_upside_pct).filter((value): value is number => typeof value === "number").reduce((sum, value, _index, values) => sum + value / values.length, 0)
     : null;
   const lastRefresh = rows.map((row) => row.captured_at).sort().at(-1) || null;
-  const topTen = rows.filter((row) => typeof row.consensus_target === "number" && typeof row.price === "number").slice(0, 10);
+  const topTen = sortRows(rows, "upside").filter((row) => typeof row.consensus_target === "number" && typeof row.price === "number" && typeof row.implied_upside_pct === "number").slice(0, 10);
   const bestSector = rows.reduce<Map<string, number>>((map, row) => {
     if (row.sector && typeof row.implied_upside_pct === "number") map.set(row.sector, (map.get(row.sector) || 0) + 1);
     return map;
@@ -257,7 +256,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
           </div>
         </SectionCard>
 
-        <SectionCard title="Top 10 research candidates" description="Ranked by Discovery score: consensus upside first, with guardrails for valuation, growth, and data coverage.">
+        <SectionCard title="Top 10 research candidates" description="Ranked by implied upside versus the latest available analyst consensus target.">
           {topTen.length ? (
             <div className="grid gap-3 lg:grid-cols-2">
               {topTen.map((row, index) => (
@@ -269,19 +268,20 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                       <p className="mt-1 text-sm text-zinc-400">{row.sector || "Sector unavailable"}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-zinc-500">Score</p>
-                      <p className="text-xl font-bold text-sky-300">{row.score?.toFixed(1) ?? "—"}</p>
+                      <p className="text-xs text-zinc-500">Upside</p>
+                      <p className={`text-xl font-bold ${getTone(row.implied_upside_pct)}`}>{formatPercent(row.implied_upside_pct)}</p>
                     </div>
                   </div>
-                  <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+                  <div className="mt-4 grid grid-cols-4 gap-2 text-sm">
                     <div><p className="text-zinc-500">Price</p><p className="font-medium text-zinc-100">{formatMoney(row.price, row.currency || "USD")}</p></div>
                     <div><p className="text-zinc-500">Target</p><p className="font-medium text-zinc-100">{formatMoney(row.consensus_target, row.currency || "USD")}</p></div>
                     <div><p className="text-zinc-500">Upside</p><p className={`font-medium ${getTone(row.implied_upside_pct)}`}>{formatPercent(row.implied_upside_pct)}</p></div>
+                    <div><p className="text-zinc-500">P/E</p><p className="font-medium text-zinc-100">{formatRatio(row.pe_ttm)}</p></div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2 text-xs">
                     {ownedTickers.has(row.ticker) ? <span className="rounded-full border border-emerald-800/70 bg-emerald-950/25 px-2 py-1 text-emerald-300">Owned</span> : null}
                     {watchlistedTickers.has(row.ticker) ? <span className="rounded-full border border-sky-800/70 bg-sky-950/25 px-2 py-1 text-sky-300">Watchlisted</span> : null}
-                    {(row.flags_json || []).slice(0, 2).map((flag) => <span key={flag} className="rounded-full border border-amber-800/60 bg-amber-950/20 px-2 py-1 text-amber-200">{flag}</span>)}
+                    {(row.flags_json || []).filter((flag) => !(typeof row.consensus_target === "number" && flag.toLowerCase().includes("no consensus"))).slice(0, 2).map((flag) => <span key={flag} className="rounded-full border border-amber-800/60 bg-amber-950/20 px-2 py-1 text-amber-200">{flag}</span>)}
                   </div>
                   <div className="mt-4"><DiscoveryWatchlistButton ticker={row.ticker} alreadyWatchlisted={watchlistedTickers.has(row.ticker)} /></div>
                 </div>
@@ -311,7 +311,6 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                     <th className="px-3 py-3 font-medium whitespace-nowrap">P/E</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Revenue growth</th>
                     <th className="px-3 py-3 font-medium whitespace-nowrap">Market cap</th>
-                    <th className="px-3 py-3 font-medium whitespace-nowrap">Score</th>
                     <th className="px-3 py-3 font-medium">Action</th>
                   </tr>
                 </thead>
@@ -333,7 +332,6 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                       <td className="px-3 py-3 whitespace-nowrap">{formatRatio(row.pe_ttm)}</td>
                       <td className="px-3 py-3 whitespace-nowrap">{typeof row.revenue_growth_ttm === "number" ? formatPercent(row.revenue_growth_ttm * 100) : "—"}</td>
                       <td className="px-3 py-3 whitespace-nowrap">{formatMarketCap(row.market_cap)}</td>
-                      <td className="px-3 py-3 whitespace-nowrap font-semibold text-sky-300">{row.score?.toFixed(1) ?? "—"}</td>
                       <td className="px-3 py-3"><DiscoveryWatchlistButton ticker={row.ticker} alreadyWatchlisted={watchlistedTickers.has(row.ticker)} /></td>
                     </tr>
                   ))}
