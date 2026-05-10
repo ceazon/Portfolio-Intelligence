@@ -12,7 +12,7 @@ function getFmpKey() {
   return process.env.FMP_API_KEY || "";
 }
 
-async function getFmpPriceTarget(symbol: string): Promise<ConsensusTargetResult | null> {
+export async function getFmpPriceTarget(symbol: string): Promise<ConsensusTargetResult | null> {
   const apiKey = getFmpKey();
   if (!apiKey) return null;
 

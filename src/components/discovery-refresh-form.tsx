@@ -17,7 +17,7 @@ export function DiscoveryRefreshForm() {
         <div>
           <h3 className="text-base font-semibold text-zinc-100">Refresh S&P 500 Discovery</h3>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Pull the S&P 500 universe, refresh a working batch of quotes, consensus targets, fundamentals, and rebuild the ranked research-candidate list.
+            Pull the S&P 500 universe, refresh quotes, and gradually enrich a quota-safe batch of target prices and fundamentals before rebuilding the ranked research-candidate list.
           </p>
           {state?.error ? <p className="mt-2 text-sm text-amber-300">{state.error}</p> : null}
           {state?.notice ? <p className="mt-2 text-sm text-emerald-300">{state.notice}</p> : null}

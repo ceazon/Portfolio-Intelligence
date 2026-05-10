@@ -1,5 +1,5 @@
 import { getAlphaVantageOverview } from "@/lib/alpha-vantage";
-import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
+import { getConsensusTargetForSymbol, getFmpPriceTarget } from "@/lib/consensus-targets";
 import { getEodhdQuote } from "@/lib/eodhd";
 import { FmpError, getFmpKeyMetricsTtm, getFmpProfile, getFmpQuote } from "@/lib/fmp";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
@@ -41,6 +41,12 @@ type DiscoveryStoredFallback = {
   marketCap: number | null;
   peTtm: number | null;
   revenueGrowthTtm: number | null;
+};
+
+type FmpDiscoveryFundamentalsResult = {
+  metrics: Awaited<ReturnType<typeof getFmpKeyMetricsTtm>> | null;
+  consensus: Awaited<ReturnType<typeof getFmpPriceTarget>> | null;
+  error: unknown;
 };
 
 function normalizeTickerForProvider(ticker: string) {
@@ -488,6 +494,23 @@ async function recordDiscoveryProviderAttempt(input: {
   );
 }
 
+async function getFmpDiscoveryFundamentals(symbol: string): Promise<FmpDiscoveryFundamentalsResult> {
+  const [metricsResult, targetResult] = await Promise.allSettled([
+    getFmpKeyMetricsTtm(symbol),
+    getFmpPriceTarget(symbol),
+  ]);
+
+  const errors = [metricsResult, targetResult]
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    .map((result) => result.reason);
+
+  return {
+    metrics: metricsResult.status === "fulfilled" ? metricsResult.value : null,
+    consensus: targetResult.status === "fulfilled" ? targetResult.value : null,
+    error: errors[0] ?? null,
+  };
+}
+
 export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions = {}) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -558,10 +581,13 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   let fmpFundamentalCalls = 0;
   let alphaVantageCalls = 0;
   let eodhdQuoteCalls = 0;
-  const fmpFundamentalCallLimit = Math.max(0, Math.min(options.maxFmpFundamentalCalls ?? 250, selectedMembers.length));
+  const fmpFundamentalCallLimit = Math.max(0, Math.min(options.maxFmpFundamentalCalls ?? 25, selectedMembers.length));
   const alphaVantageCallLimit = Math.max(0, Math.min(options.maxAlphaVantageCalls ?? 25, selectedMembers.length));
   const eodhdQuoteCallLimit = Math.max(0, Math.min(options.maxEodhdQuoteCalls ?? 100, selectedMembers.length));
-  const fmpCandidateTickers = new Set(randomizedMissingMembers.slice(0, fmpFundamentalCallLimit).map((member) => member.ticker));
+  const fmpCandidateTickers = new Set(randomizedMissingMembers
+    .filter((member) => !isProviderCooledDown(providerAttempts.get(providerAttemptKey(member.ticker, "fmp")), nowMs))
+    .slice(0, fmpFundamentalCallLimit)
+    .map((member) => member.ticker));
   const alphaVantageCandidateTickers = new Set(randomizedMissingMembers.slice(0, alphaVantageCallLimit).map((member) => member.ticker));
 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
@@ -618,14 +644,21 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
       if (needsFmpFundamentals) {
         fmpFundamentalCalls += 1;
       }
-      const [firstPassFmpMetricsResult, firstPassConsensusResult] = needsFmpFundamentals
-        ? await Promise.allSettled([
-            getFmpKeyMetricsTtm(member.providerTicker),
-            getConsensusTargetForSymbol(member.providerTicker),
-          ])
-        : [null, null] as const;
-      const firstPassFmpMetrics = firstPassFmpMetricsResult && firstPassFmpMetricsResult.status === "fulfilled" ? firstPassFmpMetricsResult.value : null;
-      const firstPassConsensus = firstPassConsensusResult && firstPassConsensusResult.status === "fulfilled" ? firstPassConsensusResult.value : null;
+      const firstPassFmp = needsFmpFundamentals
+        ? await getFmpDiscoveryFundamentals(member.providerTicker)
+        : null;
+      if (needsFmpFundamentals) {
+        const hasFmpData = Boolean(firstPassFmp?.metrics || firstPassFmp?.consensus);
+        await recordDiscoveryProviderAttempt({ ticker: member.ticker, provider: "fmp", ok: hasFmpData, now, error: firstPassFmp?.error });
+        const previous = providerAttempts.get(providerAttemptKey(member.ticker, "fmp"));
+        providerAttemptUpdates.fmp = {
+          lastSuccessAt: hasFmpData ? now : previous?.lastSuccessAt || null,
+          lastFailureAt: hasFmpData ? null : now,
+          failureCount: hasFmpData ? 0 : Number(previous?.failureCount || 0) + 1,
+        };
+      }
+      const firstPassFmpMetrics = firstPassFmp?.metrics ?? null;
+      const firstPassConsensus = firstPassFmp?.consensus ?? null;
       const firstPassFmpTarget = firstPassConsensus?.meanTarget ?? null;
       const needsAlphaVantage = alphaVantageCalls < alphaVantageCallLimit
         && alphaVantageCandidateTickers.has(member.ticker)
@@ -710,7 +743,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         score_breakdown_json: {
           ...scoring.breakdown,
           providerAttempts: {
-            ...Object.fromEntries([["alpha_vantage", "fundamentals"], ["eodhd_quote", "quote"]].flatMap(([provider, purpose]) => {
+          ...Object.fromEntries([["fmp", "fundamentals"], ["alpha_vantage", "fundamentals"], ["eodhd_quote", "quote"]].flatMap(([provider, purpose]) => {
               const attempt = providerAttempts.get(providerAttemptKey(member.ticker, provider, purpose));
               return attempt ? [[provider, attempt]] : [];
             })),
