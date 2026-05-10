@@ -572,7 +572,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   const storedFallbacks = await getStoredDiscoveryFallbacks(universe.map((member) => member.ticker));
   const providerAttempts = await getDiscoveryProviderAttempts(universe.map((member) => member.ticker));
   const requestedMax = options.maxSymbols || universe.length;
-  const cappedMax = Math.max(10, Math.min(requestedMax, universe.length));
+  const cappedMax = Math.max(1, Math.min(requestedMax, universe.length));
   const missingDataMembers = universe.filter((member) => {
     const fallback = storedFallbacks.get(member.ticker);
     return !fallback?.hasSnapshot || fallback.consensusTarget === null || fallback.consensusTarget === undefined || fallback.peTtm === null || fallback.peTtm === undefined;
