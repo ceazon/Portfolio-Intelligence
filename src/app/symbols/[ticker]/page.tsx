@@ -256,7 +256,7 @@ export default async function SymbolIntelligencePage({ params }: SymbolPageProps
     return (
       <AppShell viewer={user}>
         <SectionCard title="Symbol intelligence" description="Supabase is not configured in this environment.">
-          <Link href="/symbols" className="text-sm text-sky-300 hover:text-sky-200">Back to symbols</Link>
+          <Link href="/discovery" className="text-sm text-sky-300 hover:text-sky-200">Back to Discovery</Link>
         </SectionCard>
       </AppShell>
     );
@@ -274,7 +274,7 @@ export default async function SymbolIntelligencePage({ params }: SymbolPageProps
     return (
       <AppShell viewer={user}>
         <SectionCard title="Symbol not found" description={symbolError?.message || `No imported symbol matched ${ticker}.`}>
-          <Link href="/symbols" className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500">Back to symbols</Link>
+          <Link href="/discovery" className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500">Back to Discovery</Link>
         </SectionCard>
       </AppShell>
     );
@@ -320,7 +320,7 @@ export default async function SymbolIntelligencePage({ params }: SymbolPageProps
     <AppShell viewer={user}>
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link href="/symbols" className="text-sm text-zinc-400 hover:text-zinc-100">← Back to symbols</Link>
+          <Link href="/discovery" className="text-sm text-zinc-400 hover:text-zinc-100">← Back to Discovery</Link>
           <div className="flex flex-wrap gap-2 text-xs text-zinc-400">
             <Link href="/performance" className="rounded-full border border-zinc-700 px-3 py-1 hover:border-sky-500/60 hover:text-sky-300">Estimate tracking</Link>
             <Link href="/research" className="rounded-full border border-zinc-700 px-3 py-1 hover:border-sky-500/60 hover:text-sky-300">Research archive</Link>

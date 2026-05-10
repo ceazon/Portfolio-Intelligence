@@ -418,7 +418,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                 const symbol = firstRelation(item.symbols);
                 return (
                   <div key={item.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                    <Link href={symbol?.ticker ? `/symbols/${encodeURIComponent(symbol.ticker)}` : "/symbols"} className="font-semibold text-zinc-50 hover:text-sky-300">
+                    <Link href={symbol?.ticker ? `/symbols/${encodeURIComponent(symbol.ticker)}` : "/discovery"} className="font-semibold text-zinc-50 hover:text-sky-300">
                       {symbol?.ticker || "Unknown ticker"}
                     </Link>
                     <p className="mt-1 truncate text-sm text-zinc-400">{symbol?.name || "Unnamed symbol"}</p>

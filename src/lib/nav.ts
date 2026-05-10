@@ -4,7 +4,6 @@ export const primaryNav = [
   { href: "/recommendations", label: "Rebalance Plan" },
   { href: "/discovery", label: "Discovery" },
   { href: "/performance", label: "Estimate Tracking" },
-  { href: "/symbols", label: "Symbols" },
 ];
 
 export const legacyNav = [

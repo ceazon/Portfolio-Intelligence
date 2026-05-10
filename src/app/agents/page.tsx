@@ -192,8 +192,8 @@ export default async function AgentsPage() {
                         <p className="mt-1 text-sm text-zinc-400">Each tile shows what that agent is saying, why it matters, and how much it is affecting the final stock case.</p>
                       </div>
                       {symbol?.id ? (
-                        <Link href={`/symbols`} className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500">
-                          View symbols
+                        <Link href={`/symbols/${encodeURIComponent(ticker)}`} className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500">
+                          Open workspace
                         </Link>
                       ) : null}
                     </div>
