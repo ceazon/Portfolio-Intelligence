@@ -52,6 +52,14 @@ type TargetSnapshotRow = {
   captured_at: string;
 };
 
+type FundamentalsRow = {
+  symbol_id: string;
+  pe_ttm: number | null;
+  revenue_growth_ttm: number | null;
+  market_cap_m: number | null;
+  fetched_at: string;
+};
+
 type DiscoveryPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -76,10 +84,11 @@ function firstRelation<T>(value: T | T[] | null): T | null {
 
 function formatMarketCap(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "—";
-  if (value >= 1_000_000_000_000) return `$${(value / 1_000_000_000_000).toFixed(2)}T`;
-  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  return `$${value.toFixed(0)}`;
+  const absoluteValue = value > 0 && value < 10_000_000 ? value * 1_000_000 : value;
+  if (absoluteValue >= 1_000_000_000_000) return `$${(absoluteValue / 1_000_000_000_000).toFixed(2)}T`;
+  if (absoluteValue >= 1_000_000_000) return `$${(absoluteValue / 1_000_000_000).toFixed(1)}B`;
+  if (absoluteValue >= 1_000_000) return `$${(absoluteValue / 1_000_000).toFixed(1)}M`;
+  return `$${absoluteValue.toFixed(0)}`;
 }
 
 function getTone(value: number | null) {
@@ -120,14 +129,22 @@ async function getExistingSymbolDiscoveryRows(supabase: NonNullable<Awaited<Retu
   const targetsResult = symbolIds.length
     ? await supabase.from("analyst_target_snapshots").select("symbol_id, mean_target, captured_at").in("symbol_id", symbolIds).order("captured_at", { ascending: false })
     : { data: [], error: null };
+  const fundamentalsResult = symbolIds.length
+    ? await supabase.from("symbol_fundamentals").select("symbol_id, pe_ttm, revenue_growth_ttm, market_cap_m, fetched_at").in("symbol_id", symbolIds).order("fetched_at", { ascending: false })
+    : { data: [], error: null };
   const latestTargetBySymbol = new Map<string, TargetSnapshotRow>();
   ((targetsResult.data || []) as TargetSnapshotRow[]).forEach((target) => {
     if (!latestTargetBySymbol.has(target.symbol_id)) latestTargetBySymbol.set(target.symbol_id, target);
+  });
+  const latestFundamentalsBySymbol = new Map<string, FundamentalsRow>();
+  ((fundamentalsResult.data || []) as FundamentalsRow[]).forEach((fundamentals) => {
+    if (!latestFundamentalsBySymbol.has(fundamentals.symbol_id)) latestFundamentalsBySymbol.set(fundamentals.symbol_id, fundamentals);
   });
 
   return symbols.map((symbol) => {
     const quote = firstRelation(symbol.symbol_price_snapshots);
     const target = latestTargetBySymbol.get(symbol.id);
+    const fundamentals = latestFundamentalsBySymbol.get(symbol.id);
     const price = quote?.price ?? null;
     const consensusTarget = target?.mean_target ?? null;
     const impliedUpsidePct = typeof price === "number" && price > 0 && typeof consensusTarget === "number" ? ((consensusTarget - price) / price) * 100 : null;
@@ -143,9 +160,9 @@ async function getExistingSymbolDiscoveryRows(supabase: NonNullable<Awaited<Retu
       currency: symbol.currency || "USD",
       consensus_target: consensusTarget,
       implied_upside_pct: impliedUpsidePct,
-      market_cap: symbol.market_cap,
-      pe_ttm: null,
-      revenue_growth_ttm: null,
+      market_cap: fundamentals?.market_cap_m ?? symbol.market_cap,
+      pe_ttm: fundamentals?.pe_ttm ?? null,
+      revenue_growth_ttm: fundamentals?.revenue_growth_ttm ?? null,
       score: scoreFallbackRow(impliedUpsidePct),
       score_breakdown_json: null,
       flags_json: target ? [] : ["Refresh Discovery for full screener scoring"],
