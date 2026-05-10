@@ -1,3 +1,4 @@
+import { getAlphaVantageOverview } from "@/lib/alpha-vantage";
 import { getConsensusTargetForSymbol } from "@/lib/consensus-targets";
 import { FmpError, getFmpKeyMetricsTtm, getFmpProfile, getFmpQuote } from "@/lib/fmp";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
@@ -16,6 +17,7 @@ type DiscoveryUniverseMember = {
 
 type DiscoveryRefreshOptions = {
   maxSymbols?: number;
+  maxAlphaVantageCalls?: number;
 };
 
 type DiscoveryStoredFallback = {
@@ -408,6 +410,8 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
 
   let refreshedCount = 0;
   let failedCount = 0;
+  let alphaVantageCalls = 0;
+  const alphaVantageCallLimit = Math.max(0, Math.min(options.maxAlphaVantageCalls ?? 25, selectedMembers.length));
 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
     try {
@@ -439,13 +443,22 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
       const metrics = metricsResult.status === "fulfilled" ? metricsResult.value : null;
       const consensus = consensusResult.status === "fulfilled" ? consensusResult.value : null;
       const storedFallback = storedFallbacks.get(member.ticker);
+      const needsAlphaVantage = alphaVantageCalls < alphaVantageCallLimit
+        && (consensus?.meanTarget === null || consensus?.meanTarget === undefined || metrics?.peRatioTTM === null || metrics?.peRatioTTM === undefined || !profile);
+      if (needsAlphaVantage) {
+        alphaVantageCalls += 1;
+      }
+      const alphaOverview = needsAlphaVantage
+        ? await getAlphaVantageOverview(member.providerTicker).catch(() => null)
+        : null;
+
       const price = quote?.price ?? profile?.price ?? storedFallback?.price ?? null;
-      const target = consensus?.meanTarget ?? storedFallback?.consensusTarget ?? null;
+      const target = consensus?.meanTarget ?? alphaOverview?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
       const impliedUpsidePct = typeof price === "number" && price > 0 && typeof target === "number"
         ? ((target - price) / price) * 100
         : null;
-      const peTtm = metrics?.peRatioTTM ?? storedFallback?.peTtm ?? null;
-      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? storedFallback?.revenueGrowthTtm ?? null;
+      const peTtm = metrics?.peRatioTTM ?? alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? storedFallback?.peTtm ?? null;
+      const revenueGrowthTtm = metrics?.revenueGrowthTTM ?? alphaOverview?.revenueGrowthTtm ?? storedFallback?.revenueGrowthTtm ?? null;
       const scoring = scoreDiscoveryCandidate({
         impliedUpsidePct,
         peTtm,
@@ -460,17 +473,17 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         universe: DISCOVERY_UNIVERSE,
         ticker: member.ticker,
         provider_ticker: member.providerTicker,
-        name: profile?.companyName || member.name,
-        sector: profile?.sector || member.sector,
-        industry: profile?.industry || member.industry,
+        name: profile?.companyName || alphaOverview?.name || member.name,
+        sector: profile?.sector || alphaOverview?.sector || member.sector,
+        industry: profile?.industry || alphaOverview?.industry || member.industry,
         price,
-        currency: profile?.currency || quote?.currency || storedFallback?.currency || null,
+        currency: profile?.currency || alphaOverview?.currency || quote?.currency || storedFallback?.currency || null,
         consensus_target: target,
-        median_target: consensus?.medianTarget ?? storedFallback?.medianTarget ?? null,
+        median_target: consensus?.medianTarget ?? alphaOverview?.analystTargetPrice ?? storedFallback?.medianTarget ?? null,
         high_target: consensus?.highTarget ?? storedFallback?.highTarget ?? null,
         low_target: consensus?.lowTarget ?? storedFallback?.lowTarget ?? null,
         implied_upside_pct: impliedUpsidePct === null ? null : Number(impliedUpsidePct.toFixed(3)),
-        market_cap: profile?.mktCap ?? storedFallback?.marketCap ?? null,
+        market_cap: profile?.mktCap ?? alphaOverview?.marketCap ?? storedFallback?.marketCap ?? null,
         pe_ttm: peTtm,
         revenue_growth_ttm: revenueGrowthTtm,
         score: scoring.score,
