@@ -18,6 +18,7 @@ type DiscoveryUniverseMember = {
 
 type DiscoveryRefreshOptions = {
   maxSymbols?: number;
+  maxFmpFundamentalCalls?: number;
   maxAlphaVantageCalls?: number;
   maxEodhdQuoteCalls?: number;
 };
@@ -554,10 +555,13 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
 
   let refreshedCount = 0;
   let failedCount = 0;
+  let fmpFundamentalCalls = 0;
   let alphaVantageCalls = 0;
   let eodhdQuoteCalls = 0;
+  const fmpFundamentalCallLimit = Math.max(0, Math.min(options.maxFmpFundamentalCalls ?? 250, selectedMembers.length));
   const alphaVantageCallLimit = Math.max(0, Math.min(options.maxAlphaVantageCalls ?? 25, selectedMembers.length));
   const eodhdQuoteCallLimit = Math.max(0, Math.min(options.maxEodhdQuoteCalls ?? 100, selectedMembers.length));
+  const fmpCandidateTickers = new Set(randomizedMissingMembers.slice(0, fmpFundamentalCallLimit).map((member) => member.ticker));
   const alphaVantageCandidateTickers = new Set(randomizedMissingMembers.slice(0, alphaVantageCallLimit).map((member) => member.ticker));
 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
@@ -606,11 +610,27 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
               open: eodhdQuote.open,
               previousClose: eodhdQuote.previousClose,
               currency: eodhdQuote.currency,
-            }
+          }
         : null;
+      const needsFmpFundamentals = fmpFundamentalCalls < fmpFundamentalCallLimit
+        && fmpCandidateTickers.has(member.ticker)
+        && (storedFallback?.consensusTarget === null || storedFallback?.consensusTarget === undefined || storedFallback?.peTtm === null || storedFallback?.peTtm === undefined);
+      if (needsFmpFundamentals) {
+        fmpFundamentalCalls += 1;
+      }
+      const [firstPassFmpMetricsResult, firstPassConsensusResult] = needsFmpFundamentals
+        ? await Promise.allSettled([
+            getFmpKeyMetricsTtm(member.providerTicker),
+            getConsensusTargetForSymbol(member.providerTicker),
+          ])
+        : [null, null] as const;
+      const firstPassFmpMetrics = firstPassFmpMetricsResult && firstPassFmpMetricsResult.status === "fulfilled" ? firstPassFmpMetricsResult.value : null;
+      const firstPassConsensus = firstPassConsensusResult && firstPassConsensusResult.status === "fulfilled" ? firstPassConsensusResult.value : null;
+      const firstPassFmpTarget = firstPassConsensus?.meanTarget ?? null;
       const needsAlphaVantage = alphaVantageCalls < alphaVantageCallLimit
         && alphaVantageCandidateTickers.has(member.ticker)
         && !isProviderCooledDown(providerAttempts.get(providerAttemptKey(member.ticker, "alpha_vantage")), nowMs)
+        && (firstPassFmpTarget === null || firstPassFmpTarget === undefined || (firstPassFmpMetrics?.peRatioTTM === null || firstPassFmpMetrics?.peRatioTTM === undefined))
         && (storedFallback?.consensusTarget === null || storedFallback?.consensusTarget === undefined || storedFallback?.peTtm === null || storedFallback?.peTtm === undefined);
       if (needsAlphaVantage) {
         alphaVantageCalls += 1;
@@ -631,8 +651,8 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         : null;
 
       const firstPassPrice = quote?.price ?? storedFallback?.price ?? null;
-      const firstPassTarget = alphaOverview?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
-      const firstPassPeTtm = alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? storedFallback?.peTtm ?? null;
+      const firstPassTarget = firstPassFmpTarget ?? alphaOverview?.analystTargetPrice ?? storedFallback?.consensusTarget ?? null;
+      const firstPassPeTtm = firstPassFmpMetrics?.peRatioTTM ?? alphaOverview?.peRatio ?? alphaOverview?.forwardPe ?? storedFallback?.peTtm ?? null;
       const firstPassUpsidePct = typeof firstPassPrice === "number" && firstPassPrice > 0 && typeof firstPassTarget === "number"
         ? ((firstPassTarget - firstPassPrice) / firstPassPrice) * 100
         : null;
@@ -642,8 +662,8 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
         ? await Promise.allSettled([
             getFmpProfile(member.providerTicker),
             quote ? Promise.resolve(null) : getFmpQuote(member.providerTicker),
-            getFmpKeyMetricsTtm(member.providerTicker),
-            getConsensusTargetForSymbol(member.providerTicker),
+            firstPassFmpMetrics ? Promise.resolve(firstPassFmpMetrics) : getFmpKeyMetricsTtm(member.providerTicker),
+            firstPassConsensus ? Promise.resolve(firstPassConsensus) : getConsensusTargetForSymbol(member.providerTicker),
           ])
         : [null, null, null, null] as const;
 
