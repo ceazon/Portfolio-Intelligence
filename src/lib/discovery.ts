@@ -849,11 +849,24 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
     }
   }
 
+  const { data: coverageRows } = await supabase
+    .from("discovery_snapshots")
+    .select("consensus_target, pe_ttm, implied_upside_pct")
+    .eq("universe", DISCOVERY_UNIVERSE);
+  const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+  const coverage = {
+    snapshotCount: coverageRows?.length ?? null,
+    withTargetCount: coverageRows?.filter((row) => isNumber(row.consensus_target)).length ?? null,
+    withPeCount: coverageRows?.filter((row) => isNumber(row.pe_ttm)).length ?? null,
+    qualifiedCount: coverageRows?.filter((row) => isNumber(row.implied_upside_pct) && row.implied_upside_pct > 0 && isNumber(row.pe_ttm) && row.pe_ttm >= 10 && row.pe_ttm <= 50).length ?? null,
+  };
+
   return {
     universeCount: universe.length,
     consideredCount: selectedMembers.length,
     refreshedCount,
     failedCount,
+    coverage,
   };
 }
 

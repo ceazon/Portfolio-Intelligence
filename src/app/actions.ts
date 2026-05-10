@@ -52,10 +52,15 @@ export async function refreshDiscovery(_prevState: FormState, formData: FormData
     });
 
     revalidatePath("/discovery");
+    const coverage = result.coverage;
+    const coverageSummary = coverage && coverage.qualifiedCount !== null && coverage.withTargetCount !== null && coverage.withPeCount !== null
+      ? ` Qualified: ${coverage.qualifiedCount}; targets: ${coverage.withTargetCount}; P/E: ${coverage.withPeCount}.`
+      : "";
+
     return {
       ok: true,
       error: "",
-      notice: `Discovery refreshed ${result.refreshedCount} of ${result.consideredCount} S&P 500 candidates. Universe size: ${result.universeCount}.`,
+      notice: `Discovery refreshed ${result.refreshedCount} of ${result.consideredCount} S&P 500 candidates. Universe size: ${result.universeCount}.${coverageSummary}`,
     };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to refresh Discovery.") };
