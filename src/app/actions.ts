@@ -41,7 +41,7 @@ export async function refreshDiscovery(_prevState: FormState, formData: FormData
       return { ok: false, error: auth.error || "You must be logged in." };
     }
 
-    const requestedLimit = Number(formData.get("limit") || 100);
+    const requestedLimit = Number(formData.get("limit") || 500);
     const limit = Number.isFinite(requestedLimit) ? requestedLimit : 100;
     const result = await refreshDiscoveryScreener({ maxSymbols: limit });
 

@@ -115,6 +115,12 @@ function getTone(value: number | null) {
   return "text-zinc-300";
 }
 
+function formatGrowthPercent(value: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  const percentValue = Math.abs(value) <= 1 ? value * 100 : value;
+  return formatPercent(percentValue);
+}
+
 function sortRows(rows: DiscoveryRow[], sort: SortField) {
   return [...rows].sort((a, b) => {
     if (sort === "upside") return (b.implied_upside_pct ?? Number.NEGATIVE_INFINITY) - (a.implied_upside_pct ?? Number.NEGATIVE_INFINITY);
@@ -365,7 +371,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                       <td className="px-3 py-3 whitespace-nowrap">{formatMoney(row.consensus_target, row.currency || "USD")}</td>
                       <td className={`px-3 py-3 whitespace-nowrap font-medium ${getTone(row.implied_upside_pct)}`}>{formatPercent(row.implied_upside_pct)}</td>
                       <td className="px-3 py-3 whitespace-nowrap">{formatRatio(row.pe_ttm)}</td>
-                      <td className="px-3 py-3 whitespace-nowrap">{typeof row.revenue_growth_ttm === "number" ? formatPercent(row.revenue_growth_ttm * 100) : "—"}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">{formatGrowthPercent(row.revenue_growth_ttm)}</td>
                       <td className="px-3 py-3 whitespace-nowrap">{formatMarketCap(row.market_cap)}</td>
                       <td className="px-3 py-3"><DiscoveryWatchlistButton ticker={row.ticker} alreadyWatchlisted={watchlistedTickers.has(row.ticker)} /></td>
                     </tr>

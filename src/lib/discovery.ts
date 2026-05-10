@@ -21,6 +21,7 @@ type DiscoveryRefreshOptions = {
 };
 
 type DiscoveryStoredFallback = {
+  hasSnapshot: boolean;
   price: number | null;
   currency: string | null;
   consensusTarget: number | null;
@@ -281,6 +282,7 @@ async function getStoredDiscoveryFallbacks(tickers: string[]) {
     if (existing) return existing;
 
     const fallback: DiscoveryStoredFallback = {
+      hasSnapshot: false,
       price: null,
       currency: null,
       consensusTarget: null,
@@ -304,6 +306,7 @@ async function getStoredDiscoveryFallbacks(tickers: string[]) {
   (existingSnapshots || []).forEach((row) => {
     const ticker = String(row.ticker || "").toUpperCase();
     const fallback = initializeFallback(ticker);
+    fallback.hasSnapshot = true;
     fallback.price = typeof row.price === "number" ? row.price : fallback.price;
     fallback.currency = row.currency || fallback.currency;
     fallback.consensusTarget = typeof row.consensus_target === "number" ? row.consensus_target : fallback.consensusTarget;
@@ -382,10 +385,21 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   }
 
   const universe = await getSp500Universe();
-  const cappedMax = Math.max(10, Math.min(options.maxSymbols || 100, universe.length));
-  const selectedMembers = universe.slice(0, cappedMax);
   const now = new Date().toISOString();
-  const storedFallbacks = await getStoredDiscoveryFallbacks(selectedMembers.map((member) => member.ticker));
+  const storedFallbacks = await getStoredDiscoveryFallbacks(universe.map((member) => member.ticker));
+  const requestedMax = options.maxSymbols || universe.length;
+  const cappedMax = Math.max(10, Math.min(requestedMax, universe.length));
+  const missingDataMembers = universe.filter((member) => {
+    const fallback = storedFallbacks.get(member.ticker);
+    return !fallback?.hasSnapshot || fallback.consensusTarget === null || fallback.consensusTarget === undefined || fallback.peTtm === null || fallback.peTtm === undefined;
+  });
+  const coveredMembers = universe.filter((member) => !missingDataMembers.some((missing) => missing.ticker === member.ticker));
+  const rotationSeed = Math.floor(Date.now() / (1000 * 60 * 60));
+  const rotationOffset = missingDataMembers.length ? rotationSeed % missingDataMembers.length : 0;
+  const rotatedMissingMembers = [...missingDataMembers.slice(rotationOffset), ...missingDataMembers.slice(0, rotationOffset)];
+  const selectedMemberMap = new Map<string, DiscoveryUniverseMember>();
+  [...rotatedMissingMembers, ...coveredMembers].slice(0, cappedMax).forEach((member) => selectedMemberMap.set(member.ticker, member));
+  const selectedMembers = [...selectedMemberMap.values()];
 
   const { error: universeError } = await supabase.from("discovery_universe_symbols").upsert(
     universe.map((member) => ({
@@ -420,6 +434,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
   let failedCount = 0;
   let alphaVantageCalls = 0;
   const alphaVantageCallLimit = Math.max(0, Math.min(options.maxAlphaVantageCalls ?? 25, selectedMembers.length));
+  const alphaVantageCandidateTickers = new Set(rotatedMissingMembers.slice(0, alphaVantageCallLimit).map((member) => member.ticker));
 
   const rows = await mapWithConcurrency(selectedMembers, 5, async (member) => {
     try {
@@ -438,6 +453,7 @@ export async function refreshDiscoveryScreener(options: DiscoveryRefreshOptions 
           }
         : null;
       const needsAlphaVantage = alphaVantageCalls < alphaVantageCallLimit
+        && alphaVantageCandidateTickers.has(member.ticker)
         && (storedFallback?.consensusTarget === null || storedFallback?.consensusTarget === undefined || storedFallback?.peTtm === null || storedFallback?.peTtm === undefined);
       if (needsAlphaVantage) {
         alphaVantageCalls += 1;
