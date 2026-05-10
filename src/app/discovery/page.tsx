@@ -35,6 +35,23 @@ type SymbolOwnershipRow = {
   watchlist_items: { id: string; watchlists: { owner_id: string } | { owner_id: string }[] | null }[] | null;
 };
 
+type DiscoveryIdeaRow = {
+  id: string;
+  created_at: string;
+  status: string;
+  symbols: {
+    ticker: string;
+    name: string | null;
+    sector: string | null;
+    industry: string | null;
+  } | {
+    ticker: string;
+    name: string | null;
+    sector: string | null;
+    industry: string | null;
+  }[] | null;
+};
+
 type ExistingSymbolRow = {
   id: string;
   ticker: string;
@@ -219,6 +236,15 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     if (hasUserWatchlist) watchlistedTickers.add(symbol.ticker);
   });
 
+  const discoveryIdeasResult = await supabase
+    .from("watchlist_items")
+    .select("id, created_at, status, watchlists!inner(name, owner_id), symbols(ticker, name, sector, industry)")
+    .eq("watchlists.owner_id", user.id)
+    .eq("watchlists.name", "Discovery Ideas")
+    .order("created_at", { ascending: false })
+    .limit(12);
+  const discoveryIdeas = (discoveryIdeasResult.data || []) as DiscoveryIdeaRow[];
+
   const withConsensus = rows.filter((row) => typeof row.consensus_target === "number").length;
   const averageUpside = rows.length
     ? rows.map((row) => row.implied_upside_pct).filter((value): value is number => typeof value === "number").reduce((sum, value, _index, values) => sum + value / values.length, 0)
@@ -289,7 +315,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2 text-xs">
                     {ownedTickers.has(row.ticker) ? <span className="rounded-full border border-emerald-800/70 bg-emerald-950/25 px-2 py-1 text-emerald-300">Owned</span> : null}
-                    {watchlistedTickers.has(row.ticker) ? <span className="rounded-full border border-sky-800/70 bg-sky-950/25 px-2 py-1 text-sky-300">Watchlisted</span> : null}
+                    {watchlistedTickers.has(row.ticker) ? <span className="rounded-full border border-sky-800/70 bg-sky-950/25 px-2 py-1 text-sky-300">Saved idea</span> : null}
                     {(row.flags_json || []).filter((flag) => !(typeof row.consensus_target === "number" && flag.toLowerCase().includes("no consensus"))).slice(0, 2).map((flag) => <span key={flag} className="rounded-full border border-amber-800/60 bg-amber-950/20 px-2 py-1 text-amber-200">{flag}</span>)}
                   </div>
                   <div className="mt-4"><DiscoveryWatchlistButton ticker={row.ticker} alreadyWatchlisted={watchlistedTickers.has(row.ticker)} /></div>
@@ -331,7 +357,7 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                         <p className="max-w-[220px] truncate text-xs text-zinc-500">{row.name || "—"}</p>
                         <div className="mt-1 flex gap-1">
                           {ownedTickers.has(row.ticker) ? <span className="rounded bg-emerald-950/40 px-1.5 py-0.5 text-[11px] text-emerald-300">Owned</span> : null}
-                          {watchlistedTickers.has(row.ticker) ? <span className="rounded bg-sky-950/40 px-1.5 py-0.5 text-[11px] text-sky-300">Watchlist</span> : null}
+                          {watchlistedTickers.has(row.ticker) ? <span className="rounded bg-sky-950/40 px-1.5 py-0.5 text-[11px] text-sky-300">Saved idea</span> : null}
                         </div>
                       </td>
                       <td className="px-3 py-3 text-zinc-400">{row.sector || "—"}</td>
@@ -349,6 +375,29 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
             </div>
           ) : (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">No qualified Discovery candidates yet. Run the refresh to find S&P 500 stocks with positive upside and P/E between 10–50.</div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Saved Discovery Ideas" description="Stocks saved from Discovery for research follow-up before they become portfolio candidates.">
+          {discoveryIdeas.length ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {discoveryIdeas.map((item) => {
+                const symbol = firstRelation(item.symbols);
+                return (
+                  <div key={item.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <Link href={symbol?.ticker ? `/symbols/${encodeURIComponent(symbol.ticker)}` : "/symbols"} className="font-semibold text-zinc-50 hover:text-sky-300">
+                      {symbol?.ticker || "Unknown ticker"}
+                    </Link>
+                    <p className="mt-1 truncate text-sm text-zinc-400">{symbol?.name || "Unnamed symbol"}</p>
+                    <p className="mt-2 text-xs uppercase tracking-wide text-zinc-500">{symbol?.sector || "Sector unavailable"} · {item.status}</p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">
+              No saved ideas yet. Use “Save idea” on a Discovery candidate to keep it here for follow-up research.
+            </div>
           )}
         </SectionCard>
       </div>

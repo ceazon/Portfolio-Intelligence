@@ -121,7 +121,7 @@ export async function addDiscoveryCandidateToWatchlist(_prevState: FormState, fo
     revalidatePath("/discovery");
     revalidatePath("/watchlist");
     revalidatePath("/symbols");
-    return { ok: true, error: "", notice: `${ticker} added to Discovery Ideas.` };
+    return { ok: true, error: "", notice: `${ticker} saved to Discovery Ideas.` };
   } catch (error) {
     return { ok: false, error: getErrorMessage(error, "Failed to add candidate to watchlist.") };
   }

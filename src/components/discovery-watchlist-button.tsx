@@ -19,7 +19,7 @@ export function DiscoveryWatchlistButton({ ticker, alreadyWatchlisted }: { ticke
         disabled={pending || alreadyWatchlisted}
         className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {alreadyWatchlisted ? "Watchlisted" : pending ? "Adding..." : "Add to watchlist"}
+        {alreadyWatchlisted ? "Saved idea" : pending ? "Saving..." : "Save idea"}
       </button>
       {state?.error ? <span className="text-xs text-amber-300">{state.error}</span> : null}
       {state?.notice ? <span className="text-xs text-emerald-300">{state.notice}</span> : null}
