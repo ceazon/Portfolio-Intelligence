@@ -317,7 +317,6 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
   const discoveryIdeas = (discoveryIdeasResult.data || []) as DiscoveryIdeaRow[];
 
   const lastRefresh = rows.map((row) => row.captured_at).sort().at(-1) || null;
-  const topTen = sortRows(rows, "upside", "desc").filter((row) => typeof row.consensus_target === "number" && typeof row.price === "number" && typeof row.implied_upside_pct === "number").slice(0, 10);
   const bestSector = rows.reduce<Map<string, number>>((map, row) => {
     if (row.sector && typeof row.implied_upside_pct === "number") map.set(row.sector, (map.get(row.sector) || 0) + 1);
     return map;
@@ -359,107 +358,82 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
           </div>
         </SectionCard>
 
-        <SectionCard title="News-driven ideas" description="Stocks repeatedly appearing in recent market coverage, grouped by likely catalyst and tone.">
+        <SectionCard title="News-driven stocks" description="A compact list of stocks surfaced by recent market coverage. Click any row to expand the news context and actions.">
           {newsIdeas.length ? (
-            <div className="grid gap-3 lg:grid-cols-2">
-              {newsIdeas.map((idea) => {
-                const symbol = newsSymbolByTicker.get(idea.ticker);
-                const quote = firstRelation(symbol?.symbol_price_snapshots || null);
-                const target = symbol ? latestTargetByNewsSymbol.get(symbol.id) : null;
-                const consensusUpside = typeof quote?.price === "number" && quote.price > 0 && typeof target?.mean_target === "number"
-                  ? ((target.mean_target - quote.price) / quote.price) * 100
-                  : null;
-                const symbolHref = `/symbols/${encodeURIComponent(idea.ticker)}`;
-                return (
-                  <div key={idea.ticker} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-zinc-500">{idea.catalyst}</p>
-                        {symbol ? (
-                          <Link href={symbolHref} className="mt-1 inline-flex text-lg font-semibold text-zinc-50 hover:text-sky-300">{idea.ticker} · {idea.name}</Link>
-                        ) : (
-                          <p className="mt-1 text-lg font-semibold text-zinc-50">{idea.ticker} · {idea.name}</p>
-                        )}
-                        <p className="mt-1 text-sm text-zinc-400">{idea.sector || "Sector unavailable"}</p>
+            <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/70">
+              <div className="hidden grid-cols-[1.4fr_1fr_repeat(4,minmax(90px,0.7fr))_80px] gap-3 border-b border-zinc-800 px-4 py-3 text-xs uppercase tracking-wide text-zinc-500 lg:grid">
+                <span>Stock</span>
+                <span>Catalyst</span>
+                <span className="text-right">Price</span>
+                <span className="text-right">Target</span>
+                <span className="text-right">Upside</span>
+                <span className="text-right">Daily</span>
+                <span className="text-right">Sources</span>
+              </div>
+              <div className="divide-y divide-zinc-900">
+                {newsIdeas.map((idea) => {
+                  const symbol = newsSymbolByTicker.get(idea.ticker);
+                  const quote = firstRelation(symbol?.symbol_price_snapshots || null);
+                  const target = symbol ? latestTargetByNewsSymbol.get(symbol.id) : null;
+                  const consensusUpside = typeof quote?.price === "number" && quote.price > 0 && typeof target?.mean_target === "number"
+                    ? ((target.mean_target - quote.price) / quote.price) * 100
+                    : null;
+                  const symbolHref = `/symbols/${encodeURIComponent(idea.ticker)}`;
+                  return (
+                    <details key={idea.ticker} className="group">
+                      <summary className="grid cursor-pointer gap-3 px-4 py-4 text-sm text-zinc-300 transition hover:bg-zinc-900/60 lg:grid-cols-[1.4fr_1fr_repeat(4,minmax(90px,0.7fr))_80px] lg:items-center [&::-webkit-details-marker]:hidden">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-zinc-50">{idea.ticker}</span>
+                            <span className={`rounded-full border px-2 py-0.5 text-[11px] ${getNewsToneClass(idea.tone)}`}>{idea.tone}</span>
+                            {ownedTickers.has(idea.ticker) ? <span className="rounded bg-emerald-950/40 px-1.5 py-0.5 text-[11px] text-emerald-300">Owned</span> : null}
+                            {watchlistedTickers.has(idea.ticker) ? <span className="rounded bg-sky-950/40 px-1.5 py-0.5 text-[11px] text-sky-300">Saved</span> : null}
+                          </div>
+                          <p className="mt-1 truncate text-xs text-zinc-500">{idea.name || "Unnamed stock"} · {idea.sector || "Sector unavailable"}</p>
+                        </div>
+                        <div className="text-zinc-400 lg:truncate">{idea.catalyst}</div>
+                        <div className="flex justify-between gap-2 lg:block lg:text-right"><span className="text-zinc-500 lg:hidden">Price</span><span>{formatMoney(quote?.price ?? null, symbol?.currency || "USD")}</span></div>
+                        <div className="flex justify-between gap-2 lg:block lg:text-right"><span className="text-zinc-500 lg:hidden">Target</span><span>{formatMoney(target?.mean_target ?? null, symbol?.currency || "USD")}</span></div>
+                        <div className={`flex justify-between gap-2 font-medium lg:block lg:text-right ${getTone(consensusUpside)}`}><span className="text-zinc-500 lg:hidden">Upside</span><span>{formatPercent(consensusUpside)}</span></div>
+                        <div className={`flex justify-between gap-2 lg:block lg:text-right ${getTone(quote?.percent_change ?? null)}`}><span className="text-zinc-500 lg:hidden">Daily</span><span>{formatPercent(quote?.percent_change ?? null)}</span></div>
+                        <div className="flex items-center justify-between gap-2 lg:justify-end">
+                          <span className="text-zinc-500 lg:hidden">Sources</span>
+                          <span>{idea.sourceCount}</span>
+                          <span className="text-zinc-500 transition group-open:rotate-45">+</span>
+                        </div>
+                      </summary>
+                      <div className="border-t border-zinc-900 bg-zinc-950/40 px-4 pb-4 pt-3">
+                        <p className="text-sm leading-6 text-zinc-300">{idea.summary}</p>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                          {idea.themes.map((theme) => <span key={theme} className="rounded-full border border-zinc-700 px-2 py-1 text-zinc-300">{theme}</span>)}
+                        </div>
+                        <div className="mt-4 grid gap-2 md:grid-cols-2">
+                          {idea.evidence.slice(0, 3).map((item) => (
+                            <a key={item.url} href={item.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-sm text-zinc-300 transition hover:border-sky-500/50 hover:text-sky-200">
+                              <span className="line-clamp-2">{item.title}</span>
+                              <span className="mt-1 block text-xs text-zinc-500">{item.source}</span>
+                            </a>
+                          ))}
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                          <DiscoveryWatchlistButton ticker={idea.ticker} alreadyWatchlisted={watchlistedTickers.has(idea.ticker)} />
+                          {symbol ? (
+                            <Link href={symbolHref} className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200">Run deeper research</Link>
+                          ) : (
+                            <span className="text-xs text-zinc-500">Save idea to import the symbol for deeper research.</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs text-zinc-500">Consensus upside</p>
-                        <p className={`text-2xl font-bold ${getTone(consensusUpside)}`}>{formatPercent(consensusUpside)}</p>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                      <span className={`rounded-full border px-2 py-1 ${getNewsToneClass(idea.tone)}`}>{idea.tone}</span>
-                      <span className="rounded-full border border-zinc-700 px-2 py-1 text-zinc-300">{idea.sourceCount} source{idea.sourceCount === 1 ? "" : "s"}</span>
-                      {ownedTickers.has(idea.ticker) ? <span className="rounded-full border border-emerald-800/70 bg-emerald-950/25 px-2 py-1 text-emerald-300">Owned</span> : null}
-                      {watchlistedTickers.has(idea.ticker) ? <span className="rounded-full border border-sky-800/70 bg-sky-950/25 px-2 py-1 text-sky-300">Saved idea</span> : null}
-                    </div>
-                    <p className="mt-4 text-sm leading-6 text-zinc-300">{idea.summary}</p>
-                    <div className="mt-4 grid grid-cols-4 gap-2 text-sm">
-                      <div><p className="text-zinc-500">Price</p><p className="font-medium text-zinc-100">{formatMoney(quote?.price ?? null, symbol?.currency || "USD")}</p></div>
-                      <div><p className="text-zinc-500">Target</p><p className="font-medium text-zinc-100">{formatMoney(target?.mean_target ?? null, symbol?.currency || "USD")}</p></div>
-                      <div><p className="text-zinc-500">Upside</p><p className={`font-medium ${getTone(consensusUpside)}`}>{formatPercent(consensusUpside)}</p></div>
-                      <div><p className="text-zinc-500">Daily move</p><p className={`font-medium ${getTone(quote?.percent_change ?? null)}`}>{formatPercent(quote?.percent_change ?? null)}</p></div>
-                    </div>
-                    <div className="mt-4 space-y-2">
-                      {idea.evidence.slice(0, 2).map((item) => (
-                        <a key={item.url} href={item.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-sm text-zinc-300 transition hover:border-sky-500/50 hover:text-sky-200">
-                          <span className="line-clamp-2">{item.title}</span>
-                          <span className="mt-1 block text-xs text-zinc-500">{item.source}</span>
-                        </a>
-                      ))}
-                    </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
-                      <DiscoveryWatchlistButton ticker={idea.ticker} alreadyWatchlisted={watchlistedTickers.has(idea.ticker)} />
-                      {symbol ? (
-                        <Link href={symbolHref} className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200">Run deeper research</Link>
-                      ) : (
-                        <span className="text-xs text-zinc-500">Save idea to import the symbol for deeper research.</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                    </details>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">No news ideas surfaced on this pass. Try refreshing the page or check the classic screener below.</div>
           )}
         </SectionCard>
 
-        <SectionCard title="Top 10 research candidates" description="Ranked by implied upside. Only stocks with positive upside and P/E between 10–50 are included.">
-          {topTen.length ? (
-            <div className="grid gap-3 lg:grid-cols-2">
-              {topTen.map((row, index) => (
-                <div key={row.ticker} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-zinc-500">#{index + 1} research candidate</p>
-                      <Link href={`/symbols/${encodeURIComponent(row.ticker)}`} className="mt-1 inline-flex text-lg font-semibold text-zinc-50 hover:text-sky-300">{row.ticker} · {row.name}</Link>
-                      <p className="mt-1 text-sm text-zinc-400">{row.sector || "Sector unavailable"}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-zinc-500">Upside</p>
-                      <p className={`text-xl font-bold ${getTone(row.implied_upside_pct)}`}>{formatPercent(row.implied_upside_pct)}</p>
-                    </div>
-                  </div>
-                  <div className="mt-4 grid grid-cols-4 gap-2 text-sm">
-                    <div><p className="text-zinc-500">Price</p><p className="font-medium text-zinc-100">{formatMoney(row.price, row.currency || "USD")}</p></div>
-                    <div><p className="text-zinc-500">Target</p><p className="font-medium text-zinc-100">{formatMoney(row.consensus_target, row.currency || "USD")}</p></div>
-                    <div><p className="text-zinc-500">Upside</p><p className={`font-medium ${getTone(row.implied_upside_pct)}`}>{formatPercent(row.implied_upside_pct)}</p></div>
-                    <div><p className="text-zinc-500">P/E</p><p className="font-medium text-zinc-100">{formatRatio(row.pe_ttm)}</p></div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                    {ownedTickers.has(row.ticker) ? <span className="rounded-full border border-emerald-800/70 bg-emerald-950/25 px-2 py-1 text-emerald-300">Owned</span> : null}
-                    {watchlistedTickers.has(row.ticker) ? <span className="rounded-full border border-sky-800/70 bg-sky-950/25 px-2 py-1 text-sky-300">Saved idea</span> : null}
-                    {(row.flags_json || []).filter((flag) => !(typeof row.consensus_target === "number" && flag.toLowerCase().includes("no consensus"))).slice(0, 2).map((flag) => <span key={flag} className="rounded-full border border-amber-800/60 bg-amber-950/20 px-2 py-1 text-amber-200">{flag}</span>)}
-                  </div>
-                  <div className="mt-4"><DiscoveryWatchlistButton ticker={row.ticker} alreadyWatchlisted={watchlistedTickers.has(row.ticker)} /></div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">Refresh Discovery to generate the first top 10 list.</div>
-          )}
-        </SectionCard>
 
         <SectionCard title="Classic S&P 500 screener" description={`Backup valuation screen: positive implied upside and P/E between 10–50. Sorted by ${SORT_LABELS[sortField].toLowerCase()} ${sortDirection === "asc" ? "ascending" : "descending"}.`}>
           <div className="mb-4 space-y-3">
