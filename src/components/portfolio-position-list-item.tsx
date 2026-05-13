@@ -140,6 +140,12 @@ export function PortfolioPositionListItem(props: PositionListItemProps) {
             <div className="min-w-[140px] text-right">
               <div className="mb-2 inline-flex rounded-xl border border-zinc-700 bg-zinc-950/70 px-2 py-1 text-xs text-zinc-300">Display {displayCurrency}</div>
               {typeof converted.currentPriceDisplay === "number" ? <p className="text-lg font-semibold text-zinc-100">{formatMoney(converted.currentPriceDisplay, displayCurrency)}</p> : null}
+              {typeof converted.marketValue === "number" ? (
+                <div className="mt-2">
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Position value</p>
+                  <p className="text-sm font-semibold text-zinc-100">{formatMoney(converted.marketValue, displayCurrency)}</p>
+                </div>
+              ) : null}
               {typeof percentChange === "number" ? (
                 <p className={quotePositive ? "mt-1 text-sm text-emerald-300" : "mt-1 text-sm text-rose-300"}>
                   {quotePositive ? "+" : ""}
