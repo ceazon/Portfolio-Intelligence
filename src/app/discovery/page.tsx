@@ -65,6 +65,7 @@ type ExistingSymbolRow = {
 };
 
 type NewsIdeaSymbolRow = {
+  id: string;
   ticker: string;
   currency: string | null;
   symbol_price_snapshots: { price: number | null; percent_change: number | null; fetched_at: string } | { price: number | null; percent_change: number | null; fetched_at: string }[] | null;
@@ -286,11 +287,25 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
   const newsIdeaSymbolResult = newsIdeas.length
     ? await supabase
         .from("symbols")
-        .select("ticker, currency, symbol_price_snapshots(price, percent_change, fetched_at)")
+        .select("id, ticker, currency, symbol_price_snapshots(price, percent_change, fetched_at)")
         .in("ticker", newsIdeas.map((idea) => idea.ticker))
     : { data: [], error: null };
+  const newsSymbols = (newsIdeaSymbolResult.data || []) as NewsIdeaSymbolRow[];
   const newsSymbolByTicker = new Map<string, NewsIdeaSymbolRow>();
-  ((newsIdeaSymbolResult.data || []) as NewsIdeaSymbolRow[]).forEach((symbol) => newsSymbolByTicker.set(symbol.ticker, symbol));
+  newsSymbols.forEach((symbol) => newsSymbolByTicker.set(symbol.ticker, symbol));
+  const newsSymbolIds = newsSymbols.map((symbol) => symbol.id);
+  const newsTargetsResult = newsSymbolIds.length
+    ? await supabase
+        .from("analyst_target_snapshots")
+        .select("symbol_id, mean_target, captured_at")
+        .in("symbol_id", newsSymbolIds)
+        .not("mean_target", "is", null)
+        .order("captured_at", { ascending: false })
+    : { data: [], error: null };
+  const latestTargetByNewsSymbol = new Map<string, TargetSnapshotRow>();
+  ((newsTargetsResult.data || []) as TargetSnapshotRow[]).forEach((target) => {
+    if (!latestTargetByNewsSymbol.has(target.symbol_id)) latestTargetByNewsSymbol.set(target.symbol_id, target);
+  });
 
   const discoveryIdeasResult = await supabase
     .from("watchlist_items")
@@ -350,6 +365,10 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
               {newsIdeas.map((idea) => {
                 const symbol = newsSymbolByTicker.get(idea.ticker);
                 const quote = firstRelation(symbol?.symbol_price_snapshots || null);
+                const target = symbol ? latestTargetByNewsSymbol.get(symbol.id) : null;
+                const consensusUpside = typeof quote?.price === "number" && quote.price > 0 && typeof target?.mean_target === "number"
+                  ? ((target.mean_target - quote.price) / quote.price) * 100
+                  : null;
                 const symbolHref = `/symbols/${encodeURIComponent(idea.ticker)}`;
                 return (
                   <div key={idea.ticker} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -364,8 +383,8 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                         <p className="mt-1 text-sm text-zinc-400">{idea.sector || "Sector unavailable"}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-zinc-500">Idea score</p>
-                        <p className="text-2xl font-bold text-sky-300">{idea.score}</p>
+                        <p className="text-xs text-zinc-500">Consensus upside</p>
+                        <p className={`text-2xl font-bold ${getTone(consensusUpside)}`}>{formatPercent(consensusUpside)}</p>
                       </div>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2 text-xs">
@@ -375,10 +394,11 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
                       {watchlistedTickers.has(idea.ticker) ? <span className="rounded-full border border-sky-800/70 bg-sky-950/25 px-2 py-1 text-sky-300">Saved idea</span> : null}
                     </div>
                     <p className="mt-4 text-sm leading-6 text-zinc-300">{idea.summary}</p>
-                    <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+                    <div className="mt-4 grid grid-cols-4 gap-2 text-sm">
                       <div><p className="text-zinc-500">Price</p><p className="font-medium text-zinc-100">{formatMoney(quote?.price ?? null, symbol?.currency || "USD")}</p></div>
+                      <div><p className="text-zinc-500">Target</p><p className="font-medium text-zinc-100">{formatMoney(target?.mean_target ?? null, symbol?.currency || "USD")}</p></div>
+                      <div><p className="text-zinc-500">Upside</p><p className={`font-medium ${getTone(consensusUpside)}`}>{formatPercent(consensusUpside)}</p></div>
                       <div><p className="text-zinc-500">Daily move</p><p className={`font-medium ${getTone(quote?.percent_change ?? null)}`}>{formatPercent(quote?.percent_change ?? null)}</p></div>
-                      <div><p className="text-zinc-500">Theme</p><p className="truncate font-medium text-zinc-100">{idea.themes[0] || "Market news"}</p></div>
                     </div>
                     <div className="mt-4 space-y-2">
                       {idea.evidence.slice(0, 2).map((item) => (
