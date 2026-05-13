@@ -21,9 +21,8 @@ function extractTag(block: string, tag: string) {
   return match ? decodeXml(match[1].trim()) : null;
 }
 
-export async function getGoogleNewsRssItems(ticker: string, name?: string): Promise<NewsItem[]> {
-  const query = encodeURIComponent(`${ticker}${name ? ` ${name}` : ""} stock`);
-  const url = `https://news.google.com/rss/search?q=${query}&hl=en-US&gl=US&ceid=US:en`;
+export async function getGoogleNewsSearchItems(query: string, limit = 5): Promise<NewsItem[]> {
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
 
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
@@ -33,8 +32,8 @@ export async function getGoogleNewsRssItems(ticker: string, name?: string): Prom
   const xml = await response.text();
   const items = xml.match(/<item>[\s\S]*?<\/item>/gi) || [];
 
-  return items.slice(0, 5).map((item) => {
-    const title = extractTag(item, "title") || `${ticker} news`;
+  return items.slice(0, limit).map((item) => {
+    const title = extractTag(item, "title") || query;
     const link = extractTag(item, "link") || "";
     const pubDate = extractTag(item, "pubDate");
     const sourceMatch = item.match(/<source[^>]*>([\s\S]*?)<\/source>/i);
@@ -48,4 +47,8 @@ export async function getGoogleNewsRssItems(ticker: string, name?: string): Prom
       source_type: "google-news" as const,
     };
   }).filter((item) => item.url);
+}
+
+export async function getGoogleNewsRssItems(ticker: string, name?: string): Promise<NewsItem[]> {
+  return getGoogleNewsSearchItems(`${ticker}${name ? ` ${name}` : ""} stock`, 5);
 }

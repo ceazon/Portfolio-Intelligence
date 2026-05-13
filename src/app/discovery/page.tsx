@@ -5,6 +5,7 @@ import { DiscoveryWatchlistButton } from "@/components/discovery-watchlist-butto
 import { SectionCard } from "@/components/section-card";
 import { requireUser } from "@/lib/auth";
 import { getSp500Universe } from "@/lib/discovery";
+import { discoverNewsIdeas } from "@/lib/news-idea-discovery";
 import { formatMoney, formatPercent, formatRatio } from "@/lib/performance-metrics";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
@@ -63,6 +64,12 @@ type ExistingSymbolRow = {
   symbol_price_snapshots: { price: number | null; fetched_at: string } | { price: number | null; fetched_at: string }[] | null;
 };
 
+type NewsIdeaSymbolRow = {
+  ticker: string;
+  currency: string | null;
+  symbol_price_snapshots: { price: number | null; percent_change: number | null; fetched_at: string } | { price: number | null; percent_change: number | null; fetched_at: string }[] | null;
+};
+
 type TargetSnapshotRow = {
   symbol_id: string;
   mean_target: number | null;
@@ -115,6 +122,12 @@ function getTone(value: number | null) {
   if (value >= 5) return "text-sky-300";
   if (value < 0) return "text-rose-300";
   return "text-zinc-300";
+}
+
+function getNewsToneClass(tone: "bullish" | "bearish" | "mixed") {
+  if (tone === "bullish") return "border-emerald-800/70 bg-emerald-950/25 text-emerald-300";
+  if (tone === "bearish") return "border-rose-800/70 bg-rose-950/25 text-rose-300";
+  return "border-sky-800/70 bg-sky-950/25 text-sky-300";
 }
 
 function formatGrowthPercent(value: number | null) {
@@ -253,7 +266,8 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
 
   const allRows = error ? await getExistingSymbolDiscoveryRows(supabase) : ((data || []) as DiscoveryRow[]);
   const rows = sortRows(allRows.filter(isQualifiedDiscoveryCandidate), sortField, sortDirection);
-  const tickers = rows.map((row) => row.ticker);
+  const newsIdeas = await discoverNewsIdeas(12);
+  const tickers = [...new Set([...rows.map((row) => row.ticker), ...newsIdeas.map((idea) => idea.ticker)])];
   const ownershipResult = tickers.length
     ? await supabase
         .from("symbols")
@@ -269,6 +283,15 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     if (hasUserWatchlist) watchlistedTickers.add(symbol.ticker);
   });
 
+  const newsIdeaSymbolResult = newsIdeas.length
+    ? await supabase
+        .from("symbols")
+        .select("ticker, currency, symbol_price_snapshots(price, percent_change, fetched_at)")
+        .in("ticker", newsIdeas.map((idea) => idea.ticker))
+    : { data: [], error: null };
+  const newsSymbolByTicker = new Map<string, NewsIdeaSymbolRow>();
+  ((newsIdeaSymbolResult.data || []) as NewsIdeaSymbolRow[]).forEach((symbol) => newsSymbolByTicker.set(symbol.ticker, symbol));
+
   const discoveryIdeasResult = await supabase
     .from("watchlist_items")
     .select("id, created_at, status, watchlists!inner(name, owner_id), symbols(ticker, name, sector, industry)")
@@ -278,10 +301,6 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
     .limit(12);
   const discoveryIdeas = (discoveryIdeasResult.data || []) as DiscoveryIdeaRow[];
 
-  const withConsensus = rows.filter((row) => typeof row.consensus_target === "number").length;
-  const averageUpside = rows.length
-    ? rows.map((row) => row.implied_upside_pct).filter((value): value is number => typeof value === "number").reduce((sum, value, _index, values) => sum + value / values.length, 0)
-    : null;
   const lastRefresh = rows.map((row) => row.captured_at).sort().at(-1) || null;
   const topTen = sortRows(rows, "upside", "desc").filter((row) => typeof row.consensus_target === "number" && typeof row.price === "number" && typeof row.implied_upside_pct === "number").slice(0, 10);
   const bestSector = rows.reduce<Map<string, number>>((map, row) => {
@@ -295,33 +314,95 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
       <div className="space-y-6">
         <SectionCard
           title="Discovery"
-          description={`S&P 500 idea generation for research and watchlist candidates. Timestamps shown in ${getAppTimeZoneLabel()}.`}
+          description={`News-driven stock ideas for research follow-up. Timestamps shown in ${getAppTimeZoneLabel()}.`}
         >
           <div className="space-y-4">
-            <DiscoveryRefreshForm />
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Candidates refreshed</p>
-                <p className="mt-3 text-3xl font-bold text-zinc-50">{rows.length}</p>
-                <p className="mt-2 text-sm text-zinc-400">Qualified names with positive upside and P/E between 10–50.</p>
-              </div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Consensus coverage</p>
-                <p className="mt-3 text-3xl font-bold text-sky-300">{withConsensus}</p>
-                <p className="mt-2 text-sm text-zinc-400">Qualified names with analyst target data available.</p>
-              </div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Average implied upside</p>
-                <p className={`mt-3 text-2xl font-bold ${getTone(averageUpside)}`}>{formatPercent(averageUpside)}</p>
-                <p className="mt-2 text-sm text-zinc-400">Across qualified names with quote + target data.</p>
-              </div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Most represented sector</p>
-                <p className="mt-3 text-2xl font-bold text-zinc-50">{topSector}</p>
-                <p className="mt-2 text-sm text-zinc-400">Last refresh {lastRefresh ? formatAppDateTime(lastRefresh) : "not run yet"}.</p>
+            <div className="rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-950/40 via-zinc-950/80 to-zinc-950 p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-sky-300">New direction</p>
+              <h2 className="mt-2 text-2xl font-bold text-zinc-50">Market catalyst radar</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-300">
+                Discovery now starts with fresh market/news catalysts, then adds price and portfolio context where available. Treat these as stocks worth researching — not buy recommendations.
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">News ideas surfaced</p>
+                  <p className="mt-2 text-3xl font-bold text-zinc-50">{newsIdeas.length}</p>
+                  <p className="mt-1 text-sm text-zinc-400">From broad Google News market scans.</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Classic screener backup</p>
+                  <p className="mt-2 text-3xl font-bold text-sky-300">{rows.length}</p>
+                  <p className="mt-1 text-sm text-zinc-400">Target/P/E candidates still available below.</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Most represented sector</p>
+                  <p className="mt-2 text-2xl font-bold text-zinc-50">{topSector}</p>
+                  <p className="mt-1 text-sm text-zinc-400">Screener refresh {lastRefresh ? formatAppDateTime(lastRefresh) : "not run yet"}.</p>
+                </div>
               </div>
             </div>
           </div>
+        </SectionCard>
+
+        <SectionCard title="News-driven ideas" description="Stocks repeatedly appearing in recent market coverage, grouped by likely catalyst and tone.">
+          {newsIdeas.length ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {newsIdeas.map((idea) => {
+                const symbol = newsSymbolByTicker.get(idea.ticker);
+                const quote = firstRelation(symbol?.symbol_price_snapshots || null);
+                const symbolHref = `/symbols/${encodeURIComponent(idea.ticker)}`;
+                return (
+                  <div key={idea.ticker} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-zinc-500">{idea.catalyst}</p>
+                        {symbol ? (
+                          <Link href={symbolHref} className="mt-1 inline-flex text-lg font-semibold text-zinc-50 hover:text-sky-300">{idea.ticker} · {idea.name}</Link>
+                        ) : (
+                          <p className="mt-1 text-lg font-semibold text-zinc-50">{idea.ticker} · {idea.name}</p>
+                        )}
+                        <p className="mt-1 text-sm text-zinc-400">{idea.sector || "Sector unavailable"}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-zinc-500">Idea score</p>
+                        <p className="text-2xl font-bold text-sky-300">{idea.score}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                      <span className={`rounded-full border px-2 py-1 ${getNewsToneClass(idea.tone)}`}>{idea.tone}</span>
+                      <span className="rounded-full border border-zinc-700 px-2 py-1 text-zinc-300">{idea.sourceCount} source{idea.sourceCount === 1 ? "" : "s"}</span>
+                      {ownedTickers.has(idea.ticker) ? <span className="rounded-full border border-emerald-800/70 bg-emerald-950/25 px-2 py-1 text-emerald-300">Owned</span> : null}
+                      {watchlistedTickers.has(idea.ticker) ? <span className="rounded-full border border-sky-800/70 bg-sky-950/25 px-2 py-1 text-sky-300">Saved idea</span> : null}
+                    </div>
+                    <p className="mt-4 text-sm leading-6 text-zinc-300">{idea.summary}</p>
+                    <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+                      <div><p className="text-zinc-500">Price</p><p className="font-medium text-zinc-100">{formatMoney(quote?.price ?? null, symbol?.currency || "USD")}</p></div>
+                      <div><p className="text-zinc-500">Daily move</p><p className={`font-medium ${getTone(quote?.percent_change ?? null)}`}>{formatPercent(quote?.percent_change ?? null)}</p></div>
+                      <div><p className="text-zinc-500">Theme</p><p className="truncate font-medium text-zinc-100">{idea.themes[0] || "Market news"}</p></div>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {idea.evidence.slice(0, 2).map((item) => (
+                        <a key={item.url} href={item.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 text-sm text-zinc-300 transition hover:border-sky-500/50 hover:text-sky-200">
+                          <span className="line-clamp-2">{item.title}</span>
+                          <span className="mt-1 block text-xs text-zinc-500">{item.source}</span>
+                        </a>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <DiscoveryWatchlistButton ticker={idea.ticker} alreadyWatchlisted={watchlistedTickers.has(idea.ticker)} />
+                      {symbol ? (
+                        <Link href={symbolHref} className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-200 transition hover:border-sky-500/70 hover:text-sky-200">Run deeper research</Link>
+                      ) : (
+                        <span className="text-xs text-zinc-500">Save idea to import the symbol for deeper research.</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-400">No news ideas surfaced on this pass. Try refreshing the page or check the classic screener below.</div>
+          )}
         </SectionCard>
 
         <SectionCard title="Top 10 research candidates" description="Ranked by implied upside. Only stocks with positive upside and P/E between 10–50 are included.">
@@ -360,11 +441,14 @@ export default async function DiscoveryPage({ searchParams }: DiscoveryPageProps
           )}
         </SectionCard>
 
-        <SectionCard title="S&P 500 screener" description={`Only showing stocks with positive implied upside and P/E between 10–50. Sorted by ${SORT_LABELS[sortField].toLowerCase()} ${sortDirection === "asc" ? "ascending" : "descending"}.`}>
-          <div className="mb-4 flex flex-wrap gap-2 text-sm">
-            {(Object.keys(SORT_LABELS) as SortField[]).map((field) => (
-              <Link key={field} href={sortLink(sortField, sortDirection, field)} className={`rounded-full border px-3 py-1 ${sortField === field ? "border-sky-500/70 bg-sky-950/30 text-sky-200" : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"}`}>{SORT_LABELS[field]}{sortField === field ? sortDirection === "asc" ? " ↑" : " ↓" : ""}</Link>
-            ))}
+        <SectionCard title="Classic S&P 500 screener" description={`Backup valuation screen: positive implied upside and P/E between 10–50. Sorted by ${SORT_LABELS[sortField].toLowerCase()} ${sortDirection === "asc" ? "ascending" : "descending"}.`}>
+          <div className="mb-4 space-y-3">
+            <DiscoveryRefreshForm />
+            <div className="flex flex-wrap gap-2 text-sm">
+              {(Object.keys(SORT_LABELS) as SortField[]).map((field) => (
+                <Link key={field} href={sortLink(sortField, sortDirection, field)} className={`rounded-full border px-3 py-1 ${sortField === field ? "border-sky-500/70 bg-sky-950/30 text-sky-200" : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"}`}>{SORT_LABELS[field]}{sortField === field ? sortDirection === "asc" ? " ↑" : " ↓" : ""}</Link>
+              ))}
+            </div>
           </div>
           {rows.length ? (
             <div className="overflow-x-auto">
