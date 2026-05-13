@@ -29,6 +29,14 @@ export type RebalancePlan = {
   items: RebalancePlanItem[];
 };
 
+type AnalystTargetSnapshotRow = {
+  symbol_id: string | null;
+  mean_target: number | null;
+  median_target: number | null;
+  high_target: number | null;
+  low_target: number | null;
+};
+
 type PortfolioPositionRow = {
   id: string;
   portfolio_id: string;
@@ -151,6 +159,22 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
     };
   }
 
+  const symbolIds = [...new Set(rows.map((row) => firstRelation(row.symbols)?.id).filter(Boolean))] as string[];
+  const { data: storedTargets } = symbolIds.length
+    ? await supabase
+        .from("analyst_target_snapshots")
+        .select("symbol_id, mean_target, median_target, high_target, low_target")
+        .in("symbol_id", symbolIds)
+        .not("mean_target", "is", null)
+        .order("captured_at", { ascending: false })
+    : { data: [] as AnalystTargetSnapshotRow[] };
+
+  const latestStoredTargetBySymbol = new Map<string, AnalystTargetSnapshotRow>();
+  ((storedTargets || []) as AnalystTargetSnapshotRow[]).forEach((target) => {
+    if (!target.symbol_id || latestStoredTargetBySymbol.has(target.symbol_id)) return;
+    latestStoredTargetBySymbol.set(target.symbol_id, target);
+  });
+
   const totalInvestedByPortfolio = new Map<string, number>();
   const portfolioMeta = new Map<string, { name: string; cashUsd: number; recommendationCashMode: "managed-cash" | "fully-invested" }>();
 
@@ -186,7 +210,15 @@ export async function buildRebalancePlan(ownerId: string): Promise<RebalancePlan
       const totalPortfolioValue = totalInvested + (cashMeta?.cashUsd || 0);
       const currentWeight = totalPortfolioValue > 0 ? (marketValue / totalPortfolioValue) * 100 : null;
 
-      const consensus = await getConsensusTargetForSymbol(symbol.ticker);
+      const storedTarget = latestStoredTargetBySymbol.get(symbol.id);
+      const consensus = storedTarget
+        ? {
+            meanTarget: storedTarget.mean_target,
+            medianTarget: storedTarget.median_target,
+            highTarget: storedTarget.high_target,
+            lowTarget: storedTarget.low_target,
+          }
+        : await getConsensusTargetForSymbol(symbol.ticker);
       const consensusTarget = consensus.meanTarget;
       const impliedUpsidePct = typeof consensusTarget === "number" && typeof currentPrice === "number" && currentPrice > 0
         ? ((consensusTarget - currentPrice) / currentPrice) * 100

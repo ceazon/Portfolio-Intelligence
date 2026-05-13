@@ -306,12 +306,13 @@ export default async function PortfolioPage() {
                     if (!symbol?.id) return;
                     const rebalanceItem = rebalanceItemsByPortfolioSymbol.get(`${portfolio.id}:${symbol.id}`);
                     if (!rebalanceItem) return;
+                    const quoteCurrency = normalizeCurrency(symbol.currency);
                     recommendationEntries.push([
                       symbol.id,
                       {
                         action: rebalanceItem.action,
                         target_weight: rebalanceItem.targetWeight,
-                        target_price: rebalanceItem.consensusTarget,
+                        target_price: convertMoney(rebalanceItem.consensusTarget, quoteCurrency, displayCurrency, usdCadRate),
                         summary: rebalanceItem.rationale,
                         risks:
                           rebalanceItem.impliedUpsidePct !== null && rebalanceItem.impliedUpsidePct < 0
