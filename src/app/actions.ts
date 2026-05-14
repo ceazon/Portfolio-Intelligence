@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { refreshFxRate } from "@/lib/fx-sync";
@@ -33,6 +34,27 @@ export type FormState = {
   error: string;
   notice?: string;
 };
+
+export async function updateMarketEstimateFallback(_prevState: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const value = Number(String(formData.get("marketEstimatePct") || "6").trim());
+    if (!Number.isFinite(value) || value < -50 || value > 100) {
+      return { ok: false, error: "Enter a market estimate between -50% and 100%." };
+    }
+
+    const cookieStore = await cookies();
+    cookieStore.set("portfolio_market_estimate_pct", value.toFixed(1), {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+
+    revalidatePath("/dashboard");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error, "Failed to save market estimate fallback.") };
+  }
+}
 
 export async function refreshDiscovery(_prevState: FormState, formData: FormData): Promise<FormState> {
   try {
