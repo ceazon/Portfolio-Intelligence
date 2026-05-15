@@ -366,7 +366,7 @@ export default async function DashboardPage() {
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
                 <div className="flex h-44 items-end gap-1">
                   {portfolioTimeline.map((point) => (
-                    <div key={point.date} className="group flex min-w-0 flex-1 items-end gap-0.5" title={`${point.date}: actual ${formatMoney(point.actualValue, portfolios[0]?.displayCurrency || "USD")} / estimate ${formatMoney(point.estimateValue, portfolios[0]?.displayCurrency || "USD")}`}>
+                    <div key={point.date} className="group flex h-full min-w-0 flex-1 items-end gap-0.5" title={`${point.date}: actual ${formatMoney(point.actualValue, portfolios[0]?.displayCurrency || "USD")} / estimate ${formatMoney(point.estimateValue, portfolios[0]?.displayCurrency || "USD")}`}>
                       <div className="w-1/2 rounded-t bg-sky-500/70" style={{ height: `${Math.max(4, (point.actualValue / timelineMaxValue) * 100)}%` }} />
                       <div className="w-1/2 rounded-t bg-emerald-400/70" style={{ height: `${Math.max(4, (point.estimateValue / timelineMaxValue) * 100)}%` }} />
                     </div>
