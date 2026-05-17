@@ -9,7 +9,7 @@ import { requireUser } from "@/lib/auth";
 import { hasSupabaseEnv } from "@/lib/env";
 import { getMarketHoursState } from "@/lib/market-hours";
 import { formatAppDateTime, getAppTimeZoneLabel } from "@/lib/time";
-import { formatMoney } from "@/lib/performance-metrics";
+import { buildPaceSummary, formatMoney } from "@/lib/performance-metrics";
 
 type PortfolioRow = {
   id: string;
@@ -73,6 +73,8 @@ type HoldingView = {
   currency: string;
   quoteAt: string | null;
   targetAt: string | null;
+  paceEstimatePrice: number | null;
+  paceDeltaPct: number | null;
 };
 
 type PortfolioView = {
@@ -83,8 +85,11 @@ type PortfolioView = {
   holdings: HoldingView[];
   marketValue: number;
   averageUpsidePct: number | null;
+  averagePaceDeltaPct: number | null;
   estimatedValueAtTarget: number | null;
+  estimatedValueOnPace: number | null;
   estimateGapValue: number | null;
+  paceGapValue: number | null;
   atOrAboveTargetCount: number;
   withEstimateCount: number;
   fallbackEstimateCount: number;
@@ -117,11 +122,40 @@ function getMarketEstimatePctFromCookie(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : 6;
 }
 
+function getPriceOnOrBefore(history: PriceHistoryRow[], date: string | null) {
+  if (!history.length) return null;
+  if (!date) return history.at(-1)?.price ?? null;
+
+  const timestamp = new Date(date).getTime();
+  if (!Number.isFinite(timestamp)) return history.at(-1)?.price ?? null;
+
+  return [...history].reverse().find((row) => new Date(row.captured_at || row.market_day).getTime() <= timestamp)?.price
+    ?? history[0]?.price
+    ?? null;
+}
+
+function getPaceEstimatePrice({
+  startDate,
+  startPrice,
+  targetPrice,
+  currentPrice,
+  now,
+}: {
+  startDate: string | null;
+  startPrice: number | null;
+  targetPrice: number | null;
+  currentPrice: number | null;
+  now?: Date;
+}) {
+  return buildPaceSummary({ startDate, startPrice, targetPrice, currentPrice, now }).expectedPriceToday;
+}
+
 export default async function DashboardPage() {
   const user = await requireUser();
   const supabase = await createSupabaseServerClient();
   const cookieStore = await cookies();
   const marketEstimatePct = getMarketEstimatePctFromCookie(cookieStore.get("portfolio_market_estimate_pct")?.value);
+  const now = new Date();
 
   let portfolios: PortfolioView[] = [];
   let positionCount = 0;
@@ -196,6 +230,15 @@ export default async function DashboardPage() {
         const upsidePct = typeof price === "number" && price > 0 && typeof meanTarget === "number"
           ? ((meanTarget - price) / price) * 100
           : null;
+        const targetStartDate = target?.captured_at ?? (typeof analystTarget === "number" ? null : quote?.fetched_at ?? null);
+        const targetStartPrice = symbol?.id ? getPriceOnOrBefore(priceHistoryBySymbol.get(symbol.id) || [], targetStartDate) ?? price : price;
+        const pace = buildPaceSummary({
+          startDate: targetStartDate,
+          startPrice: targetStartPrice,
+          targetPrice: meanTarget,
+          currentPrice: price,
+          now,
+        });
 
         return {
           symbolId: symbol?.id || position.id,
@@ -211,6 +254,8 @@ export default async function DashboardPage() {
           currency: symbol?.currency || portfolio.display_currency || "USD",
           quoteAt: quote?.fetched_at ?? null,
           targetAt: target?.captured_at ?? null,
+          paceEstimatePrice: pace.expectedPriceToday,
+          paceDeltaPct: pace.deltaPct,
         } satisfies HoldingView;
       }).sort((a, b) => (b.marketValue ?? 0) - (a.marketValue ?? 0));
 
@@ -219,8 +264,14 @@ export default async function DashboardPage() {
         .map((holding) => typeof holding.target === "number" ? holding.target * holding.quantity : null)
         .filter((value): value is number => typeof value === "number");
       const estimatedValueAtTarget = targetValues.length ? targetValues.reduce((sum, value) => sum + value, 0) : null;
+      const paceValues = holdings
+        .map((holding) => typeof holding.paceEstimatePrice === "number" ? holding.paceEstimatePrice * holding.quantity : null)
+        .filter((value): value is number => typeof value === "number");
+      const estimatedValueOnPace = paceValues.length ? paceValues.reduce((sum, value) => sum + value, 0) : null;
       const estimateGapValue = estimatedValueAtTarget !== null ? estimatedValueAtTarget - marketValue : null;
+      const paceGapValue = estimatedValueOnPace !== null ? marketValue - estimatedValueOnPace : null;
       const upsideValues = holdings.map((holding) => holding.upsidePct).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+      const paceDeltaValues = holdings.map((holding) => holding.paceDeltaPct).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 
       return {
         id: portfolio.id,
@@ -230,8 +281,11 @@ export default async function DashboardPage() {
         holdings,
         marketValue,
         averageUpsidePct: average(upsideValues),
+        averagePaceDeltaPct: average(paceDeltaValues),
         estimatedValueAtTarget,
+        estimatedValueOnPace,
         estimateGapValue,
+        paceGapValue,
         atOrAboveTargetCount: holdings.filter((holding) => typeof holding.upsidePct === "number" && holding.upsidePct <= 0).length,
         withEstimateCount: upsideValues.length,
         fallbackEstimateCount: holdings.filter((holding) => holding.targetSource === "market-estimate").length,
@@ -242,14 +296,19 @@ export default async function DashboardPage() {
       .map((position) => {
         const symbol = firstRelation(position.symbols);
         if (!symbol?.id) return null;
-        const latestTarget = latestTargetBySymbol.get(symbol.id)?.mean_target ?? null;
+        const latestTarget = latestTargetBySymbol.get(symbol.id) ?? null;
+        const quote = firstRelation(symbol.symbol_price_snapshots || null);
+        const price = quote?.price ?? null;
+        const target = latestTarget?.mean_target ?? (typeof price === "number" ? price * (1 + marketEstimatePct / 100) : null);
         return {
           symbolId: symbol.id,
           quantity: position.quantity ?? 0,
-          target: latestTarget,
+          target,
+          targetCapturedAt: latestTarget?.captured_at ?? quote?.fetched_at ?? null,
+          currentPrice: price,
         };
       })
-      .filter((position): position is { symbolId: string; quantity: number; target: number | null } => Boolean(position));
+      .filter((position): position is { symbolId: string; quantity: number; target: number | null; targetCapturedAt: string | null; currentPrice: number | null } => Boolean(position));
 
     const allMarketDays = [...new Set(((priceHistoryResult.data || []) as PriceHistoryRow[]).map((row) => row.market_day).filter(Boolean))].sort().slice(-30);
     portfolioTimeline = allMarketDays.map((day) => {
@@ -261,7 +320,14 @@ export default async function DashboardPage() {
       const estimateValue = heldPositions.reduce((sum, position) => {
         const history = priceHistoryBySymbol.get(position.symbolId) || [];
         const dayPrice = [...history].reverse().find((row) => row.market_day <= day)?.price ?? null;
-        const estimatedPrice = position.target ?? (typeof dayPrice === "number" ? dayPrice * (1 + marketEstimatePct / 100) : null);
+        const startPrice = getPriceOnOrBefore(history, position.targetCapturedAt) ?? position.currentPrice;
+        const estimatedPrice = getPaceEstimatePrice({
+          startDate: position.targetCapturedAt,
+          startPrice,
+          targetPrice: position.target,
+          currentPrice: dayPrice,
+          now: new Date(`${day}T12:00:00`),
+        });
         return sum + (typeof estimatedPrice === "number" ? estimatedPrice * position.quantity : 0);
       }, 0);
 
@@ -269,15 +335,16 @@ export default async function DashboardPage() {
         date: day,
         actualValue,
         estimateValue,
-        gapValue: estimateValue - actualValue,
+        gapValue: actualValue - estimateValue,
       };
     }).filter((point) => point.actualValue > 0 || point.estimateValue > 0);
   }
 
   const marketHoursState = getMarketHoursState();
   const allUpsideValues = portfolios.flatMap((portfolio) => portfolio.holdings.map((holding) => holding.upsidePct).filter((value): value is number => typeof value === "number" && Number.isFinite(value)));
-  const averageUpsidePct = average(allUpsideValues);
-  const totalEstimateGap = portfolios.reduce((sum, portfolio) => sum + (portfolio.estimateGapValue ?? 0), 0);
+  const allPaceDeltaValues = portfolios.flatMap((portfolio) => portfolio.holdings.map((holding) => holding.paceDeltaPct).filter((value): value is number => typeof value === "number" && Number.isFinite(value)));
+  const averagePaceDeltaPct = average(allPaceDeltaValues);
+  const totalEstimateGap = portfolios.reduce((sum, portfolio) => sum + (portfolio.paceGapValue ?? 0), 0);
   const trackedEstimateCount = allUpsideValues.length;
   const fallbackEstimateCount = portfolios.reduce((sum, portfolio) => sum + portfolio.fallbackEstimateCount, 0);
   const latestQuoteAt = portfolios
@@ -301,15 +368,15 @@ export default async function DashboardPage() {
       href: "/performance",
     },
     {
-      label: "Average upside",
-      value: formatPercent(averageUpsidePct),
-      detail: "Analyst targets + fallback vs latest actual price",
+      label: "Average pace",
+      value: formatPercent(averagePaceDeltaPct),
+      detail: "Current actual vs today’s prorated 12-month estimate",
       href: "/performance",
     },
     {
-      label: "Estimate gap",
+      label: "Pace gap",
       value: formatMoney(totalEstimateGap, portfolios[0]?.displayCurrency || "USD"),
-      detail: "Current value vs blended estimate value",
+      detail: "Current value vs today’s prorated estimate",
       href: "/performance",
     },
   ];
@@ -339,14 +406,14 @@ export default async function DashboardPage() {
             {keyStats.map((stat) => (
               <Link key={stat.label} href={stat.href} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 transition hover:border-sky-700/70 hover:bg-zinc-900/70">
                 <p className="text-xs uppercase tracking-wide text-zinc-500">{stat.label}</p>
-                <p className={`mt-3 text-3xl font-bold ${stat.label.includes("upside") || stat.label.includes("gap") ? getTone(stat.label.includes("upside") ? averageUpsidePct : totalEstimateGap) : "text-zinc-50"}`}>{stat.value}</p>
+                <p className={`mt-3 text-3xl font-bold ${stat.label.includes("pace") || stat.label.includes("gap") ? getTone(stat.label.includes("pace") ? averagePaceDeltaPct : totalEstimateGap) : "text-zinc-50"}`}>{stat.value}</p>
                 <p className="mt-2 text-sm text-zinc-400">{stat.detail}</p>
               </Link>
             ))}
           </div>
         </SectionCard>
 
-        <SectionCard title="Overall portfolio vs estimate over time" description={`Blended tracking uses analyst targets where available and ${marketEstimatePct.toFixed(1)}% market estimate fallback where targets are missing.`}>
+        <SectionCard title="Overall portfolio vs estimate over time" description={`Estimate bars are prorated from each target capture date toward the 12-month target, using analyst targets where available and ${marketEstimatePct.toFixed(1)}% market fallback where targets are missing.`}>
           {portfolioTimeline.length ? (
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-3">
@@ -355,11 +422,11 @@ export default async function DashboardPage() {
                   <p className="mt-2 text-2xl font-bold text-zinc-50">{formatMoney(latestPortfolioTimelinePoint?.actualValue ?? null, portfolios[0]?.displayCurrency || "USD")}</p>
                 </div>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                  <p className="text-xs uppercase tracking-wide text-zinc-500">Latest estimate value</p>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Latest pace estimate</p>
                   <p className="mt-2 text-2xl font-bold text-zinc-50">{formatMoney(latestPortfolioTimelinePoint?.estimateValue ?? null, portfolios[0]?.displayCurrency || "USD")}</p>
                 </div>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                  <p className="text-xs uppercase tracking-wide text-zinc-500">Current estimate gap</p>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Current pace gap</p>
                   <p className={`mt-2 text-2xl font-bold ${getTone(latestPortfolioTimelinePoint?.gapValue ?? null)}`}>{formatMoney(latestPortfolioTimelinePoint?.gapValue ?? null, portfolios[0]?.displayCurrency || "USD")}</p>
                 </div>
               </div>
@@ -385,7 +452,7 @@ export default async function DashboardPage() {
         </SectionCard>
 
         <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-          <SectionCard title="Core portfolios: estimates vs actual" description="Each portfolio summarized by current actual value, consensus target value, and position-level upside/downside.">
+          <SectionCard title="Core portfolios: estimates vs actual" description="Each portfolio compares current actual value against today’s prorated path to the 12-month target.">
             {portfolios.length ? (
               <div className="space-y-4">
                 {portfolios.map((portfolio) => (
@@ -401,16 +468,16 @@ export default async function DashboardPage() {
                           <p className="font-semibold text-zinc-100">{formatMoney(portfolio.marketValue, portfolio.displayCurrency)}</p>
                         </div>
                         <div>
-                          <p className="text-zinc-500">Target value</p>
-                          <p className="font-semibold text-zinc-100">{formatMoney(portfolio.estimatedValueAtTarget, portfolio.displayCurrency)}</p>
+                          <p className="text-zinc-500">Pace estimate</p>
+                          <p className="font-semibold text-zinc-100">{formatMoney(portfolio.estimatedValueOnPace, portfolio.displayCurrency)}</p>
                         </div>
                         <div>
-                          <p className="text-zinc-500">Gap</p>
-                          <p className={`font-semibold ${getTone(portfolio.estimateGapValue)}`}>{formatMoney(portfolio.estimateGapValue, portfolio.displayCurrency)}</p>
+                          <p className="text-zinc-500">Pace gap</p>
+                          <p className={`font-semibold ${getTone(portfolio.paceGapValue)}`}>{formatMoney(portfolio.paceGapValue, portfolio.displayCurrency)}</p>
                         </div>
                         <div>
-                          <p className="text-zinc-500">Avg upside</p>
-                          <p className={`font-semibold ${getTone(portfolio.averageUpsidePct)}`}>{formatPercent(portfolio.averageUpsidePct)}</p>
+                          <p className="text-zinc-500">Avg pace</p>
+                          <p className={`font-semibold ${getTone(portfolio.averagePaceDeltaPct)}`}>{formatPercent(portfolio.averagePaceDeltaPct)}</p>
                         </div>
                       </div>
                     </div>
